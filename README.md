@@ -18,11 +18,8 @@ To build all needed dependencies and complete prebuild simulations/trainings:
 
 # Ensure you have access to FAPS gitlab
 
-# Clone the repository
-git clone git@git.faps.uni-erlangen.de:alschlosser/studentische-arbeiten.git
-
-#Switch to right project branch
-git branch switch project/tendonbot-sim-rl
+# Clone the repository (only project specific branch)
+git clone -b project/tendonbot-sim-rl git@git.faps.uni-erlangen.de:alschlosser/studentische-arbeiten.git
 
 # Configure and source local environment variables
 source .config/env_vars.sh
