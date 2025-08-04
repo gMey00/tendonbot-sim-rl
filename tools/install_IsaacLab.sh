@@ -1,3 +1,11 @@
+#!/bin/bash -l
+"
+This script installs the NVIDIA Isaac Sim and Isaac Lab on a Linux system.
+"
+
+LEARNING_FRAMEWORK={$1:"rl_games"}  # default learning environment to install 
+                                    # - possible choices: rl_games, rsl_rl, sb3, skrl, robomimic
+
 # ======== Install MiniConda =========== #
 # if [ ! -d "${CONDA_PATH}" ]; then
 #     mkdir -p ${CONDA_PATH}
@@ -5,6 +13,7 @@
 #     bash ${CONDA_PATH}/miniconda.sh -b -u -p ${CONDA_PATH}
 #     rm ${CONDA_PATH}/miniconda.sh
 # fi
+
 # ======== Install Isaac Sim =========== #
 
 if [ ! -d "${INSTALL_PATH}" ]; then
@@ -48,7 +57,7 @@ if [ ! -d "${ISAACSIM_PATH}" ]; then
     # - for 50 series GPUs: ./isaaclab.sh -p -m pip install --upgrade --pre torch torchvision \
     #                              --index-url https://download.pytorch.org/whl/nightly/cu128
     #    (RTX A6000 is not)
-    ./isaaclab.sh --install # installs all possible learning environments
+    ./isaaclab.sh --install $LEARNING_FRAMEWORK # installs all possible learning environments
     cd ${INSTALL_DIR}
 else
     echo "Isaac Lab is already installed at ${ISAACLAB_PATH}."
