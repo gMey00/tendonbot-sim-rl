@@ -1,7 +1,5 @@
 # Annotated Bibliography: Simulation Frameworks & Benchmarks for Robot Learning
 
-Below are the newly cited works, each followed by a concise two‑to‑three‑sentence summary of its main contribution and relevance to modern robot‑learning research.
-
 ---
 
 ### Mittal, M. et al. (2023). “Orbit: A Unified Simulation Framework for Interactive Robot Learning Environments.” *IEEE Robotics and Automation Letters* 8 (6): 3740‑3747.  

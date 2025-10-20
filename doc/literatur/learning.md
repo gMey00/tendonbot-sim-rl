@@ -1,7 +1,5 @@
 # Annotated Bibliography: Key Works in Reinforcement Learning & Robotics
 
-Below is a curated list of the cited works, each followed by a concise 2–3‑sentence summary highlighting its main contribution and why it matters.
-
 ---
 
 ### Sutton, R. S. & Barto, A. G. (2018). *Reinforcement Learning: An Introduction*  
