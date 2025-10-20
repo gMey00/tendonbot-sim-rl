@@ -9,3 +9,5 @@ export ISAACSIM_PATH="${INSTALL_PATH}/IsaacSim"
 export ISAACSIM_PYTHON_EXE="${ISAACSIM_PATH}/python.sh"
 # Isaac Lab root directory
 export ISAACLAB_PATH="${INSTALL_PATH}/IsaacLab"
+# Project directory
+export PROJECT_PATH="/home/robot/studentische-arbeiten"

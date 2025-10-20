@@ -1,10 +1,26 @@
 #!/bin/bash -l
-"
-This script installs the NVIDIA Isaac Sim and Isaac Lab on a Linux system.
-"
 
-LEARNING_FRAMEWORK={$1:"rl_games"}  # default learning environment to install 
+# This script installs the NVIDIA Isaac Sim and Isaac Lab on a Linux system.
+# Usage: ./install_IsaacLab.sh [learning_framework]
+# Where learning_framework is one of: rl_games, rsl_rl, sb3, skrl, robomimic, none
+# Default: rl_games
+#
+# Example: ./install_IsaacLab.sh sb3
+
+# Exit on any error
+set -e
+
+source ../.config/env_vars.sh
+LEARNING_FRAMEWORK=${1:-"skrl"}  # default learning environment to install 
                                     # - possible choices: rl_games, rsl_rl, sb3, skrl, robomimic
+
+# Validate learning framework choice
+valid_frameworks=("rl_games" "rsl_rl" "sb3" "skrl" "robomimic" "none")
+if [[ ! " ${valid_frameworks[*]} " =~ " ${LEARNING_FRAMEWORK} " ]]; then
+    echo "Error: Invalid learning framework '${LEARNING_FRAMEWORK}'"
+    echo "Valid choices: ${valid_frameworks[*]}"
+    exit 1
+fi
 
 # ======== Install MiniConda =========== #
 # if [ ! -d "${CONDA_PATH}" ]; then
@@ -14,14 +30,27 @@ LEARNING_FRAMEWORK={$1:"rl_games"}  # default learning environment to install
 #     rm ${CONDA_PATH}/miniconda.sh
 # fi
 
+# Initialize conda if not already done
+if [ -f "${CONDA_PATH}/etc/profile.d/conda.sh" ]; then
+    source "${CONDA_PATH}/etc/profile.d/conda.sh"
+    echo "Conda initialization loaded successfully"
+    
+    # Fix conda entry point errors by installing pydantic-core in base environment
+    conda install -n base pydantic-core -y 2>/dev/null || true
+else
+    echo "Error: Conda initialization script not found at ${CONDA_PATH}/etc/profile.d/conda.sh"
+    echo "Please install conda or update CONDA_PATH in env_vars.sh"
+    exit 1
+fi
+
 # ======== Install Isaac Sim =========== #
 
 if [ ! -d "${INSTALL_PATH}" ]; then
     mkdir -p ${INSTALL_PATH}
 fi
+cd ${INSTALL_PATH}
 if [ ! -d "${ISAACSIM_PATH}" ]; then
     mkdir -p ${ISAACSIM_PATH}
-    cd ${INSTALL_PATH}
     wget "https://download.isaacsim.omniverse.nvidia.com/isaac-sim-standalone%404.5.0-rc.36%2Brelease.19112.f59b3005.gl.linux-x86_64.release.zip"
     unzip "isaac-sim-standalone@4.5.0-rc.36+release.19112.f59b3005.gl.linux-x86_64.release.zip" -d ${ISAACSIM_PATH}
     ${ISAACSIM_PATH}/post_install.sh
@@ -35,8 +64,7 @@ fi
 
 
 # ======== Install Isaac Lab =========== #
-if [ ! -d "${ISAACSIM_PATH}" ]; then
-#if [ ! -d "${ISAACLAB_PATH}" ]; then
+if [ ! -d "${ISAACLAB_PATH}" ]; then
     git clone https://github.com/isaac-sim/IsaacLab.git
     ${ISAACLAB_PATH}/isaaclab.sh --help
 
@@ -44,24 +72,42 @@ if [ ! -d "${ISAACSIM_PATH}" ]; then
     cd ${ISAACLAB_PATH}
     ln -s ${ISAACSIM_PATH} _isaac_sim
     # set up the conda environment (optional): 
+    # accept the terms of service for conda packages
+    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r    
     # - Default name for conda environment is 'env_isaaclab'
     ./isaaclab.sh --conda  # or "./isaaclab.sh -c"
-    conda activate env_isaaclab 
+    
+    # Source conda again after environment creation
+    source "${CONDA_PATH}/etc/profile.d/conda.sh"
+    conda activate env_isaaclab
+    
     # Install dependencies for Learning Frameworks:
     # - needed by robomimic which is not available on Windows 
-    # - (Only insatll if robomimic is used)
+    # - (Only install if robomimic is used)
     sudo apt install cmake build-essential
+    
     # Install Learn Frameworks:
     # - possible choices: rl_games, rsl_rl, sb3, skrl, robomimic, none
     # - call for specific install: "./isaaclab.sh --install rl_games"
     # - for 50 series GPUs: ./isaaclab.sh -p -m pip install --upgrade --pre torch torchvision \
     #                              --index-url https://download.pytorch.org/whl/nightly/cu128
     #    (RTX A6000 is not)
-    ./isaaclab.sh --install $LEARNING_FRAMEWORK # installs all possible learning environments
-    cd ${INSTALL_DIR}
+    if [ "${LEARNING_FRAMEWORK}" != "none" ]; then
+        echo "Installing learning framework: ${LEARNING_FRAMEWORK}"
+        ./isaaclab.sh --install "${LEARNING_FRAMEWORK}" # installs specific learning framework
+        if [ $? -ne 0 ]; then
+            echo "Error: Failed to install learning framework ${LEARNING_FRAMEWORK}"
+            echo "You may need to install it manually later"
+        fi
+    else
+        echo "Skipping learning framework installation (none selected)"
+    fi
+    cd "${INSTALL_PATH}"
 else
     echo "Isaac Lab is already installed at ${ISAACLAB_PATH}."
 fi
 
 # activate conda env (if not already done)
+source "${CONDA_PATH}/etc/profile.d/conda.sh"
 conda activate env_isaaclab
