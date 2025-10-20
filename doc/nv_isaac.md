@@ -27,6 +27,8 @@
   - [Bring Your Own Robot: Integrating Assets Into Isaac Lab (Comind Soon)](https://www.nvidia.com/en-us/learn/learning-path/robotics/)
   - [Transferring Robot Learning Policies From Simulation to Reality](https://learn.nvidia.com/courses/course-detail?course_id=course-v1:DLI+S-OV-28+V1)
 - [Core Paper (always cite)](https://isaac-orbit.github.io)
+- [Comparison of supported RL Frameworks](https://isaac-sim.github.io/IsaacLab/main/source/overview/reinforcement-learning/rl_frameworks.html)
+- [Reinforcement Learning Scripts](https://isaac-sim.github.io/IsaacLab/main/source/overview/reinforcement-learning/rl_existing_scripts.html)
 ---
 
 ## OpenUSD
