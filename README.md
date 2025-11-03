@@ -43,7 +43,10 @@ source install_isaaclab.sh
 
 ### Getting Started
 
-### ...
+## 🗓️ Organisation
 
+<iframe frameborder="0" height="500px" width="100%" src="https://kalender.digital/8a3e2b7f89063ab12eeb?iframe=true"></iframe>
+
+### ...
 
 [Back to top](#top)
