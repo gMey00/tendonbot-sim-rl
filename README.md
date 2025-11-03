@@ -2,8 +2,9 @@
 
 ## Table of Contents
 - [About](#-about)
-- [How to Build](#-how-to-build)
+- [How to Build](#-how-to-build/use)
 - [Documentation](#-documentation)
+- [Organisational](#-organisational)
 
 ## 🚀 About
 
@@ -43,9 +44,9 @@ source install_isaaclab.sh
 
 ### Getting Started
 
-## 🗓️ Organisation
+## 🗓️ Organisational
 
-<iframe frameborder="0" height="500px" width="100%" src="https://kalender.digital/8a3e2b7f89063ab12eeb?iframe=true"></iframe>
+👉 [Open the project calendar](https://kalender.digital/8a3e2b7f89063ab12eeb)
 
 ### ...
 
