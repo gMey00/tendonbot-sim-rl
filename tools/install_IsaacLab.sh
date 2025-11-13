@@ -51,8 +51,9 @@ fi
 cd ${INSTALL_PATH}
 if [ ! -d "${ISAACSIM_PATH}" ]; then
     mkdir -p ${ISAACSIM_PATH}
-    wget "https://download.isaacsim.omniverse.nvidia.com/isaac-sim-standalone%404.5.0-rc.36%2Brelease.19112.f59b3005.gl.linux-x86_64.release.zip"
-    unzip "isaac-sim-standalone@4.5.0-rc.36+release.19112.f59b3005.gl.linux-x86_64.release.zip" -d ${ISAACSIM_PATH}
+    # Isaac Sim 5.1.0 standalone Linux build
+    wget "https://download.isaacsim.omniverse.nvidia.com/isaac-sim-standalone-5.1.0-linux-x86_64.zip"
+    unzip "isaac-sim-standalone-5.1.0-linux-x86_64.zip" -d ${ISAACSIM_PATH}
     ${ISAACSIM_PATH}/post_install.sh
     # check if installation is working
     ${ISAACSIM_PATH}/isaac-sim.sh --help
@@ -70,11 +71,13 @@ if [ ! -d "${ISAACLAB_PATH}" ]; then
 
     # create isaac sim symbolic link     
     cd ${ISAACLAB_PATH}
-    ln -s ${ISAACSIM_PATH} _isaac_sim
-    # set up the conda environment (optional): 
-    # accept the terms of service for conda packages
-    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
-    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r    
+    if [ ! -L "_isaac_sim" ]; then
+        ln -s "${ISAACSIM_PATH}" "_isaac_sim"
+    fi
+
+    # Install Isaac Lab in a conda environment:
+    # - uses python 3.11 (required for Isaac Sim 5.x)
+    # - points to Isaac Sim binaries through the above symlink
     # - Default name for conda environment is 'env_isaaclab'
     ./isaaclab.sh --conda  # or "./isaaclab.sh -c"
     
@@ -85,8 +88,10 @@ if [ ! -d "${ISAACLAB_PATH}" ]; then
     # Install dependencies for Learning Frameworks:
     # - needed by robomimic which is not available on Windows 
     # - (Only install if robomimic is used)
-    sudo apt install cmake build-essential
-    
+    if [ "${LEARNING_FRAMEWORK}" == "robomimic" ]; then
+        sudo apt install cmake build-essential
+    fi
+
     # Install Learn Frameworks:
     # - possible choices: rl_games, rsl_rl, sb3, skrl, robomimic, none
     # - call for specific install: "./isaaclab.sh --install rl_games"
@@ -103,6 +108,7 @@ if [ ! -d "${ISAACLAB_PATH}" ]; then
     else
         echo "Skipping learning framework installation (none selected)"
     fi
+
     cd "${INSTALL_PATH}"
 else
     echo "Isaac Lab is already installed at ${ISAACLAB_PATH}."
