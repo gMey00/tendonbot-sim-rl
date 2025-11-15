@@ -1,0 +1,143 @@
+        
+        
+        def Material "Acrylic_Clear_Glossy_Blue_A"
+        {
+            token outputs:mdl:displacement.connect = </ConveyorBelt_A01_01/Looks/Acrylic_Clear_Glossy_Blue_A/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </ConveyorBelt_A01_01/Looks/Acrylic_Clear_Glossy_Blue_A/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </ConveyorBelt_A01_01/Looks/Acrylic_Clear_Glossy_Blue_A/Shader.outputs:out>
+
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniGlass.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniGlass"
+                float inputs:frosting_roughness = 0.17 (
+                    customData = {
+                        float default = 0
+                        dictionary range = {
+                            float max = 1
+                            float min = 0
+                        }
+                    }
+                    displayGroup = "Roughness"
+                    displayName = "Glass Roughness"
+                    doc = "Sets the roughness of the glass material "
+                    hidden = false
+                )
+                color3f inputs:glass_color = (0.47918192, 0.48545548, 0.63320464) (
+                    customData = {
+                        float3 default = (1, 1, 1)
+                        dictionary range = {
+                            float3 max = (1, 1, 1)
+                            float3 min = (0, 0, 0)
+                        }
+                    }
+                    displayGroup = "Color"
+                    displayName = "Glass Color"
+                    doc = "Sets the color of the glass"
+                    hidden = false
+                )
+                asset inputs:glass_color_texture = @@ (
+                    colorSpace = "sRGB"
+                    customData = {
+                        asset default = @@
+                    }
+                    displayGroup = "Color"
+                    displayName = "Glass Color Texture"
+                    doc = "Specifies the texture to be used for the glass color of the material"
+                    hidden = false
+                )
+                float inputs:glass_ior = 1.05 (
+                    customData = {
+                        float default = 1.491
+                        dictionary soft_range = {
+                            float max = 4
+                            float min = 1
+                        }
+                    }
+                    displayGroup = "Refraction"
+                    displayName = "Glass IOR"
+                    doc = "Sets IOR of the glass material "
+                    hidden = false
+                )
+                float inputs:normal_map_strength = 0.5 (
+                    customData = {
+                        float default = 1
+                        dictionary soft_range = {
+                            float max = 1
+                            float min = 0
+                        }
+                    }
+                    displayGroup = "Normal"
+                    displayName = "Normal Map Strength"
+                    doc = "Determines the degree of bumpiness"
+                    hidden = false
+                )
+                asset inputs:normal_map_texture = @omniverse://art.ov.nvidia.com/Projects/Digital%20Twins%20Library/Library/Material%20Library/Plastic/Textures/T_Plastic_Rough_Black_A_Normal.png@ (
+                    colorSpace = "raw"
+                    customData = {
+                        asset default = @@
+                    }
+                    displayGroup = "Normal"
+                    displayName = "Normal Map Texture"
+                    doc = "The normal map texture"
+                    hidden = false
+                )
+                asset inputs:roughness_texture = @omniverse://art.ov.nvidia.com/Projects/Digital%20Twins%20Library/Library/Material%20Library/Plastic/Textures/T_Acrylic_Clear_Glossy_A_Rough.png@ (
+                    colorSpace = "raw"
+                    customData = {
+                        asset default = @@
+                    }
+                    displayGroup = "Roughness"
+                    displayName = "Roughness Texture"
+                    doc = "The roughness texture"
+                    hidden = false
+                )
+                float inputs:roughness_texture_influence = 0.29999998 (
+                    customData = {
+                        float default = 1
+                        dictionary range = {
+                            float max = 1
+                            float min = 0
+                        }
+                    }
+                    displayGroup = "Roughness"
+                    displayName = "Roughness Texture Influence"
+                    hidden = false
+                )
+                float2 inputs:texture_scale = (1, 3) (
+                    customData = {
+                        float2 default = (1, 1)
+                    }
+                    displayGroup = "UV"
+                    displayName = "Texture Scale"
+                    doc = "Larger numbers increase the size."
+                    hidden = false
+                )
+                bool inputs:thin_walled = 0 (
+                    customData = {
+                        bool default = 0
+                    }
+                    displayGroup = "Refraction"
+                    displayName = "Thin Walled"
+                    doc = "When enabled, the material is considered thin-walled. Use this, when you have glass surfaces that are modeled with a single plane"
+                    hidden = false
+                )
+                token outputs:out
+            }
+        }
+
+        def Material "Acrylic_Clear_Glossy_Blue_A"
+        {
+            token outputs:mdl:displacement.connect = </ConveyorBelt_A37_01/Looks/Acrylic_Clear_Glossy_Blue_A/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </ConveyorBelt_A37_01/Looks/Acrylic_Clear_Glossy_Blue_A/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </ConveyorBelt_A37_01/Looks/Acrylic_Clear_Glossy_Blue_A/Shader.outputs:out>
+
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @../../../../../Materials/Base/Plastics/Acrylic_Clear_Glossy_Blue_A.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "Acrylic_Clear_Glossy_Blue_A"
+                token outputs:out
+            }
+        }
