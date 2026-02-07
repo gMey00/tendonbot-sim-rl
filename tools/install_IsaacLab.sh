@@ -79,6 +79,19 @@ if [ ! -d "${ISAACLAB_PATH}" ]; then
     # - uses python 3.11 (required for Isaac Sim 5.x)
     # - points to Isaac Sim binaries through the above symlink
     # - Default name for conda environment is 'env_isaaclab'
+
+    ENV_NAME="env_isaaclab"
+    REQ_PY="3.11"
+
+    # If env exists, verify python minor version (must match Isaac Sim 5.X)
+    if conda env list | awk '{print $1}' | grep -qx "${ENV_NAME}"; then
+        PY_VER=$(conda run -n "${ENV_NAME}" python -c "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')")
+        if [ "${PY_VER}" != "${REQ_PY}" ]; then
+            echo "[WARN] ${ENV_NAME} has Python ${PY_VER}, expected ${REQ_PY}. Recreating..."
+            conda env remove -n "${ENV_NAME}" -y
+        fi
+    fi
+
     ./isaaclab.sh --conda  # or "./isaaclab.sh -c"
     
     # Source conda again after environment creation
@@ -92,7 +105,7 @@ if [ ! -d "${ISAACLAB_PATH}" ]; then
         sudo apt install cmake build-essential
     fi
 
-    # Install Learn Frameworks:
+    # Install Learning Frameworks:
     # - possible choices: rl_games, rsl_rl, sb3, skrl, robomimic, none
     # - call for specific install: "./isaaclab.sh --install rl_games"
     # - for 50 series GPUs: ./isaaclab.sh -p -m pip install --upgrade --pre torch torchvision \
