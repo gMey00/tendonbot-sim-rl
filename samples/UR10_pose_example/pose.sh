@@ -66,15 +66,16 @@ python scripts/list_envs.py
 
 # Run a zero agent (no actions, just to test the environment)
 # Does Robot Scene load? Does the environment step without errors?
-python scripts/zero_agent.py --task Template-Reach-v0 --num_envs=10
+python scripts/zero_agent.py --task=Template-Reach-v0 --num_envs=10
 
 # Run a random agent (random actions)
 # Do all joints move randomly without errors?
-python scripts/random_agent.py --task Template-Reach-v0 --num_envs=10
+python scripts/random_agent.py --task=Template-Reach-v0 --num_envs=10
 
 ## 4, Train and run the agent
 
 # Train the agent
-python scripts/skrl/train.py --task Template-Reach-v0 --headless # --num_envs=100 # Default num_envs=4096
+python scripts/skrl/train.py --task=Template-Reach-v0 --headless # --num_envs=100 # Default num_envs=4096
 
 # Run the trained agent/policy
+python scripts/skrl/play.py --task=Template-Reach-v0 --num_envs=10
