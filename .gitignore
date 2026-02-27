@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.pytest_cache/
+
+# Training artifacts
+**/logs/
+**/outputs/
+**/runs/
+**/recordings/
+**/wandb/
+**/.neptune/
+
+# Omniverse / Isaac Sim
+*.dmp
+.thumbs/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Misc
+*.tmp
+*.log
