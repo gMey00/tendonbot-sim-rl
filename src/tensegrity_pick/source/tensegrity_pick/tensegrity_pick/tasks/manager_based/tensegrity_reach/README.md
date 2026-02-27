@@ -1,5 +1,7 @@
 # Tensegrity Reach Task
 
+[← Back to extension overview](../../../../../../README.md) · [Project root](../../../../../../../../README.md)
+
 End-effector pose tracking for the 5-DOF tensegrity manipulator.  The robot
 must move `tool_link_0` to randomly sampled target poses that are guaranteed
 reachable by construction.
@@ -140,3 +142,10 @@ cd /home/robot/Isaac/IsaacLab
 ./isaaclab.sh -p source/isaaclab_tasks/scripts/skrl/train.py \
     --task Template-Tensegrity-Reach-Tendon-v0 --headless
 ```
+
+## Related
+
+- [Robot specification](../../../../../../../../res/Tensegrity/README.md) — kinematic chain, joint constraints, tendon geometry
+- [Tendon simulation](../../../../../../../../doc/tendon_simulation.md) — physics model and validation
+- [Place task](../tensegrity_place/README.md) — cube pick-and-place task
+- [Extension overview](../../../../../../README.md) — all registered tasks and scripts

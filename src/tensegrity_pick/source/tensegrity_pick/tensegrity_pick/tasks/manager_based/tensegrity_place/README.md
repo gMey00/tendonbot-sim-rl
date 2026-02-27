@@ -1,5 +1,7 @@
 # Tensegrity Place Task
 
+[← Back to extension overview](../../../../../../README.md) · [Project root](../../../../../../../../README.md)
+
 Cube pick-and-place with the 5-DOF tensegrity manipulator and Robotiq 2F
 gripper.  The robot must grasp a green cube from the conveyor belt and drop
 it into a target drum, while avoiding the red distractor cube.
@@ -190,3 +192,10 @@ cd /home/robot/Isaac/IsaacLab
 ./isaaclab.sh -p source/isaaclab_tasks/scripts/skrl/train.py \
     --task Template-Tensegrity-Place-Tendon-v0 --headless
 ```
+
+## Related
+
+- [Robot specification](../../../../../../../../res/Tensegrity/README.md) — kinematic chain, joint constraints, tendon geometry
+- [Tendon simulation](../../../../../../../../doc/tendon_simulation.md) — physics model and validation
+- [Reach task](../tensegrity_reach/README.md) — EE pose tracking task
+- [Extension overview](../../../../../../README.md) — all registered tasks and scripts

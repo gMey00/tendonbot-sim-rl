@@ -1,53 +1,168 @@
-# Simulation and Reinforcement Learning for Autonomous Robotics with Isaac Sim and ROS 2
+# Simulation and Reinforcement Learning for Autonomous Robotics with Isaac Sim
+
+![Isaac Sim](https://img.shields.io/badge/Isaac%20Sim-5.1.0-76b900?logo=nvidia)
+![Isaac Lab](https://img.shields.io/badge/Isaac%20Lab-latest-76b900?logo=nvidia)
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04-E95420?logo=ubuntu&logoColor=white)
+![License](https://img.shields.io/badge/License-BSD--3--Clause-blue)
+![RL Framework](https://img.shields.io/badge/RL-skrl%20%7C%20PPO-orange)
+
+> Reinforcement-learning environments for a ceiling-mounted **tensegrity manipulator** in
+> NVIDIA Isaac Sim / Isaac Lab.  The project provides PD-driven and **tendon-driven** robot
+> configurations, multiple RL tasks (reach, place, pick), and a physics-validation pipeline
+> based on the controller and test methodology from Klein (2023).
+
+---
 
 ## Table of Contents
+
 - [About](#-about)
-- [How to Build](#-how-to-build/use)
+- [Repository Structure](#-repository-structure)
+- [Prerequisites](#-prerequisites)
+- [Getting Started](#-getting-started)
 - [Documentation](#-documentation)
 - [Organisational](#-organisational)
 
+---
+
 ## 🚀 About
 
-**Project:** 
+**Project:** Simulation and reinforcement learning for a 5-DOF tensegrity robot arm
+with a parallel gripper, trained inside NVIDIA Isaac Sim using the Isaac Lab framework
+and the skrl reinforcement-learning library.
 
-## 📝 How to Build/Use
+**Robot:** The manipulator consists of a 2-DOF linear base (Y/Z translation) and a
+3-DOF tendon-driven arm (elbow + 2-DOF wrist).  The arm is actuated by 5 steel cables
+(2 antagonistic for the elbow, 3 at 120° for the wrist) whose tensions map to joint
+torques via the Jacobian transpose.
 
-To build all needed dependencies and complete prebuild simulations/trainings:
+**Tasks:**
 
-```shell
-# Open a terminal (Command Prompt or PowerShell for Windows, Terminal for macOS or Linux)
+| Gym ID | Description |
+|--------|-------------|
+| `Template-Tensegrity-Pick-v0` | Cube sorting — pick green cubes off a conveyor, ignore red |
+| `Template-Tensegrity-Reach-v0` | Move end-effector to a random 6-DOF target pose |
+| `Template-Tensegrity-Reach-Tendon-v0` | Reach with tendon-driven arm (performance comparison) |
+| `Template-Tensegrity-Place-v0` | Place a green cube into a drum (with curriculum) |
+| `Template-Tensegrity-Place-Tendon-v0` | Place with tendon-driven arm |
 
-# Ensure you have access to FAPS gitlab
+Play/eval variants (`*-Play-v0`) are registered for all applicable tasks.
 
-# Clone the repository 
-#   - only project specific branch
-#   - https (ssh is blocked)
-git clone -b project/tendonbot-sim-rl https://git.faps.uni-erlangen.de/alschlosser/studentische-arbeiten.git
+---
 
-# Configure and source local environment variables
+## 📁 Repository Structure
+
+```
+studentische-arbeiten/
+├── doc/                    Documentation (setup guides, literature, tendon simulation)
+├── res/                    Simulation assets (USD scenes, robot models, meshes, textures)
+│   ├── Props/              Environment props (drum, t-shirt cloth)
+│   ├── Scenes/             Pre-built USD scenes
+│   ├── Tensegrity/         Tensegrity robot (URDF, USD, configs)
+│   └── UR10/               UR10 reference assets
+├── samples/                Reference Isaac Lab projects (Cartpole, UR10 Reach)
+├── src/
+│   └── tensegrity_pick/    Main Isaac Lab extension (tasks, robot configs, scripts)
+├── test/                   Test suite (pytest — actuator math, config validation, env smoke tests)
+├── tools/                  Installation and setup scripts
+└── workspace_analysis_output/  Pre-computed workspace analysis data
+```
+
+> See each folder's `README.md` for details.
+
+---
+
+## 🔧 Prerequisites
+
+| Component | Version / Notes |
+|-----------|-----------------|
+| **OS** | Ubuntu 22.04 LTS (64-bit) |
+| **GPU** | NVIDIA RTX (A6000 recommended; ≥ 8 GB VRAM minimum) |
+| **NVIDIA Driver** | ≥ 535.xx |
+| **Isaac Sim** | 5.1.0 |
+| **Isaac Lab** | Latest main branch |
+| **Conda** | Miniconda or Anaconda |
+| **Python** | 3.11 (managed by conda environment `env_isaaclab`) |
+
+---
+
+## 📝 Getting Started
+
+```bash
+# 1. Clone the repository (HTTPS — SSH is blocked on FAPS network)
+git clone -b project/tendonbot-sim-rl \
+  https://git.faps.uni-erlangen.de/alschlosser/studentische-arbeiten.git
+cd studentische-arbeiten
+
+# 2. Configure local environment variables
 source .config/env_vars.sh
 
-# Assure IsaacSim and IsaacLab are installed at configured locations
-source install_isaaclab.sh
+# 3. Install Isaac Sim + Isaac Lab (if not already)
+cd tools && bash install_IsaacLab.sh && cd ..
 
-# For Simulation:
-# Call IsaacSim with specified simulation setup
-#### Spaceholder #####
+# 4. Activate the conda environment
+conda activate env_isaaclab
 
-# For Training:
-# Call IsaacLab with specified setup:
-#### Spaceholder #####
+# 5. Install the tensegrity_pick extension
+cd src/tensegrity_pick
+python -m pip install -e source/tensegrity_pick
 
-...
+# 6. Verify all environments are registered
+python scripts/list_envs.py
+
+# 7. Run a quick smoke test
+python scripts/zero_agent.py --task=Template-Tensegrity-Reach-v0 --num_envs=2 --headless
 ```
-## 📚 Documentation 
 
-### Getting Started
+### Training
+
+```bash
+# Headless PPO training (default: 2000 parallel environments)
+python scripts/skrl/train.py --task=Template-Tensegrity-Reach-v0 --headless
+
+# Override environment count
+python scripts/skrl/train.py --task=Template-Tensegrity-Reach-v0 --headless --num_envs=4096
+```
+
+### Evaluation
+
+```bash
+python scripts/skrl/play.py --task=Template-Tensegrity-Reach-Play-v0 --num_envs=10
+```
+
+### Step Response Validation
+
+```bash
+cd /home/robot/Isaac/IsaacLab
+./isaaclab.sh -p /path/to/src/tensegrity_pick/scripts/step_response_test.py \
+    --headless --num-envs 1 --output-dir ./step_response_results
+```
+
+> See [`doc/tendon_simulation.md`](doc/tendon_simulation.md) for full details on the
+> tendon simulation, validation methodology, and reference data from Klein (2023).
+
+---
+
+## 📚 Documentation
+
+| Document | Description |
+|----------|-------------|
+| [`doc/README.md`](doc/README.md) | Documentation index |
+| [`doc/nv_isaac.md`](doc/nv_isaac.md) | NVIDIA Isaac Sim / Isaac Lab resources and links |
+| [`doc/tendon_simulation.md`](doc/tendon_simulation.md) | Tendon simulation: physics, architecture, validation |
+| [`doc/remote_desktop_setup.md`](doc/remote_desktop_setup.md) | Remote desktop setup (Tailscale + RustDesk) |
+| [`doc/reinforcement_learning.md`](doc/reinforcement_learning.md) | Reinforcement learning notes |
+| [`doc/literatur/`](doc/literatur/) | Annotated bibliographies (control, learning, simulation, tendons) |
+| [`res/Tensegrity/README.md`](res/Tensegrity/README.md) | Robot specification: kinematic chain, joint limits, tendon geometry |
+| [`src/tensegrity_pick/README.md`](src/tensegrity_pick/README.md) | Isaac Lab extension: tasks, scripts, project structure |
+| [`test/README.md`](test/README.md) | Test suite: actuator math, config validation, environment smoke tests |
+
+---
 
 ## 🗓️ Organisational
 
 👉 [Open the project calendar](https://kalender.digital/8a3e2b7f89063ab12eeb)
 
-### ...
+See [`Organisation.md`](Organisation.md) for meeting notes and project milestones.
 
 [Back to top](#top)

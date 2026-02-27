@@ -1,5 +1,7 @@
 # Tensegrity Pick — Isaac Lab RL Tasks
 
+[← Back to project root](../../README.md)
+
 ## Overview
 
 Reinforcement-learning tasks for a ceiling-mounted **5-DOF tensegrity manipulator with gripper**, built as an external Isaac Lab extension.
@@ -13,6 +15,19 @@ The robot is available in two actuation modes:
 
 See [`doc/tendon_simulation.md`](../../doc/tendon_simulation.md) for the full tendon
 simulation documentation.
+
+### Task Documentation
+
+| Task | README |
+|------|--------|
+| Reach | [tensegrity_reach/README.md](source/tensegrity_pick/tensegrity_pick/tasks/manager_based/tensegrity_reach/README.md) |
+| Place | [tensegrity_place/README.md](source/tensegrity_pick/tensegrity_pick/tasks/manager_based/tensegrity_place/README.md) |
+
+### Related
+
+- [Robot specification](../../res/Tensegrity/README.md) — kinematic chain, joint constraints, tendon geometry
+- [Test suite](../../test/README.md) — pytest tests for actuators, configs, and environments
+- [Documentation index](../../doc/README.md) — guides and literature
 
 ### Registered Tasks
 

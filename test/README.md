@@ -1,5 +1,7 @@
 # Tests
 
+[← Back to project root](../README.md)
+
 Test suite for the tensegrity simulation and RL environment code.  Uses
 **pytest** with a custom `requires_isaac` marker for tests that need the full
 Isaac Sim runtime.
@@ -29,3 +31,9 @@ pytest test/ -v
 - **`requires_isaac`** — Test needs the Omniverse Kit runtime (`omni.timeline`).
   Detected automatically via a subprocess probe in `conftest.py`; tests are
   skipped when the runtime is not reachable.
+
+## Related
+
+- [Robot configs under test](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/robots/) — `ArticulationCfg` definitions and `TendonEffortAction`
+- [Step response script](../src/tensegrity_pick/scripts/step_response_test.py) — PID validation tested by `test_step_response.py`
+- [Source code & tasks](../src/tensegrity_pick/README.md) — extension overview
