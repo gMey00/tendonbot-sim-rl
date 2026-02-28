@@ -77,12 +77,12 @@ parser.add_argument(
     help="Total FK samples (default: 200 000)",
 )
 parser.add_argument(
-    "--num_envs", type=int, default=2048,
-    help="Parallel environments for batched sampling (default: 2048)",
+    "--num_envs", type=int, default=4096,
+    help="Parallel environments for batched sampling (default: 4096)",
 )
 parser.add_argument(
     "--output_dir", type=str, default=None,
-    help="Directory for output files (default: outputs/workspace_analysis/)",
+    help="Directory for output files (default: outputs/workspace_analysis)",
 )
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
@@ -426,7 +426,7 @@ def main() -> None:
     num_samples = args_cli.num_samples
     device = "cuda:0"
 
-    output_dir = Path(args_cli.output_dir or "workspace_analysis_output")
+    output_dir = Path(args_cli.output_dir or "outputs/workspace_analysis")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     sim = SimulationContext(SimulationCfg(dt=1.0 / 60.0, device=device))
