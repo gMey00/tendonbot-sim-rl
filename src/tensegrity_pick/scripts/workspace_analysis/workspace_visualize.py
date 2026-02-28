@@ -7,8 +7,10 @@ publication-quality figures:
 2. Inverse condition number (isotropy index) [2]
 3. Reachability density [4]
 
-All three figures share an identical layout produced by a single
-``create_workspace_figure`` function, ensuring consistent formatting.
+Each figure contains a full 3-D voxelised scatter on the left and three 2-D
+cross-section heatmaps on the right.  The cross-sections are thin slices
+through the midpoint of the desired workspace along each axis, revealing the
+metric distribution *inside* the workspace rather than projecting all data.
 
 References
 ----------
@@ -55,10 +57,11 @@ DESIRED_WS_MAX = np.array([0.35, 0.95, 1.30])
 
 @dataclass(frozen=True)
 class HeatmapViewConfig:
-    """Configuration for a single 2-D projection heatmap."""
+    """Configuration for a single 2-D cross-section heatmap."""
 
     column_a: int
     column_b: int
+    slice_column: int
     xlabel: str
     ylabel: str
     title: str
@@ -68,23 +71,29 @@ class HeatmapViewConfig:
     rect_y_max: float
 
 
+DESIRED_WS_MID = (DESIRED_WS_MIN + DESIRED_WS_MAX) / 2
+_AXIS_LABELS = ["X", "Y", "Z"]
+
 TOP_VIEW = HeatmapViewConfig(
-    column_a=0, column_b=1,
-    xlabel="X (m)", ylabel="Y (m)", title="Top View XY",
+    column_a=0, column_b=1, slice_column=2,
+    xlabel="X (m)", ylabel="Y (m)",
+    title=f"Top XY  (Z = {DESIRED_WS_MID[2]:.2f} m)",
     rect_x_min=DESIRED_WS_MIN[0], rect_x_max=DESIRED_WS_MAX[0],
     rect_y_min=DESIRED_WS_MIN[1], rect_y_max=DESIRED_WS_MAX[1],
 )
 
 SIDE_VIEW = HeatmapViewConfig(
-    column_a=0, column_b=2,
-    xlabel="X (m)", ylabel="Z (m)", title="Side View XZ",
+    column_a=0, column_b=2, slice_column=1,
+    xlabel="X (m)", ylabel="Z (m)",
+    title=f"Side XZ  (Y = {DESIRED_WS_MID[1]:.2f} m)",
     rect_x_min=DESIRED_WS_MIN[0], rect_x_max=DESIRED_WS_MAX[0],
     rect_y_min=DESIRED_WS_MIN[2], rect_y_max=DESIRED_WS_MAX[2],
 )
 
 FRONT_VIEW = HeatmapViewConfig(
-    column_a=1, column_b=2,
-    xlabel="Y (m)", ylabel="Z (m)", title="Front View YZ",
+    column_a=1, column_b=2, slice_column=0,
+    xlabel="Y (m)", ylabel="Z (m)",
+    title=f"Front YZ  (X = {DESIRED_WS_MID[0]:.2f} m)",
     rect_x_min=DESIRED_WS_MIN[1], rect_x_max=DESIRED_WS_MAX[1],
     rect_y_min=DESIRED_WS_MIN[2], rect_y_max=DESIRED_WS_MAX[2],
 )
@@ -247,6 +256,17 @@ def _add_heatmap(
 
 # ── Unified figure creation ──────────────────────────────────────────────
 
+def _slice_mask(
+    positions: np.ndarray,
+    view: HeatmapViewConfig,
+    half_thickness: float,
+) -> np.ndarray:
+    """Boolean mask selecting samples within *half_thickness* of the workspace midpoint."""
+    centre = float(DESIRED_WS_MID[view.slice_column])
+    coord = positions[:, view.slice_column]
+    return (coord >= centre - half_thickness) & (coord <= centre + half_thickness)
+
+
 def create_workspace_figure(
     positions: np.ndarray,
     per_sample_values: np.ndarray,
@@ -258,6 +278,7 @@ def create_workspace_figure(
     percentile_clip: tuple[float, float] = (2.0, 98.0),
     *,
     density_mode: bool = False,
+    slice_thickness: float = 0.05,
 ) -> None:
     """Create and save a workspace analysis figure.
 
@@ -280,6 +301,8 @@ def create_workspace_figure(
         (mean-mode only).
     density_mode : when True, colour encodes log(1 + count) instead of
         per-voxel mean of *per_sample_values*.
+    slice_thickness : full thickness (metres) of cross-section slices
+        centred on the workspace midpoint (default 0.05 m).
     """
     # ── Compute 3-D voxel values ──────────────────────────────────────
     if density_mode:
@@ -327,34 +350,41 @@ def create_workspace_figure(
     ax3d.xaxis.set_major_locator(plt.MaxNLocator(nbins=3))
     ax3d.tick_params(axis="x", labelsize=7, pad=1)
 
-    # ── 2-D heatmaps ─────────────────────────────────────────────────
+    # ── 2-D cross-section heatmaps ────────────────────────────────────
+    half_thickness = slice_thickness / 2.0
     upper_views = [(0, 1, TOP_VIEW), (0, 2, SIDE_VIEW)]
     heatmap_axes: list[plt.Axes] = []
 
     for gs_row, gs_col, view in upper_views:
         ax = fig.add_subplot(gs[gs_row, gs_col])
+        mask = _slice_mask(positions, view, half_thickness)
+        sliced_pos = positions[mask]
+        sliced_vals = per_sample_values[mask]
         if density_mode:
             a_edges, b_edges, grid = compute_2d_density(
-                positions[:, view.column_a], positions[:, view.column_b], voxel_size,
+                sliced_pos[:, view.column_a], sliced_pos[:, view.column_b], voxel_size,
             )
         else:
             a_edges, b_edges, grid = compute_2d_heatmap(
-                positions[:, view.column_a], positions[:, view.column_b],
-                per_sample_values, voxel_size,
+                sliced_pos[:, view.column_a], sliced_pos[:, view.column_b],
+                sliced_vals, voxel_size,
             )
         _add_heatmap(ax, a_edges, b_edges, grid, colormap, norm, view)
         heatmap_axes.append(ax)
 
     # Front view spanning both right columns
     ax_front = fig.add_subplot(gs[1, 1:])
+    front_mask = _slice_mask(positions, FRONT_VIEW, half_thickness)
+    sliced_pos = positions[front_mask]
+    sliced_vals = per_sample_values[front_mask]
     if density_mode:
         a_edges, b_edges, grid = compute_2d_density(
-            positions[:, FRONT_VIEW.column_a], positions[:, FRONT_VIEW.column_b], voxel_size,
+            sliced_pos[:, FRONT_VIEW.column_a], sliced_pos[:, FRONT_VIEW.column_b], voxel_size,
         )
     else:
         a_edges, b_edges, grid = compute_2d_heatmap(
-            positions[:, FRONT_VIEW.column_a], positions[:, FRONT_VIEW.column_b],
-            per_sample_values, voxel_size,
+            sliced_pos[:, FRONT_VIEW.column_a], sliced_pos[:, FRONT_VIEW.column_b],
+            sliced_vals, voxel_size,
         )
     _add_heatmap(ax_front, a_edges, b_edges, grid, colormap, norm, FRONT_VIEW)
     heatmap_axes.append(ax_front)
@@ -386,10 +416,15 @@ def main() -> None:
         "--voxel_size", type=float, default=0.02,
         help="Voxel edge length in metres for 3-D binning (default: 0.02)",
     )
+    parser.add_argument(
+        "--slice_thickness", type=float, default=0.05,
+        help="Thickness of 2-D cross-section slices in metres (default: 0.05)",
+    )
     args = parser.parse_args()
 
     input_dir = Path(args.input_dir)
     voxel_size = args.voxel_size
+    slice_thickness = args.slice_thickness
 
     positions = np.load(input_dir / "ee_positions.npy")
     yoshikawa = np.load(input_dir / "yoshikawa.npy")
@@ -407,6 +442,7 @@ def main() -> None:
         ),
         colorbar_label="Yoshikawa Index",
         colormap="plasma",
+        slice_thickness=slice_thickness,
     )
 
     # Figure 2: Inverse condition number [Ref. 2]
@@ -419,6 +455,7 @@ def main() -> None:
         ),
         colorbar_label="Inv. Condition Number",
         colormap="inferno",
+        slice_thickness=slice_thickness,
     )
 
     # Figure 3: Reachability density [Ref. 4]
@@ -432,6 +469,7 @@ def main() -> None:
         colorbar_label="log(1 + count)",
         colormap="viridis",
         density_mode=True,
+        slice_thickness=slice_thickness,
     )
 
     print("Done.")
