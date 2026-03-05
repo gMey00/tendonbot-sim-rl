@@ -13,7 +13,7 @@ from . import agents
 
 gym.register(
     id="Template-Tensegrity-Place-v0",
-    entry_point=f"{__name__}.place_env:PlaceEnvWithStickyGripper",
+    entry_point=f"{__name__}.place_env:TensegrityPlaceEnv",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.tensegrity_place_env_cfg:TensegrityPlaceEnvCfg",
@@ -23,7 +23,7 @@ gym.register(
 
 gym.register(
     id="Template-Tensegrity-Place-Play-v0",
-    entry_point=f"{__name__}.place_env:PlaceEnvWithStickyGripper",
+    entry_point=f"{__name__}.place_env:TensegrityPlaceEnv",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.tensegrity_place_env_cfg:TensegrityPlaceEnvCfg_PLAY",
@@ -33,20 +33,20 @@ gym.register(
 
 gym.register(
     id="Template-Tensegrity-Place-Tendon-v0",
-    entry_point=f"{__name__}.place_env:PlaceEnvWithStickyGripper",
+    entry_point=f"{__name__}.place_env:TensegrityPlaceEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.tensegrity_place_tendon_env_cfg:TensegrityPlaceTendonEnvCfg",
+        "env_cfg_entry_point": f"{__name__}.tensegrity_place_env_cfg:TensegrityPlaceTendonEnvCfg",
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
     },
 )
 
 gym.register(
     id="Template-Tensegrity-Place-Tendon-Play-v0",
-    entry_point=f"{__name__}.place_env:PlaceEnvWithStickyGripper",
+    entry_point=f"{__name__}.place_env:TensegrityPlaceEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.tensegrity_place_tendon_env_cfg:TensegrityPlaceTendonEnvCfg_PLAY",
+        "env_cfg_entry_point": f"{__name__}.tensegrity_place_env_cfg:TensegrityPlaceTendonEnvCfg_PLAY",
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
     },
 )

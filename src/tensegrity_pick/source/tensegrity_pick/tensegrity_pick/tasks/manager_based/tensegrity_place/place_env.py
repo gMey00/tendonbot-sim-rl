@@ -1,15 +1,9 @@
 # place_env.py
 #
-# Custom environment with physics-based gripper for the place task.
-#
-# Grasping relies on the physically simulated Robotiq 2F-140 gripper whose
-# joints are driven via BinaryJointPositionActionCfg.  No teleportation or
-# sticky-gripper logic is used — the cube must be physically held between
-# the finger pads.
-#
-# Modelled after IsaacLab's lift task: the env only adds minimal custom
-# state tracking (was_grasped latch) and keeps the reward logic in the
-# RewardManager.  No custom step() override or injected rewards.
+# Custom environment with physics-based Robotiq 2F-140 gripper.
+# Grasping is purely physics-based via BinaryJointPositionActionCfg.
+# Adds a latched ``was_grasped`` flag used by the approach reward to
+# gate lateral transport — only activated after a genuine lift.
 
 from __future__ import annotations
 
@@ -29,22 +23,19 @@ EE_BODY_NAME = "tool_link_0"
 GREEN_CUBE_KEY = "green_cube"
 
 # Physics-based grasp detection thresholds
-GRASP_PROXIMITY_THRESHOLD = 0.25
-GRASP_LIFT_THRESHOLD = 0.03
+# Aligned with lift reward gating (belt + 0.06) to avoid false-positive
+# "grasp" at reset (spawn z is belt + [0.03, 0.05]).
+GRASP_PROXIMITY_THRESHOLD = 0.10
+GRASP_LIFT_THRESHOLD = 0.06
 BELT_HEIGHT = CONVEYOR_SURFACE_HEIGHT_M
 
 
-class PlaceEnvWithStickyGripper(ManagerBasedRLEnv):
-    """ManagerBasedRLEnv with a physically simulated Robotiq gripper.
+class TensegrityPlaceEnv(ManagerBasedRLEnv):
+    """Manager-based RL env for the tensegrity cube-placement task.
 
-    Despite the legacy class name (kept for registration compatibility),
-    this version does **not** use a sticky gripper.  Grasping is purely
-    physics-based: the Robotiq 2F-140 finger joints are actuated via
-    ``BinaryJointPositionActionCfg`` and the cube is held by contact
-    forces between the finger pads and the cube surface.
-
-    ``grasp_active`` is detected by proximity + lift: the cube must be
-    close to the end-effector **and** lifted above the belt surface.
+    Extends :class:`ManagerBasedRLEnv` with a latched ``was_grasped``
+    flag.  ``grasp_active`` is detected by proximity + lift: the cube
+    must be close to the end-effector **and** lifted above the belt.
     """
 
     def __init__(self, cfg: ManagerBasedRLEnvCfg, render_mode: str | None = None, **kwargs):
@@ -63,7 +54,7 @@ class PlaceEnvWithStickyGripper(ManagerBasedRLEnv):
     # ------------------------------------------------------------------
 
     def _grasp_center_pos(self) -> torch.Tensor:
-        """Grasp centre: EE body position projected along local -z by the pad offset."""
+        """Grasp centre: EE body position projected along local +z (downward in world)."""
         robot: Articulation = self.scene["robot"]
         ee_pos = robot.data.body_pos_w[:, self._ee_body_idx, :]
         ee_quat = robot.data.body_quat_w[:, self._ee_body_idx, :]
@@ -102,8 +93,11 @@ class PlaceEnvWithStickyGripper(ManagerBasedRLEnv):
     def step(self, action: torch.Tensor):
         """Standard step with grasp-latch update after physics."""
         obs, reward, terminated, time_outs, extras = super().step(action)
-        # Update latched grasp flag after physics
-        self._was_grasped |= self.grasp_active
+        # Update latched grasp flag only for envs that are still running.
+        # Terminated/timed-out envs have already been reset inside
+        # super().step(), so their post-reset state must not re-latch.
+        still_running = ~(terminated | time_outs)
+        self._was_grasped[still_running] |= self.grasp_active[still_running]
         return obs, reward, terminated, time_outs, extras
 
     # ------------------------------------------------------------------
@@ -111,11 +105,23 @@ class PlaceEnvWithStickyGripper(ManagerBasedRLEnv):
     # ------------------------------------------------------------------
 
     def _reset_idx(self, env_ids: Sequence[int]):
-        result = super()._reset_idx(env_ids)
         env_ids_t = (
             torch.tensor(env_ids, device=self.device, dtype=torch.long)
             if not isinstance(env_ids, torch.Tensor)
             else env_ids
         )
+
+        # ── Collect episode-level metrics BEFORE reset clears state ───
+        grasp_rate = torch.tensor(0.0, device=self.device)
+        mean_ep_len = torch.tensor(0.0, device=self.device)
+        if len(env_ids_t) > 0:
+            grasp_rate = self._was_grasped[env_ids_t].float().mean()
+            mean_ep_len = self.episode_length_buf[env_ids_t].float().mean()
+
+        result = super()._reset_idx(env_ids)
         self._was_grasped[env_ids_t] = False
+
+        # ── Inject custom scalars AFTER super (which creates extras["log"]) ──
+        self.extras["log"]["Metrics/grasp_rate"] = grasp_rate
+        self.extras["log"]["Metrics/mean_episode_length"] = mean_ep_len
         return result

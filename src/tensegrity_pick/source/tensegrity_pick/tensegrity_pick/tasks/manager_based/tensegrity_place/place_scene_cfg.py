@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import isaaclab.sim as sim_utils
-from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.utils import configclass
 
@@ -20,7 +19,7 @@ from ..tensegrity_pick.proj_base_scene_cfg import (
     DRUM_USD_DIAMETER_SCALE,
     DRUM_USD_HEIGHT_SCALE,
 )
-from ..tensegrity_pick.tensegrity_robot_cfg import TENS_5DOF_GRIPPER_CFG
+from tensegrity_pick.robots import TENS_5DOF_GRIPPER_CFG, TENS_5DOF_GRIPPER_TENDON_CFG
 
 # Use the original project mount height
 PLACE_MOUNT_HEIGHT_M = ROBOT_MOUNT_HEIGHT_M
@@ -34,6 +33,28 @@ CUBE_MASS_KG = 0.05
 SPAWN_HEIGHT_M = CONVEYOR_SURFACE_HEIGHT_M + 0.03
 
 ENV_NS = "/World/envs/env_.*/"
+
+# ---------------------------------------------------------------------------
+# Task-specific initial joint positions
+# ---------------------------------------------------------------------------
+# base_z=-0.25 places the grasp centre ~1.5 cm above the cube centre
+# (gc z ≈ 0.840 vs cube z ≈ 0.825) and the open finger tips ~0.8 cm
+# below cube centre (z ≈ 0.817).
+_PLACE_INITIAL_JOINT_POS = {
+    "base_y_joint": 0.0,
+    "base_z_joint": -0.25,
+    "elbow_joint": 0.0,
+    "wrist_y_joint": 0.0,
+    "wrist_x_joint": 0.0,
+    "finger_joint": 0.0,
+    "right_outer_knuckle_joint": 0.0,
+    "left_outer_finger_joint": 0.0,
+    "right_outer_finger_joint": 0.0,
+    "left_inner_finger_joint": 0.0,
+    "right_inner_finger_joint": 0.0,
+    "left_inner_finger_pad_joint": 0.0,
+    "right_inner_finger_pad_joint": 0.0,
+}
 
 
 def _make_colored_cube(
@@ -77,83 +98,19 @@ def _make_colored_cube(
 
 @configclass
 class PlaceSceneCfg(ProjBaseSceneCfg):
-    """Base scene + one green cube + one red cube for the place task."""
+    """Base scene + one green cube + one red cube for the place task.
 
-    # Override robot: stronger base actuator, stable gripper
+    Robot actuators are defined in ``tensegrity_pick.robots`` and NOT
+    overridden here.  Only the initial state (mount position + default
+    joint angles) is task-specific.
+    """
+
     robot = TENS_5DOF_GRIPPER_CFG.replace(
         prim_path="{ENV_REGEX_NS}/Robot",
         init_state=ArticulationCfg.InitialStateCfg(
             pos=(0.15, 0.0, PLACE_MOUNT_HEIGHT_M),
-            joint_pos={
-                "base_y_joint": 0.0,
-                "base_z_joint": 0.0,
-                "elbow_joint": 0.0,
-                "wrist_y_joint": 0.0,
-                "wrist_x_joint": 0.0,
-                # Only drive joint needs explicit init; passive joints
-                # settle to their physical equilibrium via the linkage.
-                "finger_joint": 0.0,
-            },
+            joint_pos=_PLACE_INITIAL_JOINT_POS,
         ),
-        actuators={
-            "base": ImplicitActuatorCfg(
-                joint_names_expr=["base_y_joint", "base_z_joint"],
-                effort_limit=800.0,
-                velocity_limit_sim=5.0,
-                stiffness=8000.0,
-                damping=800.0,
-            ),
-            "arm": ImplicitActuatorCfg(
-                joint_names_expr=["elbow_joint", "wrist_y_joint", "wrist_x_joint"],
-                effort_limit=40.0,
-                velocity_limit_sim=2.0,
-                stiffness=400.0,
-                damping=120.0,
-            ),
-            # Gripper drive: high stiffness for fast binary-action tracking,
-            # LOW effort limit to contain reaction forces on the wrist.
-            # At stiffness=2000 the PD saturates the effort_limit within
-            # ~0.01 rad of error, so the finger moves at velocity_limit
-            # with constant 20 Nm torque — half the arm's 40 Nm capacity.
-            # This keeps arm-torque penalties manageable while the gripper
-            # still fully closes in ~4 control steps (0.08 s).
-            "gripper_drive": ImplicitActuatorCfg(
-                joint_names_expr=["finger_joint"],
-                effort_limit=20.0,
-                velocity_limit_sim=10.0,
-                stiffness=2e3,
-                damping=10.0,
-                friction=0.0,
-                armature=0.0,
-            ),
-            "gripper_finger": ImplicitActuatorCfg(
-                joint_names_expr=[
-                    "left_inner_finger_joint",
-                    "right_inner_finger_joint",
-                ],
-                effort_limit=1.0,
-                velocity_limit_sim=1.0,
-                stiffness=0.2,
-                damping=0.001,
-                friction=0.0,
-                armature=0.0,
-            ),
-            "gripper_passive": ImplicitActuatorCfg(
-                joint_names_expr=[
-                    "left_inner_finger_pad_joint",
-                    "right_inner_finger_pad_joint",
-                    "left_outer_finger_joint",
-                    "right_outer_finger_joint",
-                    "right_outer_knuckle_joint",
-                ],
-                effort_limit=1.0,
-                velocity_limit_sim=1.0,
-                stiffness=0.0,
-                damping=0.0,
-                friction=0.0,
-                armature=0.0,
-            ),
-        },
     )
 
     # Drum position inherited from ProjBaseSceneCfg (Y=0.85)
@@ -169,4 +126,22 @@ class PlaceSceneCfg(ProjBaseSceneCfg):
         prim_name="RedCube",
         color_rgb=(1.0, 0.0, 0.0),
         spawn_pos=(0.15, 0.04, SPAWN_HEIGHT_M),
+    )
+
+
+@configclass
+class PlaceTendonSceneCfg(PlaceSceneCfg):
+    """Place scene with tendon-driven arm actuator.
+
+    Swaps the PD-driven arm for an effort-passthrough arm from
+    ``TENS_5DOF_GRIPPER_TENDON_CFG``.  Base and gripper actuators
+    are inherited from the canonical robot config.
+    """
+
+    robot = TENS_5DOF_GRIPPER_TENDON_CFG.replace(
+        prim_path="{ENV_REGEX_NS}/Robot",
+        init_state=ArticulationCfg.InitialStateCfg(
+            pos=(0.15, 0.0, PLACE_MOUNT_HEIGHT_M),
+            joint_pos=_PLACE_INITIAL_JOINT_POS,
+        ),
     )
