@@ -29,8 +29,8 @@ in the drum is penalised (adversarial distractor).
 | `Template-Tensegrity-Place-Tendon-v0` | Tendon tensions | Tendon-driven training (4 096 envs) |
 | `Template-Tensegrity-Place-Tendon-Play-v0` | Tendon tensions | Tendon-driven evaluation (50 envs) |
 
-All variants use `PlaceEnvWithStickyGripper` as the gymnasium entry point
-(custom `ManagerBasedRLEnv` subclass with sticky-gripper contact logic).
+All variants use `TensegrityPlaceEnv` as the gymnasium entry point
+(custom `ManagerBasedRLEnv` subclass with physics-based grasp detection).
 
 ## Scene
 
@@ -110,6 +110,29 @@ steps.
 Total (PD): **33**.  Total (tendon): **35**.
 
 ## Rewards
+
+### Reward-term relationships (gates and stages):
+
+```mermaid
+flowchart TD
+  A[Reach: object_ee_distance] --> B[Lift: object_is_lifted]
+  B --> C[Height bonus: cube_height_bonus]
+  B --> D[Transport coarse: approach_target_tanh]
+  E[was_grasped latch] --> D
+  D --> F[Transport fine: approach_target_tanh std=0.05]
+  E --> F
+  F --> G[Success: green_cube_in_target]
+  E --> G
+  H[Red active curriculum] --> I[Penalty: red_cube_in_target]
+  J[Regularization: action_rate/joint_vel/belt_contact/torque] --> K[Total reward]
+  A --> K
+  B --> K
+  C --> K
+  D --> K
+  F --> K
+  G --> K
+  I --> K
+```
 
 ### Task progression
 

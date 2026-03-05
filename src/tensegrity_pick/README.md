@@ -180,10 +180,9 @@ source/tensegrity_pick/tensegrity_pick/
 │       │   └── agents/                  #   skrl PPO config
 │       └── tensegrity_place/            # Place task
 │           ├── __init__.py              #   gym.register(Place, Place-Play, Place-Tendon, ...)
-│           ├── tensegrity_place_env_cfg.py           # PD-driven
-│           ├── tensegrity_place_tendon_env_cfg.py    # Tendon-driven
+│           ├── tensegrity_place_env_cfg.py           # PD + tendon variants
 │           ├── place_scene_cfg.py       #   1 green + 1 red cube scene
-│           ├── place_tendon_scene_cfg.py             # Tendon scene variant
+│           ├── place_env.py             #   TensegrityPlaceEnv (grasp tracking)
 │           ├── mdp/                     #   Rewards, curriculum, tendon_actions shim
 │           └── agents/                  #   skrl PPO config
 scripts/
