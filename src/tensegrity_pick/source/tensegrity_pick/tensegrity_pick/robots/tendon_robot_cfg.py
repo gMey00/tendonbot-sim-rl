@@ -43,12 +43,8 @@ _TENDON_ARM_ACTUATOR = IdealPDActuatorCfg(
 
 TENS_3DOF_TENDON_CFG = TENS_3DOF_CFG.replace(
     actuators={
+        **TENS_3DOF_CFG.actuators,
         "arm": _TENDON_ARM_ACTUATOR,
-        "gripper": ImplicitActuatorCfg(
-            joint_names_expr=[],
-            stiffness=0.0,
-            damping=0.0,
-        ),
     },
 )
 """3-DOF tensegrity arm with tendon-driven effort-passthrough actuator."""
@@ -58,36 +54,8 @@ TENS_3DOF_TENDON_CFG = TENS_3DOF_CFG.replace(
 
 TENS_5DOF_GRIPPER_TENDON_CFG = TENS_5DOF_GRIPPER_CFG.replace(
     actuators={
-        "base": ImplicitActuatorCfg(
-            joint_names_expr=["base_y_joint", "base_z_joint"],
-            effort_limit=200.0,
-            velocity_limit_sim=5.0,
-            stiffness=8000.0,
-            damping=800.0,
-        ),
+        **TENS_5DOF_GRIPPER_CFG.actuators,
         "arm": _TENDON_ARM_ACTUATOR,
-        "gripper": ImplicitActuatorCfg(
-            joint_names_expr=["finger_joint"],
-            effort_limit=50.0,
-            velocity_limit_sim=5.0,
-            stiffness=100.0,
-            damping=20.0,
-        ),
-        "gripper_passive": ImplicitActuatorCfg(
-            joint_names_expr=[
-                "right_outer_knuckle_joint",
-                "left_outer_finger_joint",
-                "right_outer_finger_joint",
-                "left_inner_finger_joint",
-                "right_inner_finger_joint",
-                "left_inner_finger_pad_joint",
-                "right_inner_finger_pad_joint",
-            ],
-            effort_limit=200.0,
-            velocity_limit_sim=5.0,
-            stiffness=1000.0,
-            damping=200.0,
-        ),
     },
 )
 """5-DOF tensegrity with gripper — arm is tendon-driven, base + gripper are PD."""
