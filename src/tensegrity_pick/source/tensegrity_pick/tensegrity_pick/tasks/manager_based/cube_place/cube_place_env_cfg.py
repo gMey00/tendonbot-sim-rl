@@ -5,13 +5,19 @@
 
 """Environment configuration for the tensegrity place task.
 
-Simplified cube-placement modelled after IsaacLab's manipulation/lift:
-  - Clean tanh-based reward structure with few terms.
-  - No custom step() injection — all rewards via RewardManager.
-  - Curriculum ramps up regularisation penalties.
-  - 1 green + 1 red cube placed directly below the robot arm on the belt.
-  - Conveyor is **inactive** (no belt motion).
-  - Goal: place the green cube into the target drum.
+Sequential pick-and-place reward structure:
+  1. Reach → 2. Grasp → 3. Lift → 4. Transport → 5. Release → 6. Success
+
+Critical reward balance:
+  - Transport (weight=50) must dominate lift+height (weight=8 each) so the
+    agent moves laterally toward the drum rather than holding the cube high.
+  - Low transport gate (z > belt + 0.02) keeps the reward active during arm
+    extension when the cube naturally dips.
+  - Success reward (weight=100) accumulates over remaining episode steps,
+    making drop-in-drum clearly optimal over indefinite holding.
+
+Scene: 1 green + 1 red cube on a belt, target drum 0.85 m away in Y.
+Conveyor is inactive.  Goal: place the green cube into the target drum.
 """
 
 from isaaclab.envs import ManagerBasedRLEnvCfg
@@ -50,6 +56,9 @@ _SPAWN_BOX = task_rew.SpawnBox(
 # into the drum (settling at ground level z≈0.025) are counted as "inside".
 _BIN_GEOM = task_rew.BinCylinder(radius=0.547 * 0.5, height=0.30)
 
+# Conveyor surface bounds — cubes outside these are penalised.
+_CONVEYOR_BOUNDS = task_rew.ConveyorBounds(y_min=-0.4, y_max=0.4, z_min=0.70)
+
 
 ##
 # MDP settings
@@ -68,10 +77,9 @@ class ActionsCfg:
         clip={"base_y_joint": (-0.5, 0.5), "base_z_joint": (-0.50, 0.0)},
     )
     # scale=1.0 gives elbow ∈ [−1.0, 1.0] rad (within ±1.5 clip)
-    # and wrist ∈ [−0.8, 0.8] rad (full range).  Previously 0.50
-    # limited elbow to ±0.5, too small to bridge the 0.35 m gap
-    # from base_y_max (0.5) to drum (Y=0.85).  See verify_actuation.py
-    # phase 8_translate_elbow: elbow=-0.50 rad is the minimum needed.
+    # and wrist ∈ [−0.8, 0.8] rad (full range).  The arm must bridge
+    # the 0.35 m gap from base_y_max (0.5) to drum (Y=0.85),
+    # requiring at least elbow=-0.50 rad (see verify_actuation.py).
     arm_delta = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=["elbow_joint", "wrist_y_joint", "wrist_x_joint"],
@@ -152,11 +160,36 @@ class ObservationsCfg:
                 "cube_name": "green_cube",
             },
         )
+        fingertip_red_rel = ObsTerm(
+            func=task_rew.fingertip_rel_cube,
+            params={
+                "ee_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES),
+                "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
+                "cube_name": "red_cube",
+            },
+        )
 
         # Normalized gripper closure [0=open, 1=closed]
         gripper_closure = ObsTerm(
             func=task_rew.gripper_closure,
             params={"finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"])},
+        )
+
+        # Normalized gripper torque [0=no effort, 1=at limit]
+        gripper_torque = ObsTerm(
+            func=task_rew.gripper_torque_residual,
+            params={"finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"])},
+        )
+
+        # Cube velocities — lets the policy distinguish stationary
+        # cubes from bouncing / falling ones.
+        green_cube_vel = ObsTerm(
+            func=task_rew.cube_velocity,
+            params={"cube_name": "green_cube"},
+        )
+        red_cube_vel = ObsTerm(
+            func=task_rew.cube_velocity,
+            params={"cube_name": "red_cube"},
         )
 
         # Drum-relative position
@@ -168,7 +201,7 @@ class ObservationsCfg:
             },
         )
 
-        # Previous actions
+        # Last actions
         actions = ObsTerm(func=mdp.last_action)
 
         def __post_init__(self) -> None:
@@ -224,88 +257,113 @@ class EventsCfg:
 
 @configclass
 class RewardsCfg:
-    """Reward terms modelled after IsaacLab's manipulation/lift task.
+    """Reward terms for the tensegrity pick-and-place task.
 
-    Structure: reach → lift (binary) → goal tracking + regularisation.
-    NO gripper reward — the agent discovers grasping naturally because
-    it is the only way to get the cube above the lift threshold.
+    Sequential structure: reach → grasp → lift → transport → release → success.
+
+    Weight hierarchy (effective per-step after ×dt=0.02):
+      Transport (50×0.02=1.00 max) > Success (100×0.02=2.00) >
+      Release (10×0.02=0.20) > Lift (8×0.02=0.16) =
+      Height (8×0.02=0.16) > Grasp (5×0.02=0.10) > Reach (1×0.02=0.02)
+
+    The transport reward dominates lift/height once the cube is grasped,
+    preventing a \"hold high and stay still\" local optimum.
     """
 
-    # ── 1. Reach: tanh proximity (grasp centre → cube) ────────────────
-    # std=0.3 gives a steep gradient over the final 0–0.3 m.
-    # At default (base_z=-0.25), the grasp centre is only ~3 cm from
-    # the cube centre, so reaching starts near-saturated and the agent
-    # needs minimal arm movement to place the fingers around the cube.
+    # ── 1. Reach: tanh proximity (fingertip → nearest cube) ────────
+    # Uses dynamic fingertip (not grasp centre) so the robot
+    # approaches from above.  Targets the nearest active cube.
     reaching_object = RewTerm(
         func=task_rew.object_ee_distance,
-        weight=2.0,
+        weight=1.0,
         params={
             "ee_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES),
+            "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
             "green_name": "green_cube",
-            "std": 0.3,
+            "red_name": "red_cube",
+            "std": 0.1,
         },
     )
 
-    # ── 2. Lift: binary bonus when cube is above belt AND near gripper ──
-    # minimal_height=0.06 places the threshold at belt+0.06=0.86,
-    # which is above the max spawn z (0.85).  This ensures the signal
-    # is zero at rest and fires only for genuine lifts.
-    # max_distance=0.15 gates by proximity so bumping does not count.
-    # With corrected offsets the grasp centre starts ~3 cm from the
-    # cube, well inside the 0.15 m gate.
+    # ── 2. Grasp: closure × proximity ────────────────────────────────
+    # Explicit reward for closing the gripper when positioned near the
+    # cube.  Creates the gradient: approach → position → close fingers.
+    # Fires at belt level (before any lift), teaching the agent to grasp
+    # the cube while it is lying still.
+    grasping = RewTerm(
+        func=task_rew.grasp_reward,
+        weight=5.0,
+        params={
+            "ee_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES),
+            "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
+            "green_name": "green_cube",
+            "red_name": "red_cube",
+            "std": 0.08,
+        },
+    )
+
+    # ── 3. Lift: binary bonus when cube is grasped and lifted ────────
+    # max_velocity=1.0 rejects bounced cubes (high velocity at bounce
+    # peak).  Only a genuinely grasped, controlled lift satisfies all
+    # gates: above belt, near gripper, closed fingers, low velocity.
+    # Weight balanced against transport to avoid hold-in-place optimum.
     lifting_object = RewTerm(
         func=task_rew.object_is_lifted,
-        weight=15.0,
+        weight=8.0,
         params={
             "ee_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES),
             "green_name": "green_cube",
             "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
             "minimal_height": 0.06,
             "max_distance": 0.15,
-        },
-    )
-
-    # ── 3. Goal tracking: coarse (std=1.0) — drives toward drum ──────
-    # std=1.0 gives a meaningful signal at d_xy≈0.85 m.
-    # weight=48 makes lateral approach dominant over lift+height,
-    # so the agent is incentivised to move toward the drum despite the
-    # risk of dropping the cube.
-    # lift_threshold=0.14 ensures the cube must be above the drum rim
-    # (z=0.88 m, belt+0.08) before approach reward fires, preventing
-    # the robot from crashing into the drum lip during lateral motion.
-    goal_tracking = RewTerm(
-        func=task_rew.approach_target_tanh,
-        weight=48.0,
-        params={
-            "green_name": "green_cube",
-            "drum_name": "drum_target",
-            "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
-            "std": 1.0,
-            "lift_threshold": 0.14,
+            "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
+            "max_velocity": 1.0,
         },
     )
 
     # ── 3b. Height bonus: smooth gradient to lift above drum rim ─────
-    # Bridges the gap between the binary lift reward (z>0.86) and the
-    # approach reward gate (z>0.94) so the agent has a gradient to
-    # keep lifting instead of plateauing at belt+0.06.
-    # max_height=0.30 extends the gradient well above the drum lip
-    # (z=0.88, i.e. belt+0.08) so the agent is rewarded for clearing
-    # the rim before lateral approach.  weight=25 makes this the
-    # dominant vertical signal after the binary lift fires.
+    # Bridges the binary lift and the approach gate so the agent has
+    # gradient to keep lifting.  Weight balanced against transport to
+    # prevent over-optimising vertical hold at the expense of lateral
+    # movement toward the drum.
     height_bonus = RewTerm(
         func=task_rew.cube_height_bonus,
-        weight=25.0,
+        weight=8.0,
         params={
             "ee_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES),
             "green_name": "green_cube",
             "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
             "max_height": 0.30,
             "max_distance": 0.15,
+            "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
+            "max_velocity": 1.0,
         },
     )
 
-    # ── 4. Goal tracking: fine (std=0.05) — precision near drum ──────
+    # ── 4. Goal tracking: coarse (std=1.0) — drives toward drum ──────
+    # std=1.0 gives ~0.31 proximity at d_xy=0.85 m.
+    # Transport signal (0.31/step) must dominate the hold-in-place
+    # reward from lift+height (0.21/step combined).
+    # lift_threshold=0.02: z>0.82 is trivially easy to maintain during
+    # arm extension, preventing the "dip below gate" problem where the
+    # cube temporarily drops during lateral motion and zeros out the
+    # transport reward.
+    goal_tracking = RewTerm(
+        func=task_rew.approach_target_tanh,
+        weight=50.0,
+        params={
+            "green_name": "green_cube",
+            "drum_name": "drum_target",
+            "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
+            "std": 1.0,
+            "lift_threshold": 0.02,
+        },
+    )
+
+    # ── 4b. Goal tracking: fine (std=0.20) — precision near drum ─────
+    # At d=0.27 m (drum edge) gives 0.24 proximity — a useful
+    # fine-positioning signal that helps centre the cube above the
+    # drum opening.
     goal_tracking_fine = RewTerm(
         func=task_rew.approach_target_tanh,
         weight=5.0,
@@ -313,15 +371,36 @@ class RewardsCfg:
             "green_name": "green_cube",
             "drum_name": "drum_target",
             "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
-            "std": 0.05,
-            "lift_threshold": 0.14,
+            "std": 0.20,
+            "lift_threshold": 0.02,
         },
     )
 
-    # ── 5. Success: large bonus for cube in drum ─────────────────────
+    # ── 5. Release: reward opening gripper above the drum ────────────
+    # Only fires when cube is within drum radius in XY, above the rim,
+    # and was_grasped is true (preventing random gripper flapping).
+    # Creates the gradient for the final phase: transport → open → drop.
+    release = RewTerm(
+        func=task_rew.release_above_target,
+        weight=10.0,
+        params={
+            "green_name": "green_cube",
+            "drum_name": "drum_target",
+            "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
+            "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
+            "rim_clearance": 0.10,
+            "drum_radius": 0.2735,
+        },
+    )
+
+    # ── 6. Success: large per-step reward while cube is in drum ──────
+    # Weight=100 gives 2.0 per step (after dt=0.02).  With episode NOT
+    # terminating on success, this accumulates over remaining steps and
+    # clearly dominates holding rewards (~0.8/step).  Gated on
+    # was_grasped to prevent accidental/bumped placements.
     green_in_target = RewTerm(
         func=task_rew.green_cube_in_target,
-        weight=40.0,
+        weight=100.0,
         params={
             "green_name": "green_cube",
             "drum_name": "drum_target",
@@ -329,7 +408,7 @@ class RewardsCfg:
         },
     )
 
-    # ── 6. Negative: red cube in drum ────────────────────────────────
+    # ── 7. Negative: red cube in drum ────────────────────────────────
     red_in_target = RewTerm(
         func=task_rew.red_cube_in_target,
         weight=-12.0,
@@ -341,7 +420,6 @@ class RewardsCfg:
     )
 
     # ── Regularisation (start small, ramped by curriculum) ───────────
-    # ALL joints including gripper — matching the reference Lift task.
     action_rate = RewTerm(
         func=task_rew.action_rate_l2,
         weight=-1e-4,
@@ -358,15 +436,10 @@ class RewardsCfg:
         },
     )
 
-    # ── Base velocity: discourage heavy use of the linear base ──────
-    # The 2-DOF linear base (base_y, base_z) is meant for small
-    # setting adjustments so the arm can reach cube and drum.  Most
-    # positioning should come from the highly mobile 3-DOF arm.
-    # weight=-3.0 strongly penalises base joint velocities so the
-    # policy learns to rely on elbow/wrist articulation.
+    # ── Base velocity: penalty to prefer arm over base ────────────
     base_velocity = RewTerm(
         func=task_rew.base_velocity_l2,
-        weight=-3.0,
+        weight=-1.5,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -375,15 +448,10 @@ class RewardsCfg:
         },
     )
 
-    # ── Arm utilization: reward active use of the 3-DOF arm ─────────
-    # Positive reward for arm joint velocity magnitude.  Together with
-    # the base_velocity penalty this creates a strong preference for
-    # positioning via the arm (especially the elbow) over sliding the
-    # linear base.  Normalised to [0, 1] so weight directly controls
-    # the maximum per-step contribution.
+    # ── Arm utilization: preference for arm movement ─────────────────
     arm_utilization = RewTerm(
         func=task_rew.arm_velocity_bonus,
-        weight=2.0,
+        weight=1.5,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -394,9 +462,6 @@ class RewardsCfg:
     )
 
     # ── Belt contact: penalty for finger tips below belt ────────────
-    # margin=0.0: only penalise actual penetration below the belt
-    # surface, not fingers hovering near it (which is normal at the
-    # default pose where finger tips are at z ≈ 0.807).
     belt_contact = RewTerm(
         func=task_rew.belt_contact_penalty,
         weight=-10.0,
@@ -441,9 +506,6 @@ class RewardsCfg:
             "proximity_threshold": 0.10,
         },
     )
-    # Negative weight: penalises large EE-to-cube distance (consistent
-    # with reaching reward).  Was +0.01 which incorrectly rewarded
-    # moving away from the cube.
     metric_ee_distance = RewTerm(
         func=task_rew.ee_to_green_distance_metric,
         weight=-0.01,
@@ -453,23 +515,29 @@ class RewardsCfg:
         },
     )
 
+    # ── Conveyor penalty: penalise cubes knocked off the belt ────────
+    cube_off_conveyor = RewTerm(
+        func=task_rew.cube_off_conveyor_penalty,
+        weight=-5.0,
+        params={
+            "green_name": "green_cube",
+            "red_name": "red_cube",
+            "bounds": _CONVEYOR_BOUNDS,
+        },
+    )
+
 
 @configclass
 class TerminationsCfg:
-    """Termination terms."""
+    """Termination terms.
+
+    The episode runs the full duration without early success termination.
+    The green_in_target reward (weight=100) accumulates over remaining
+    steps after a successful drop, making release clearly more valuable
+    than holding above the drum indefinitely.
+    """
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-
-    # Auto-terminate on successful placement for faster episode turnover.
-    green_placed = DoneTerm(
-        func=task_rew.green_in_drum,
-        time_out=False,
-        params={
-            "green_name": "green_cube",
-            "drum_name": "drum_target",
-            "bin_geom": _BIN_GEOM,
-        },
-    )
 
     joint_vel_diverged = DoneTerm(
         func=task_rew.joint_vel_out_of_limit,
@@ -480,29 +548,12 @@ class TerminationsCfg:
         },
     )
 
-    # Terminate when any arm/wrist joint's *computed* torque is
-    # extremely high (5× effort limit).  Normal PD clamping (computed >
-    # limit) happens routinely with high-stiffness actuators; only truly
-    # extreme stress (e.g. jamming against the belt or self-collision)
-    # produces 5× overshoot.
-    # joint_effort_saturated = DoneTerm(
-    #     func=task_rew.joint_effort_exceeded,
-    #     time_out=True,
-    #     params={
-    #         "asset_cfg": SceneEntityCfg(
-    #             "robot",
-    #             joint_names=["elbow_joint", "wrist_y_joint", "wrist_x_joint"],
-    #         ),
-    #         "threshold_ratio": 5.0,
-    #     },
-    # )
-
     # Terminate when the finger tips penetrate well below the belt.
-    # With corrected offsets the default tip z ≈ 0.807 is only 0.007 m
-    # above the belt (0.800).  max_penetration=0.20 puts the kill-line
-    # at z = 0.60 so that early exploration (std ≈ 1) doesn't terminate
-    # most environments on the first step.  The belt_contact penalty
-    # (weight=-10) provides a softer gradient above this hard cap.
+    # The default tip z ≈ 0.807 is only 0.007 m above the belt (0.800).
+    # max_penetration=0.20 puts the kill-line at z = 0.60 so early
+    # exploration doesn't terminate most environments immediately.
+    # The belt_contact penalty (weight=-10) provides a softer gradient
+    # above this hard cap.
     belt_collision = DoneTerm(
         func=task_rew.belt_collision_termination,
         time_out=True,
@@ -518,10 +569,9 @@ class TerminationsCfg:
 class CurriculumCfg:
     """Curriculum: ramp up regularisation + introduce the red cube."""
 
-    # Delayed to 100k (was 30k): let the green-only policy master
-    # reach→grasp→lift→transport→place before adding the red distractor.
-    # At 30k the red cube caused a ~60% reward crash that took >50k
-    # steps to recover from, wasting training budget.
+    # Red cube introduced at 100k steps to let the green-only policy
+    # master reach→grasp→lift→transport→place before adding the
+    # distractor.  Introducing it too early causes severe reward crash.
     activate_red = CurrTerm(
         func=task_rew.activate_red_cube_curriculum,
         params={"num_steps": 100000},
@@ -581,6 +631,9 @@ class TensegrityPlaceEnvCfg_PLAY(TensegrityPlaceEnvCfg):
         super().__post_init__()
         self.scene.num_envs = 50
         self.scene.env_spacing = 5.0
+        # Force-activate red cube immediately in play mode so both
+        # cubes are visible (curriculum threshold 0 = always active).
+        self.curriculum.activate_red.params["num_steps"] = 0
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -669,9 +722,30 @@ class TendonObservationsCfg:
                 "cube_name": "green_cube",
             },
         )
+        fingertip_red_rel = ObsTerm(
+            func=task_rew.fingertip_rel_cube,
+            params={
+                "ee_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES),
+                "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
+                "cube_name": "red_cube",
+            },
+        )
         gripper_closure = ObsTerm(
             func=task_rew.gripper_closure,
             params={"finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"])},
+        )
+        gripper_torque = ObsTerm(
+            func=task_rew.gripper_torque_residual,
+            params={"finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"])},
+        )
+
+        green_cube_vel = ObsTerm(
+            func=task_rew.cube_velocity,
+            params={"cube_name": "green_cube"},
+        )
+        red_cube_vel = ObsTerm(
+            func=task_rew.cube_velocity,
+            params={"cube_name": "red_cube"},
         )
 
         drum_rel = ObsTerm(
@@ -714,3 +788,4 @@ class TensegrityPlaceTendonEnvCfg_PLAY(TensegrityPlaceTendonEnvCfg):
         super().__post_init__()
         self.scene.num_envs = 50
         self.scene.env_spacing = 5.0
+        self.curriculum.activate_red.params["num_steps"] = 0

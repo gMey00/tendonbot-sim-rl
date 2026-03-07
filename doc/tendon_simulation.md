@@ -85,9 +85,10 @@ tensegrity_pick/
 │       ├── tensegrity_reach/
 │       │   ├── tensegrity_reach_env_cfg.py         # PD-driven reach
 │       │   └── tensegrity_reach_tendon_env_cfg.py  # Tendon-driven reach
-│       └── tensegrity_place/
-│           ├── tensegrity_place_env_cfg.py          # PD-driven place
-│           └── tensegrity_place_tendon_env_cfg.py   # Tendon-driven place
+│       ├── shared/                      # Shared configs across tasks
+│       └── cube_place/
+│           ├── cube_place_env_cfg.py                # PD-driven place
+│           └── cube_place_tendon_env_cfg.py         # Tendon-driven place
 ```
 
 ### 2.2  Key Classes
@@ -174,8 +175,8 @@ curriculum) can remain unchanged.
 |---------------|-------|------|
 | `Template-Tensegrity-Reach-v0` | PD position | Reach |
 | `Template-Tensegrity-Reach-Tendon-v0` | Tendon effort | Reach |
-| `Template-Tensegrity-Place-v0` | PD position | Place |
-| `Template-Tensegrity-Place-Tendon-v0` | Tendon effort | Place |
+| `Template-Tensegrity-Cube-Place-v0` | PD position | Cube Place |
+| `Template-Tensegrity-Cube-Place-Tendon-v0` | Tendon effort | Cube Place |
 
 Play variants (`*-Play-v0`) use 50 envs for evaluation.
 

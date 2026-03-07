@@ -36,18 +36,18 @@ python scripts/list_envs.py
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # ---------------------------------------------------------------------------
-# Cube Sorting (Pick)  —  Template-Tensegrity-Pick-v0
+# Cube Sort  —  Template-Tensegrity-Cube-Sort-v0
 # ---------------------------------------------------------------------------
 # 8 green + 8 red cubes on a moving conveyor.
 # Robot must pick green cubes and place them into the target drum.
 
-python scripts/zero_agent.py   --task=Template-Tensegrity-Pick-v0  --num_envs=10
-python scripts/random_agent.py --task=Template-Tensegrity-Pick-v0  --num_envs=10
+python scripts/zero_agent.py   --task=Template-Tensegrity-Cube-Sort-v0  --num_envs=10
+python scripts/random_agent.py --task=Template-Tensegrity-Cube-Sort-v0  --num_envs=10
 
-python scripts/skrl/train.py   --task=Template-Tensegrity-Pick-v0  --headless
-python scripts/skrl/train.py   --task=Template-Tensegrity-Pick-v0  --headless --num_envs=2048
+python scripts/skrl/train.py   --task=Template-Tensegrity-Cube-Sort-v0  --headless
+python scripts/skrl/train.py   --task=Template-Tensegrity-Cube-Sort-v0  --headless --num_envs=2048
 
-python scripts/skrl/play.py    --task=Template-Tensegrity-Pick-v0  --num_envs=10
+python scripts/skrl/play.py    --task=Template-Tensegrity-Cube-Sort-v0  --num_envs=10
 
 # ---------------------------------------------------------------------------
 # Reach  —  Template-Tensegrity-Reach-v0 / -Play-v0
@@ -64,35 +64,35 @@ python scripts/skrl/train.py   --task=Template-Tensegrity-Reach-v0      --headle
 python scripts/skrl/play.py    --task=Template-Tensegrity-Reach-Play-v0 --num_envs=10
 
 # ---------------------------------------------------------------------------
-# Place  —  Template-Tensegrity-Place-v0 / -Play-v0
+# Cube Place  —  Template-Tensegrity-Cube-Place-v0 / -Play-v0
 # ---------------------------------------------------------------------------
 # 1 green + 1 red cube below robot, conveyor inactive.
 # Place the green cube into the drum.
 # Curriculum: green-only first, then green + red (colour discrimination).
 
-python scripts/zero_agent.py   --task=Template-Tensegrity-Place-v0      --num_envs=10
-python scripts/random_agent.py --task=Template-Tensegrity-Place-v0      --num_envs=10
+python scripts/zero_agent.py   --task=Template-Tensegrity-Cube-Place-v0      --num_envs=10
+python scripts/random_agent.py --task=Template-Tensegrity-Cube-Place-v0      --num_envs=10
 
-python scripts/skrl/train.py   --task=Template-Tensegrity-Place-v0      --headless
-python scripts/skrl/train.py   --task=Template-Tensegrity-Place-v0      --headless --num_envs=2048
+python scripts/skrl/train.py   --task=Template-Tensegrity-Cube-Place-v0      --headless
+python scripts/skrl/train.py   --task=Template-Tensegrity-Cube-Place-v0      --headless --num_envs=2048
 
-python scripts/skrl/play.py    --task=Template-Tensegrity-Place-Play-v0 --num_envs=10
+python scripts/skrl/play.py    --task=Template-Tensegrity-Cube-Place-Play-v0 --num_envs=10
 
 # ---------------------------------------------------------------------------
-# Place (Tendon-driven)  —  Template-Tensegrity-Place-Tendon-v0 / -Play-v0
+# Cube Place (Tendon-driven)  —  Template-Tensegrity-Cube-Place-Tendon-v0 / -Play-v0
 # ---------------------------------------------------------------------------
-# Same task as Place but the 3-DOF arm is driven by 5 tendon tensions
+# Same task as Cube Place but the 3-DOF arm is driven by 5 tendon tensions
 # (2 antagonistic for elbow + 3 at 120° for 2-DOF wrist) instead of
 # joint-position deltas.  Arm action dim increases from 3 to 5.
 # Uses an explicit effort-passthrough actuator (IdealPDActuator k=0, d=0).
 
-python scripts/zero_agent.py   --task=Template-Tensegrity-Place-Tendon-v0      --num_envs=10
-python scripts/random_agent.py --task=Template-Tensegrity-Place-Tendon-v0      --num_envs=10
+python scripts/zero_agent.py   --task=Template-Tensegrity-Cube-Place-Tendon-v0      --num_envs=10
+python scripts/random_agent.py --task=Template-Tensegrity-Cube-Place-Tendon-v0      --num_envs=10
 
-python scripts/skrl/train.py   --task=Template-Tensegrity-Place-Tendon-v0      --headless
-python scripts/skrl/train.py   --task=Template-Tensegrity-Place-Tendon-v0      --headless --num_envs=2048
+python scripts/skrl/train.py   --task=Template-Tensegrity-Cube-Place-Tendon-v0      --headless
+python scripts/skrl/train.py   --task=Template-Tensegrity-Cube-Place-Tendon-v0      --headless --num_envs=2048
 
-python scripts/skrl/play.py    --task=Template-Tensegrity-Place-Tendon-Play-v0 --num_envs=10
+python scripts/skrl/play.py    --task=Template-Tensegrity-Cube-Place-Tendon-Play-v0 --num_envs=10
 
 # ---------------------------------------------------------------------------
 # Reach (Tendon-driven)  —  Template-Tensegrity-Reach-Tendon-v0 / -Play-v0
@@ -108,6 +108,24 @@ python scripts/skrl/train.py   --task=Template-Tensegrity-Reach-Tendon-v0      -
 python scripts/skrl/train.py   --task=Template-Tensegrity-Reach-Tendon-v0      --headless --num_envs=2048
 
 python scripts/skrl/play.py    --task=Template-Tensegrity-Reach-Tendon-Play-v0 --num_envs=10
+
+# ---------------------------------------------------------------------------
+# Shirt Place (template)  —  Template-Tensegrity-Shirt-Place-v0
+# ---------------------------------------------------------------------------
+# Place a T-shirt into a drum (cloth simulation).
+# TODO: Not yet implemented — cloth deformable objects pending.
+
+# python scripts/zero_agent.py   --task=Template-Tensegrity-Shirt-Place-v0      --num_envs=10
+# python scripts/skrl/train.py   --task=Template-Tensegrity-Shirt-Place-v0      --headless
+
+# ---------------------------------------------------------------------------
+# Shirt Sort (template)  —  Template-Tensegrity-Shirt-Sort-v0
+# ---------------------------------------------------------------------------
+# Sort T-shirts on a moving conveyor (cloth simulation).
+# TODO: Not yet implemented — cloth deformable objects pending.
+
+# python scripts/zero_agent.py   --task=Template-Tensegrity-Shirt-Sort-v0  --num_envs=10
+# python scripts/skrl/train.py   --task=Template-Tensegrity-Shirt-Sort-v0  --headless
 
 # ---------------------------------------------------------------------------
 # Step Response Test (Klein 2023 methodology)

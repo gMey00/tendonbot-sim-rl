@@ -12,41 +12,41 @@ from . import agents
 ##
 
 gym.register(
-    id="Template-Tensegrity-Place-v0",
+    id="Template-Tensegrity-Cube-Place-v0",
     entry_point=f"{__name__}.place_env:TensegrityPlaceEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.tensegrity_place_env_cfg:TensegrityPlaceEnvCfg",
+        "env_cfg_entry_point": f"{__name__}.cube_place_env_cfg:TensegrityPlaceEnvCfg",
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
     },
 )
 
 gym.register(
-    id="Template-Tensegrity-Place-Play-v0",
+    id="Template-Tensegrity-Cube-Place-Play-v0",
     entry_point=f"{__name__}.place_env:TensegrityPlaceEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.tensegrity_place_env_cfg:TensegrityPlaceEnvCfg_PLAY",
+        "env_cfg_entry_point": f"{__name__}.cube_place_env_cfg:TensegrityPlaceEnvCfg_PLAY",
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
     },
 )
 
 gym.register(
-    id="Template-Tensegrity-Place-Tendon-v0",
+    id="Template-Tensegrity-Cube-Place-Tendon-v0",
     entry_point=f"{__name__}.place_env:TensegrityPlaceEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.tensegrity_place_env_cfg:TensegrityPlaceTendonEnvCfg",
+        "env_cfg_entry_point": f"{__name__}.cube_place_env_cfg:TensegrityPlaceTendonEnvCfg",
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
     },
 )
 
 gym.register(
-    id="Template-Tensegrity-Place-Tendon-Play-v0",
+    id="Template-Tensegrity-Cube-Place-Tendon-Play-v0",
     entry_point=f"{__name__}.place_env:TensegrityPlaceEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.tensegrity_place_env_cfg:TensegrityPlaceTendonEnvCfg_PLAY",
+        "env_cfg_entry_point": f"{__name__}.cube_place_env_cfg:TensegrityPlaceTendonEnvCfg_PLAY",
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
     },
 )

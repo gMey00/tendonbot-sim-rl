@@ -6,7 +6,7 @@
 # compact summary of the key metrics.  Run it in a separate terminal.
 
 INTERVAL="${1:-60}"
-RUN_DIR="$(ls -td logs/skrl/tensegrity_place/20* 2>/dev/null | head -1)"
+RUN_DIR="$(ls -td logs/skrl/cube_place/20* 2>/dev/null | head -1)"
 
 if [[ -z "$RUN_DIR" ]]; then
     echo "No training run found."

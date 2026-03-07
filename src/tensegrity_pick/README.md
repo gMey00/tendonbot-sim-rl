@@ -21,7 +21,10 @@ simulation documentation.
 | Task | README |
 |------|--------|
 | Reach | [tensegrity_reach/README.md](source/tensegrity_pick/tensegrity_pick/tasks/manager_based/tensegrity_reach/README.md) |
-| Place | [tensegrity_place/README.md](source/tensegrity_pick/tensegrity_pick/tasks/manager_based/tensegrity_place/README.md) |
+| Cube Place | [cube_place/README.md](source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/README.md) |
+| Cube Sort | [cube_sort/README.md](source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/README.md) |
+| Shirt Place | *(template — not yet implemented)* |
+| Shirt Sort | *(template — not yet implemented)* |
 
 ### Related
 
@@ -33,15 +36,17 @@ simulation documentation.
 
 | Gym ID | Drive | Description |
 |--------|-------|-------------|
-| `Template-Tensegrity-Pick-v0` | PD | **Cube Sorting** — 8 green + 8 red cubes on a moving conveyor. Pick green cubes and place them into the target drum while ignoring red. |
+| `Template-Tensegrity-Cube-Sort-v0` | PD | **Cube Sort** — 8 green + 8 red cubes on a moving conveyor. Pick green cubes and place them into the target drum while ignoring red. |
 | `Template-Tensegrity-Reach-v0` | PD | **Reach** — Move the end-effector to a random target position and orientation. No gripper action. |
 | `Template-Tensegrity-Reach-Play-v0` | PD | Reach (play/eval variant, 50 envs, no observation noise). |
 | `Template-Tensegrity-Reach-Tendon-v0` | Tendon | **Reach (Tendon)** — Same task as Reach but the arm is tendon-driven. Direct comparison with PD variant. |
 | `Template-Tensegrity-Reach-Tendon-Play-v0` | Tendon | Reach Tendon (play/eval variant, 50 envs). |
-| `Template-Tensegrity-Place-v0` | PD | **Place** — 1 green + 1 red cube below the robot, conveyor inactive. Place the green cube into the drum. Curriculum: green-only → green + red. |
-| `Template-Tensegrity-Place-Play-v0` | PD | Place (play/eval variant, 50 envs). |
-| `Template-Tensegrity-Place-Tendon-v0` | Tendon | **Place (Tendon)** — Same task as Place but the arm is tendon-driven. |
-| `Template-Tensegrity-Place-Tendon-Play-v0` | Tendon | Place Tendon (play/eval variant, 50 envs). |
+| `Template-Tensegrity-Cube-Place-v0` | PD | **Cube Place** — 1 green + 1 red cube below the robot, conveyor inactive. Place the green cube into the drum. Curriculum: green-only → green + red. |
+| `Template-Tensegrity-Cube-Place-Play-v0` | PD | Cube Place (play/eval variant, 50 envs). |
+| `Template-Tensegrity-Cube-Place-Tendon-v0` | Tendon | **Cube Place (Tendon)** — Same task as Cube Place but the arm is tendon-driven. |
+| `Template-Tensegrity-Cube-Place-Tendon-Play-v0` | Tendon | Cube Place Tendon (play/eval variant, 50 envs). |
+| `Template-Tensegrity-Shirt-Place-v0` | PD | **Shirt Place** — *(template)* Place a T-shirt into a drum. Cloth simulation. |
+| `Template-Tensegrity-Shirt-Sort-v0` | PD | **Shirt Sort** — *(template)* Sort T-shirts on a moving conveyor. Cloth simulation. |
 
 > New tasks are auto-discovered by `import_packages` — just add a new sub-package under
 > `tasks/manager_based/` with an `__init__.py` that calls `gym.register(...)`.
@@ -109,10 +114,10 @@ python scripts/skrl/play.py --task=<TASK_PLAY> --num_envs=10
 ### Task-specific examples
 
 ```bash
-# --- Cube Sorting (Pick) ---
-python scripts/zero_agent.py   --task=Template-Tensegrity-Pick-v0  --num_envs=10
-python scripts/skrl/train.py   --task=Template-Tensegrity-Pick-v0  --headless
-python scripts/skrl/play.py    --task=Template-Tensegrity-Pick-v0  --num_envs=10
+# --- Cube Sort ---
+python scripts/zero_agent.py   --task=Template-Tensegrity-Cube-Sort-v0  --num_envs=10
+python scripts/skrl/train.py   --task=Template-Tensegrity-Cube-Sort-v0  --headless
+python scripts/skrl/play.py    --task=Template-Tensegrity-Cube-Sort-v0  --num_envs=10
 
 # --- Reach (PD) ---
 python scripts/zero_agent.py   --task=Template-Tensegrity-Reach-v0      --num_envs=10
@@ -124,15 +129,15 @@ python scripts/zero_agent.py   --task=Template-Tensegrity-Reach-Tendon-v0      -
 python scripts/skrl/train.py   --task=Template-Tensegrity-Reach-Tendon-v0      --headless
 python scripts/skrl/play.py    --task=Template-Tensegrity-Reach-Tendon-Play-v0 --num_envs=10
 
-# --- Place (PD) ---
-python scripts/zero_agent.py   --task=Template-Tensegrity-Place-v0      --num_envs=10
-python scripts/skrl/train.py   --task=Template-Tensegrity-Place-v0      --headless
-python scripts/skrl/play.py    --task=Template-Tensegrity-Place-Play-v0 --num_envs=10
+# --- Cube Place (PD) ---
+python scripts/zero_agent.py   --task=Template-Tensegrity-Cube-Place-v0      --num_envs=10
+python scripts/skrl/train.py   --task=Template-Tensegrity-Cube-Place-v0      --headless
+python scripts/skrl/play.py    --task=Template-Tensegrity-Cube-Place-Play-v0 --num_envs=10
 
-# --- Place (Tendon) ---
-python scripts/zero_agent.py   --task=Template-Tensegrity-Place-Tendon-v0      --num_envs=10
-python scripts/skrl/train.py   --task=Template-Tensegrity-Place-Tendon-v0      --headless
-python scripts/skrl/play.py    --task=Template-Tensegrity-Place-Tendon-Play-v0 --num_envs=10
+# --- Cube Place (Tendon) ---
+python scripts/zero_agent.py   --task=Template-Tensegrity-Cube-Place-Tendon-v0      --num_envs=10
+python scripts/skrl/train.py   --task=Template-Tensegrity-Cube-Place-Tendon-v0      --headless
+python scripts/skrl/play.py    --task=Template-Tensegrity-Cube-Place-Tendon-Play-v0 --num_envs=10
 ```
 
 ### Step Response Validation
@@ -164,12 +169,14 @@ source/tensegrity_pick/tensegrity_pick/
 ├── tasks/
 │   ├── __init__.py                      # import_packages auto-discovery
 │   └── manager_based/
-│       ├── tensegrity_pick/             # Cube Sorting task
-│       │   ├── __init__.py              #   gym.register(Pick-v0)
-│       │   ├── tensegrity_pick_env_cfg.py
+│       ├── shared/                      # Shared configs across tasks
+│       │   ├── __init__.py
 │       │   ├── proj_base_scene_cfg.py   #   Shared base scene
+│       │   └── tensegrity_robot_cfg.py  #   Backward-compat shim → robots/
+│       ├── cube_sort/                   # Cube Sort task
+│       │   ├── __init__.py              #   gym.register(Cube-Sort-v0)
+│       │   ├── cube_sort_env_cfg.py
 │       │   ├── cube_sorting_scene_cfg.py
-│       │   ├── tensegrity_robot_cfg.py  #   Backward-compat shim → robots/
 │       │   ├── mdp/                     #   Rewards, observations, events
 │       │   └── agents/                  #   skrl PPO config
 │       ├── tensegrity_reach/            # Reach task
@@ -178,13 +185,25 @@ source/tensegrity_pick/tensegrity_pick/
 │       │   ├── tensegrity_reach_tendon_env_cfg.py   # Tendon-driven
 │       │   ├── mdp/                     #   FK sampling, position/orientation rewards
 │       │   └── agents/                  #   skrl PPO config
-│       └── tensegrity_place/            # Place task
-│           ├── __init__.py              #   gym.register(Place, Place-Play, Place-Tendon, ...)
-│           ├── tensegrity_place_env_cfg.py           # PD + tendon variants
+│       └── cube_place/                  # Cube Place task
+│           ├── __init__.py              #   gym.register(Cube-Place, Cube-Place-Play, Cube-Place-Tendon, ...)
+│           ├── cube_place_env_cfg.py                 # PD + tendon variants
 │           ├── place_scene_cfg.py       #   1 green + 1 red cube scene
 │           ├── place_env.py             #   TensegrityPlaceEnv (grasp tracking)
 │           ├── mdp/                     #   Rewards, curriculum, tendon_actions shim
 │           └── agents/                  #   skrl PPO config
+│       ├── shirt_place/                 # Shirt Place task (template)
+│       │   ├── __init__.py              #   gym.register(Shirt-Place-v0)
+│       │   ├── shirt_place_env_cfg.py
+│       │   ├── shirt_place_scene_cfg.py
+│       │   ├── mdp/
+│       │   └── agents/
+│       └── shirt_sort/                  # Shirt Sort task (template)
+│           ├── __init__.py              #   gym.register(Shirt-Sort-v0)
+│           ├── shirt_sort_env_cfg.py
+│           ├── shirt_sort_scene_cfg.py
+│           ├── mdp/
+│           └── agents/
 scripts/
 ├── list_envs.py                         # List all registered environments
 ├── zero_agent.py                        # Zero-action smoke test

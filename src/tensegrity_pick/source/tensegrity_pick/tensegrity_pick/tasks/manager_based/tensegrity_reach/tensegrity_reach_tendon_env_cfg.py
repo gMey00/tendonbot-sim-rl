@@ -24,7 +24,7 @@ from tensegrity_pick.robots.tendon_actuator import DEFAULT_JACOBIAN_TRANSPOSE
 from tensegrity_pick.robots.tendon_robot_cfg import TENS_5DOF_GRIPPER_TENDON_CFG
 
 from . import mdp
-from ..tensegrity_pick.proj_base_scene_cfg import ProjBaseSceneCfg, ROBOT_MOUNT_HEIGHT_M
+from ..shared.proj_base_scene_cfg import ProjBaseSceneCfg, ROBOT_MOUNT_HEIGHT_M
 from .tensegrity_reach_env_cfg import (
     CONTROLLED_JOINT_NAMES,
     TARGET_LINK_NAME,

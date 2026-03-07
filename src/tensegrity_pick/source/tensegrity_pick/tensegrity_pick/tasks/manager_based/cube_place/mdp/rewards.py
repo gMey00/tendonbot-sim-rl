@@ -1,14 +1,29 @@
 """Reward, observation, termination and reset functions for the place task.
 
-Simplified reward structure modelled after IsaacLab's manipulation/lift:
-  - Reaching:      tanh proximity  (grasp centre → cube)
-  - Lifting:       binary          (local z above belt + threshold)
-  - Goal tracking: tanh XY dist    (gated on lift + was_grasped)
-  - Regularisation on ALL joints including gripper
-  - NO gripper reward — the agent discovers grasping naturally
+Sequential reward structure for pick-and-place:
+  1. Reach:      tanh proximity  (dynamic fingertip → nearest cube)
+  2. Grasp:      closure × proximity (fingertip-based, at belt level)
+  3. Lift:       binary + height bonus (velocity-gated, closure-gated)
+  4. Transport:  tanh XY distance to drum (gated: was_grasped + z > belt + 0.02)
+  5. Release:    gripper openness when cube above drum
+  6. Success:    per-step bonus while correct colour cube rests in drum
 
-Single green / red cube placement task.  Cubes are individual RigidObjects
-(not collections), so shapes are always (N, 3) for positions.
+Key design choices:
+  - Reach/grasp use _dynamic_finger_tip_w instead of _grasp_center_w so
+    the robot approaches from above (finger tips are the lowest point).
+  - Reach targets the NEAREST active cube, making the reward general
+    across green/red for the approach phase.
+  - Transport gate (z > 0.82) is deliberately LOW so the approach reward
+    stays active even when the cube dips during lateral arm extension.
+  - Cubes knocked off the conveyor are penalised.
+  - Episodes run the full duration without early success termination, so
+    the green_in_target reward accumulates over remaining steps and
+    clearly dominates indefinite holding.
+  - Grasp detection remains closure-based (robust, matches Isaac Lab).
+    Torque residual is exposed as an observation for the policy.
+
+Cubes are individual RigidObjects (not collections), so shapes are
+always (N, 3) for positions.
 """
 
 from __future__ import annotations
@@ -76,6 +91,15 @@ class SpawnBox:
     y_range: Tuple[float, float]
     z_range: Tuple[float, float]
     yaw_range: Tuple[float, float] = (-3.14159, 3.14159)
+
+
+@dataclass
+class ConveyorBounds:
+    """Axis-aligned 2D bounds for the conveyor surface in local env coords."""
+
+    y_min: float
+    y_max: float
+    z_min: float  # below this the cube has fallen off
 
 
 def _project_local_z_offset(
@@ -166,6 +190,43 @@ def _in_upright_cylinder(
     return inside_xy & inside_z
 
 
+def _cube_is_active(
+    cube: RigidObject, env: ManagerBasedRLEnv
+) -> torch.Tensor:
+    """Per-env bool: True when the cube is on the belt (not parked at x>50)."""
+    local_x = cube.data.root_pos_w[:, 0] - env.scene.env_origins[:, 0]
+    return local_x < 50.0
+
+
+def _nearest_active_cube_distance(
+    env: ManagerBasedRLEnv,
+    reference_pos: torch.Tensor,
+    green_name: str,
+    red_name: str,
+) -> torch.Tensor:
+    """Distance from ``reference_pos`` (N, 3) to the nearest active cube.
+
+    Inactive (parked) cubes are excluded by assigning infinite distance.
+    """
+    green: RigidObject = env.scene[green_name]
+    red: RigidObject = env.scene[red_name]
+    green_active = _cube_is_active(green, env)
+    red_active = _cube_is_active(red, env)
+
+    INF = 1e6
+    green_dist = torch.where(
+        green_active,
+        torch.norm(green.data.root_pos_w - reference_pos, dim=-1),
+        torch.full_like(green_active, INF, dtype=reference_pos.dtype),
+    )
+    red_dist = torch.where(
+        red_active,
+        torch.norm(red.data.root_pos_w - reference_pos, dim=-1),
+        torch.full_like(red_active, INF, dtype=reference_pos.dtype),
+    )
+    return torch.minimum(green_dist, red_dist)
+
+
 # ---------------------------------------------------------------------------
 # Observations
 # ---------------------------------------------------------------------------
@@ -195,12 +256,10 @@ def cube_rel_pos(
     """
     ee = _grasp_center_w(env.scene[ee_cfg.name], ee_cfg)
     cube: RigidObject = env.scene[cube_name]
-    pos = cube.data.root_pos_w
 
-    local_x = pos[:, 0] - env.scene.env_origins[:, 0]
-    active = local_x < 50.0
+    active = _cube_is_active(cube, env)
 
-    rel = pos - ee
+    rel = cube.data.root_pos_w - ee
     return torch.where(active[:, None], rel, torch.zeros_like(rel))
 
 
@@ -218,7 +277,7 @@ def fingertip_rel_cube(
     finger_cfg: SceneEntityCfg,
     cube_name: str,
 ) -> torch.Tensor:
-    """Relative position of the green cube w.r.t. the dynamic fingertip (N, 3).
+    """Relative position of a cube w.r.t. the dynamic fingertip (N, 3).
 
     The fingertip position is interpolated between open/closed based on
     the actual finger_joint state, giving the policy spatial awareness
@@ -227,12 +286,10 @@ def fingertip_rel_cube(
     robot: Articulation = env.scene[ee_cfg.name]
     tip = _dynamic_finger_tip_w(robot, ee_cfg, finger_cfg)
     cube: RigidObject = env.scene[cube_name]
-    pos = cube.data.root_pos_w
 
-    local_x = pos[:, 0] - env.scene.env_origins[:, 0]
-    active = local_x < 50.0
+    active = _cube_is_active(cube, env)
 
-    rel = pos - tip
+    rel = cube.data.root_pos_w - tip
     return torch.where(active[:, None], rel, torch.zeros_like(rel))
 
 
@@ -244,6 +301,22 @@ def gripper_closure(
     finger_pos = robot.data.joint_pos[:, finger_cfg.joint_ids[0]]
     closure = torch.clamp(finger_pos / FINGER_JOINT_CLOSE_POS, 0.0, 1.0)
     return closure.unsqueeze(-1)
+
+
+def gripper_torque_residual(
+    env: ManagerBasedRLEnv, finger_cfg: SceneEntityCfg
+) -> torch.Tensor:
+    """Normalized finger_joint applied torque as fraction of effort limit (N, 1).
+
+    When the gripper is commanded closed but an object blocks it, the PD
+    controller applies near-limit torque.  When closed on air, torque ≈ 0.
+    This lets the policy learn to correlate torque with grasp state.
+    """
+    robot: Articulation = env.scene[finger_cfg.name]
+    applied = robot.data.applied_torque[:, finger_cfg.joint_ids[0]]
+    limit = robot.data.joint_effort_limits[:, finger_cfg.joint_ids[0]]
+    fraction = torch.abs(applied) / (limit + 1e-8)
+    return torch.clamp(fraction, max=1.0).unsqueeze(-1)
 
 
 # ---------------------------------------------------------------------------
@@ -360,24 +433,6 @@ def joint_vel_out_of_limit(
     )
 
 
-def joint_effort_exceeded(
-    env: ManagerBasedRLEnv,
-    asset_cfg: SceneEntityCfg,
-    threshold_ratio: float = 5.0,
-) -> torch.Tensor:
-    """Terminate when any tracked joint's computed torque exceeds the limit.
-
-    The PD controller ``computed_torque`` is what the controller *wants* to
-    apply; the physics engine clamps it to ``applied_torque`` within the
-    effort limit.  When the computed torque exceeds the limit by
-    ``threshold_ratio``x, the mechanism is under extreme structural stress.
-    """
-    robot: Articulation = env.scene[asset_cfg.name]
-    computed = robot.data.computed_torque[:, asset_cfg.joint_ids]
-    limits = robot.data.joint_effort_limits[:, asset_cfg.joint_ids]
-    return torch.any(torch.abs(computed) > threshold_ratio * limits, dim=1)
-
-
 def belt_collision_termination(
     env: ManagerBasedRLEnv,
     ee_cfg: SceneEntityCfg,
@@ -402,19 +457,20 @@ def belt_collision_termination(
 def object_ee_distance(
     env: ManagerBasedRLEnv,
     ee_cfg: SceneEntityCfg,
+    finger_cfg: SceneEntityCfg,
     green_name: str,
+    red_name: str,
     std: float = 0.1,
 ) -> torch.Tensor:
-    """Tanh reward for grasp-centre proximity to the green cube.
+    """Tanh reward for dynamic-fingertip proximity to the nearest active cube.
 
-    Mirrors IsaacLab's ``object_ee_distance``: measures the 3D distance
-    from the grasp centre (fixed offset from tool_link_0) to the cube
-    position and returns ``1 - tanh(distance / std)``.
+    Uses ``_dynamic_finger_tip_w`` so that the reward guides the robot to
+    approach from above (fingertips are the lowest point).  Targets the
+    nearest active cube so the policy generalises across colours.
     """
     robot: Articulation = env.scene[ee_cfg.name]
-    ee = _grasp_center_w(robot, ee_cfg)
-    cube_pos = env.scene[green_name].data.root_pos_w
-    distance = torch.norm(cube_pos - ee, dim=-1)
+    tip = _dynamic_finger_tip_w(robot, ee_cfg, finger_cfg)
+    distance = _nearest_active_cube_distance(env, tip, green_name, red_name)
     return 1.0 - torch.tanh(distance / std)
 
 
@@ -425,14 +481,17 @@ def object_is_lifted(
     belt_height: float,
     minimal_height: float = 0.04,
     max_distance: float = 0.15,
+    finger_cfg: SceneEntityCfg | None = None,
+    min_closure: float = 0.20,
+    max_velocity: float | None = None,
 ) -> torch.Tensor:
     """Binary reward: 1.0 when the cube is above threshold AND near the gripper.
 
-    Extends IsaacLab's ``object_is_lifted`` with a proximity gate so that
-    launching the cube via a bump does not yield reward — the gripper must
-    remain close to the cube while it is lifted.  This avoids a reward
-    exploit that does not exist in the Franka reference (where the arm
-    physically cannot launch a 50 g cube).
+    Gates:
+      - Height: cube local z > belt_height + minimal_height
+      - Proximity: cube within max_distance of grasp centre
+      - Closure (optional): finger_joint > min_closure
+      - Velocity (optional): cube speed < max_velocity (rejects bounces)
     """
     robot: Articulation = env.scene[ee_cfg.name]
     ee = _grasp_center_w(robot, ee_cfg)
@@ -445,7 +504,15 @@ def object_is_lifted(
     distance = torch.norm(cube_pos - ee, dim=-1)
     is_near = distance < max_distance
 
-    return torch.where(is_above & is_near, 1.0, 0.0)
+    gate = is_above & is_near
+    if finger_cfg is not None:
+        finger_pos = robot.data.joint_pos[:, finger_cfg.joint_ids[0]]
+        gate = gate & (finger_pos > min_closure)
+    if max_velocity is not None:
+        cube_speed = torch.norm(green.data.root_lin_vel_w, dim=-1)
+        gate = gate & (cube_speed < max_velocity)
+
+    return torch.where(gate, 1.0, 0.0)
 
 
 def cube_height_bonus(
@@ -455,13 +522,18 @@ def cube_height_bonus(
     belt_height: float,
     max_height: float = 0.20,
     max_distance: float = 0.15,
+    finger_cfg: SceneEntityCfg | None = None,
+    min_closure: float = 0.20,
+    max_velocity: float | None = None,
 ) -> torch.Tensor:
-    """Continuous reward proportional to cube height above belt, gated on proximity.
+    """Continuous reward proportional to cube height above belt.
 
-    Provides smooth gradient for lifting higher than the binary lift
-    threshold, incentivising the agent to clear the drum rim before
-    approaching in XY.  Returns ``clamp(h / max_height, 0, 1)`` when
-    the gripper is within ``max_distance`` of the cube, else 0.
+    Returns ``clamp(h / max_height, 0, 1)`` when all gates pass.
+
+    Gates:
+      - Proximity: cube within max_distance of grasp centre
+      - Closure (optional): finger_joint > min_closure
+      - Velocity (optional): cube speed < max_velocity (rejects bounces)
     """
     robot: Articulation = env.scene[ee_cfg.name]
     ee = _grasp_center_w(robot, ee_cfg)
@@ -473,9 +545,15 @@ def cube_height_bonus(
     normalized = height_above / max_height
 
     distance = torch.norm(cube_pos - ee, dim=-1)
-    is_near = distance < max_distance
+    gate = distance < max_distance
+    if finger_cfg is not None:
+        finger_pos = robot.data.joint_pos[:, finger_cfg.joint_ids[0]]
+        gate = gate & (finger_pos > min_closure)
+    if max_velocity is not None:
+        cube_speed = torch.norm(green.data.root_lin_vel_w, dim=-1)
+        gate = gate & (cube_speed < max_velocity)
 
-    return torch.where(is_near, normalized, torch.zeros_like(normalized))
+    return torch.where(gate, normalized, torch.zeros_like(normalized))
 
 
 def approach_target_tanh(
@@ -665,6 +743,90 @@ def arm_velocity_bonus(
     return torch.clamp(torch.norm(arm_vel, dim=1) / max_velocity, max=1.0)
 
 
+def grasp_reward(
+    env: ManagerBasedRLEnv,
+    ee_cfg: SceneEntityCfg,
+    finger_cfg: SceneEntityCfg,
+    green_name: str,
+    red_name: str,
+    std: float = 0.08,
+) -> torch.Tensor:
+    """Reward for closing the gripper near the nearest active cube.
+
+    Returns ``closure_fraction * (1 - tanh(dist / std))`` where dist is
+    measured from the dynamic fingertip to the nearest active cube.
+    Using fingertip instead of grasp centre encourages top-down approach.
+    """
+    robot: Articulation = env.scene[ee_cfg.name]
+    tip = _dynamic_finger_tip_w(robot, ee_cfg, finger_cfg)
+    distance = _nearest_active_cube_distance(env, tip, green_name, red_name)
+    proximity = 1.0 - torch.tanh(distance / std)
+
+    finger_pos = robot.data.joint_pos[:, finger_cfg.joint_ids[0]]
+    closure = torch.clamp(finger_pos / FINGER_JOINT_CLOSE_POS, 0.0, 1.0)
+
+    return closure * proximity
+
+
+def release_above_target(
+    env: ManagerBasedRLEnv,
+    green_name: str,
+    drum_name: str,
+    finger_cfg: SceneEntityCfg,
+    belt_height: float,
+    rim_clearance: float = 0.10,
+    drum_radius: float = 0.2735,
+) -> torch.Tensor:
+    """Reward for opening the gripper when the cube is above the drum.
+
+    Returns ``(1 - closure) * gate`` where gate requires the cube to
+    be within the drum radius in XY and above the rim height.  Gated
+    on ``was_grasped`` to prevent reward from random gripper opening
+    without ever having grasped.
+    """
+    green: RigidObject = env.scene[green_name]
+    pos_g = green.data.root_pos_w
+    pos_d = _get_world_pos(env.scene[drum_name], env=env)
+
+    d_xy = torch.sqrt(
+        (pos_g[:, 0] - pos_d[:, 0]) ** 2 + (pos_g[:, 1] - pos_d[:, 1]) ** 2
+    )
+    in_xy = d_xy < drum_radius
+
+    local_z = pos_g[:, 2] - env.scene.env_origins[:, 2]
+    above_rim = local_z > (belt_height + rim_clearance)
+
+    robot: Articulation = env.scene[finger_cfg.name]
+    finger_pos = robot.data.joint_pos[:, finger_cfg.joint_ids[0]]
+    closure = torch.clamp(finger_pos / FINGER_JOINT_CLOSE_POS, 0.0, 1.0)
+    openness = 1.0 - closure
+
+    gate = in_xy & above_rim
+    if hasattr(env, "was_grasped"):
+        gate = gate & env.was_grasped
+
+    return torch.where(gate, openness, torch.zeros_like(openness))
+
+
+# ---------------------------------------------------------------------------
+# Observation: cube velocity
+# ---------------------------------------------------------------------------
+
+def cube_velocity(
+    env: ManagerBasedRLEnv,
+    cube_name: str,
+) -> torch.Tensor:
+    """Cube linear velocity (N, 3).  Returns zeros when parked.
+
+    Gives the policy explicit awareness of whether the cube is moving
+    (bouncing/falling) versus stationary (on belt, ready for grasp).
+    """
+    cube: RigidObject = env.scene[cube_name]
+    active = _cube_is_active(cube, env)
+    vel = cube.data.root_lin_vel_w
+    return torch.where(active[:, None], vel, torch.zeros_like(vel))
+
+
 def ee_to_green_distance_metric(
     env: ManagerBasedRLEnv,
     ee_cfg: SceneEntityCfg,
@@ -673,3 +835,31 @@ def ee_to_green_distance_metric(
     """Raw distance from grasp centre to green cube (for TensorBoard logging)."""
     ee = _grasp_center_w(env.scene[ee_cfg.name], ee_cfg)
     return torch.norm(env.scene[green_name].data.root_pos_w - ee, dim=-1)
+
+
+# ---------------------------------------------------------------------------
+# Conveyor penalty
+# ---------------------------------------------------------------------------
+
+def cube_off_conveyor_penalty(
+    env: ManagerBasedRLEnv,
+    green_name: str,
+    red_name: str,
+    bounds: ConveyorBounds,
+) -> torch.Tensor:
+    """Penalty (1.0) when any active cube is outside the conveyor region.
+
+    Checks Y bounds and Z threshold.  Returns per-env float in [0, 1].
+    """
+    penalty = torch.zeros(env.num_envs, device=env.device)
+    for name in (green_name, red_name):
+        cube: RigidObject = env.scene[name]
+        active = _cube_is_active(cube, env)
+        local = cube.data.root_pos_w - env.scene.env_origins
+        out_y = (local[:, 1] < bounds.y_min) | (local[:, 1] > bounds.y_max)
+        out_z = local[:, 2] < bounds.z_min
+        penalty = torch.where(active & (out_y | out_z), 1.0, penalty)
+    return penalty
+
+
+

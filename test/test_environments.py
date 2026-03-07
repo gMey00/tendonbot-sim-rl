@@ -16,11 +16,11 @@ import torch
 # ── Environment registry ─────────────────────────────────────────────────
 
 ALL_ENV_IDS: list[str] = [
-    "Template-Tensegrity-Pick-v0",
-    "Template-Tensegrity-Place-v0",
-    "Template-Tensegrity-Place-Play-v0",
-    "Template-Tensegrity-Place-Tendon-v0",
-    "Template-Tensegrity-Place-Tendon-Play-v0",
+    "Template-Tensegrity-Cube-Sort-v0",
+    "Template-Tensegrity-Cube-Place-v0",
+    "Template-Tensegrity-Cube-Place-Play-v0",
+    "Template-Tensegrity-Cube-Place-Tendon-v0",
+    "Template-Tensegrity-Cube-Place-Tendon-Play-v0",
     "Template-Tensegrity-Reach-v0",
     "Template-Tensegrity-Reach-Play-v0",
     "Template-Tensegrity-Reach-Tendon-v0",

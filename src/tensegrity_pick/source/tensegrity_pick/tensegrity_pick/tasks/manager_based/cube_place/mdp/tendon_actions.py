@@ -9,6 +9,3 @@ from tensegrity_pick.robots.tendon_actuator import (  # noqa: F401
     TendonEffortAction,
     TendonEffortActionCfg,
 )
-
-# Keep old private name for code that referenced it
-_DEFAULT_JACOBIAN_TRANSPOSE = DEFAULT_JACOBIAN_TRANSPOSE

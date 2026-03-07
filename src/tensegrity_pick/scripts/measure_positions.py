@@ -7,7 +7,7 @@ documentation use correct geometry.
 Usage::
 
     conda run -n env_isaaclab python3 scripts/measure_positions.py \
-        --task Template-Tensegrity-Place-v0 --num_envs 1 --headless
+        --task Template-Tensegrity-Cube-Place-v0 --num_envs 1 --headless
 
 Re-run this script and update GEOMETRY.md whenever the robot, gripper, or
 mount configuration changes.
@@ -19,7 +19,7 @@ from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Measure body positions.")
 parser.add_argument("--num_envs", type=int, default=1)
-parser.add_argument("--task", type=str, default="Template-Tensegrity-Place-v0")
+parser.add_argument("--task", type=str, default="Template-Tensegrity-Cube-Place-v0")
 parser.add_argument("--settle_steps", type=int, default=50,
                     help="Number of zero-action steps before measuring.")
 AppLauncher.add_app_launcher_args(parser)

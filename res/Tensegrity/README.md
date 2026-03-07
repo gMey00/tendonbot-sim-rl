@@ -247,5 +247,5 @@ ForceX/IMUX links/joints are scaffolds for Gazebo-plugins, which can not be used
 
 - [Tendon simulation docs](../../doc/tendon_simulation.md) — physics model, software architecture, validation
 - [Reach task](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/tensegrity_reach/README.md) — EE pose tracking
-- [Place task](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/tensegrity_place/README.md) — cube pick-and-place
+- [Cube Place task](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/README.md) — cube pick-and-place
 - [Source code](../../src/tensegrity_pick/README.md) — Isaac Lab extension, robot configs

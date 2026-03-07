@@ -66,7 +66,7 @@ agent:
   time_limit_bootstrap: False
   # logging and checkpoint
   experiment:
-    directory: "tensegrity_place"
+    directory: "cube_place"
     experiment_name: ""
     write_interval: 250
     checkpoint_interval: 5000
@@ -76,5 +76,5 @@ agent:
 # https://skrl.readthedocs.io/en/latest/api/trainers/sequential.html
 trainer:
   class: SequentialTrainer
-  timesteps: 1000000
+  timesteps: 300000
   environment_info: log

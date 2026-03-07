@@ -100,7 +100,7 @@ from isaaclab.scene import InteractiveScene  # noqa: E402
 from isaaclab.sim import SimulationCfg, SimulationContext  # noqa: E402
 from isaaclab.utils.math import quat_apply  # noqa: E402
 
-from tensegrity_pick.tasks.manager_based.tensegrity_pick.proj_base_scene_cfg import (  # noqa: E402
+from tensegrity_pick.tasks.manager_based.shared.proj_base_scene_cfg import (  # noqa: E402
     CONVEYOR_SURFACE_HEIGHT_M,
     CONVEYOR_WIDTH_M,
     DRUM_CENTER_TO_CONVEYOR_EDGE_M,

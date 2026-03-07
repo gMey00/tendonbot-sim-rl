@@ -11,7 +11,7 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.utils import configclass
 
-from ..tensegrity_pick.proj_base_scene_cfg import (
+from ..shared.proj_base_scene_cfg import (
     ProjBaseSceneCfg,
     CONVEYOR_SURFACE_HEIGHT_M,
     ROBOT_MOUNT_HEIGHT_M,

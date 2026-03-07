@@ -21,12 +21,14 @@ from .mdp.rewards import GRASP_CENTER_LOCAL_Z
 
 EE_BODY_NAME = "tool_link_0"
 GREEN_CUBE_KEY = "green_cube"
+FINGER_JOINT_NAME = "finger_joint"
 
 # Physics-based grasp detection thresholds
 # Aligned with lift reward gating (belt + 0.06) to avoid false-positive
 # "grasp" at reset (spawn z is belt + [0.03, 0.05]).
 GRASP_PROXIMITY_THRESHOLD = 0.10
 GRASP_LIFT_THRESHOLD = 0.06
+GRASP_MIN_CLOSURE = 0.20  # ~25% of 0.7854; reject open-gripper bumps
 BELT_HEIGHT = CONVEYOR_SURFACE_HEIGHT_M
 
 
@@ -43,6 +45,7 @@ class TensegrityPlaceEnv(ManagerBasedRLEnv):
 
         robot: Articulation = self.scene["robot"]
         self._ee_body_idx: int = robot.body_names.index(EE_BODY_NAME)
+        self._finger_joint_idx: int = robot.joint_names.index(FINGER_JOINT_NAME)
 
         # Latched flag: True once the cube has been grasped at least once
         # this episode.  Prevents reward-hacking (pushing cube into drum
@@ -70,6 +73,7 @@ class TensegrityPlaceEnv(ManagerBasedRLEnv):
     def grasp_active(self) -> torch.Tensor:
         """Per-env bool: True when the cube is physically held by the gripper."""
         green: RigidObject = self.scene[GREEN_CUBE_KEY]
+        robot: Articulation = self.scene["robot"]
 
         gc_pos = self._grasp_center_pos()
         cube_pos = green.data.root_pos_w
@@ -79,7 +83,10 @@ class TensegrityPlaceEnv(ManagerBasedRLEnv):
         is_lifted = local_z > (BELT_HEIGHT + GRASP_LIFT_THRESHOLD)
         is_close = distance < GRASP_PROXIMITY_THRESHOLD
 
-        return is_close & is_lifted
+        finger_pos = robot.data.joint_pos[:, self._finger_joint_idx]
+        is_closing = finger_pos > GRASP_MIN_CLOSURE
+
+        return is_close & is_lifted & is_closing
 
     @property
     def was_grasped(self) -> torch.Tensor:

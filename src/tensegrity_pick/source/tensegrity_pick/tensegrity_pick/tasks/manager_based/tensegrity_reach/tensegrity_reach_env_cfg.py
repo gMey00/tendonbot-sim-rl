@@ -24,7 +24,7 @@ from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 from . import mdp
 
 # Reuse the base scene (ground, lights, robot, conveyor, drum)
-from ..tensegrity_pick.proj_base_scene_cfg import ProjBaseSceneCfg
+from ..shared.proj_base_scene_cfg import ProjBaseSceneCfg
 
 
 ##

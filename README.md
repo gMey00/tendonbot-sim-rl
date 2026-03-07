@@ -40,11 +40,13 @@ torques via the Jacobian transpose.
 
 | Gym ID | Description |
 |--------|-------------|
-| `Template-Tensegrity-Pick-v0` | Cube sorting — pick green cubes off a conveyor, ignore red |
+| `Template-Tensegrity-Cube-Sort-v0` | Cube sorting — pick green cubes off a conveyor, ignore red |
 | `Template-Tensegrity-Reach-v0` | Move end-effector to a random 6-DOF target pose |
 | `Template-Tensegrity-Reach-Tendon-v0` | Reach with tendon-driven arm (performance comparison) |
-| `Template-Tensegrity-Place-v0` | Place a green cube into a drum (with curriculum) |
-| `Template-Tensegrity-Place-Tendon-v0` | Place with tendon-driven arm |
+| `Template-Tensegrity-Cube-Place-v0` | Place a green cube into a drum (with curriculum) |
+| `Template-Tensegrity-Cube-Place-Tendon-v0` | Cube Place with tendon-driven arm |
+| `Template-Tensegrity-Shirt-Place-v0` | *(template)* Shirt place — cloth simulation |
+| `Template-Tensegrity-Shirt-Sort-v0` | *(template)* Shirt sort — cloth simulation |
 
 Play/eval variants (`*-Play-v0`) are registered for all applicable tasks.
 

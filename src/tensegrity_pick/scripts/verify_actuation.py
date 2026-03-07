@@ -21,7 +21,7 @@ Usage (with rendering)::
 Usage (headless)::
 
     conda run -n env_isaaclab python3 scripts/verify_actuation.py \
-        --task Template-Tensegrity-Place-v0 --num_envs 1 --headless
+        --task Template-Tensegrity-Cube-Place-v0 --num_envs 1 --headless
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Hardcoded pick-and-place verification.")
-parser.add_argument("--task", type=str, default="Template-Tensegrity-Place-v0")
+parser.add_argument("--task", type=str, default="Template-Tensegrity-Cube-Place-v0")
 parser.add_argument("--num_envs", type=int, default=1)
 parser.add_argument("--disable_fabric", action="store_true", default=False)
 AppLauncher.add_app_launcher_args(parser)
@@ -441,7 +441,7 @@ def main() -> None:
     # At default pose the gc hangs at x ≈ 0.19 (40 mm offset from mount
     # at x=0.15 due to URDF geometry).  Spawning the cube at x=0.19
     # centres it between the open fingers for a symmetric grasp.
-    from tensegrity_pick.tasks.manager_based.tensegrity_place.mdp.rewards import SpawnBox
+    from tensegrity_pick.tasks.manager_based.cube_place.mdp.rewards import SpawnBox
     fixed_spawn = SpawnBox(
         x_range=(GC_REST_X, GC_REST_X),
         y_range=(0.00, 0.00),

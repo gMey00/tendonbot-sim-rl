@@ -34,11 +34,11 @@ Usage::
 
     cd src/tensegrity_pick
     conda run -n env_isaaclab python3 scripts/tune_pd_gains.py \\
-        --task Template-Tensegrity-Place-v0 --num_envs 1
+        --task Template-Tensegrity-Cube-Place-v0 --num_envs 1
 
     # headless (faster):
     conda run -n env_isaaclab python3 scripts/tune_pd_gains.py \\
-        --task Template-Tensegrity-Place-v0 --num_envs 1 --headless
+        --task Template-Tensegrity-Cube-Place-v0 --num_envs 1 --headless
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ from dataclasses import dataclass
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="PD gain tuning for the tensegrity robot.")
-parser.add_argument("--task", type=str, default="Template-Tensegrity-Place-v0")
+parser.add_argument("--task", type=str, default="Template-Tensegrity-Cube-Place-v0")
 parser.add_argument("--num_envs", type=int, default=1)
 parser.add_argument("--disable_fabric", action="store_true", default=False)
 AppLauncher.add_app_launcher_args(parser)
@@ -809,7 +809,7 @@ def main() -> None:
     env_cfg.terminations.joint_vel_diverged.params["max_velocity"] = 1e6
 
     # Fix cube spawn under grasp centre
-    from tensegrity_pick.tasks.manager_based.tensegrity_place.mdp.rewards import SpawnBox
+    from tensegrity_pick.tasks.manager_based.cube_place.mdp.rewards import SpawnBox
     env_cfg.events.reset_cubes.params["spawn_box"] = SpawnBox(
         x_range=(GC_REST_X, GC_REST_X),
         y_range=(0.00, 0.00),
