@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate training result plots for the Cube Place task README.
+"""Generate training result plots for the Tensegrity Reach task README.
 
 Reads TensorBoard event files from the latest training run and produces
 publication-quality figures saved into the task's ``figures/`` directory.
@@ -7,10 +7,10 @@ publication-quality figures saved into the task's ``figures/`` directory.
 Usage
 -----
     cd src/tensegrity_pick
-    python scripts/plot_training_results.py [--run DIR_NAME]
+    python scripts/plot_reach_training_results.py [--run DIR_NAME]
 
 If ``--run`` is omitted the script auto-selects the latest ``*_ppo_torch``
-directory under ``logs/skrl/cube_place/``.
+directory under ``logs/skrl/tensegrity_reach/``.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Sequence
+from typing import Final
 
 import matplotlib
 matplotlib.use("Agg")
@@ -33,20 +33,17 @@ from tensorboard.backend.event_processing.event_accumulator import (
 # Constants
 # ---------------------------------------------------------------------------
 
-LOGS_ROOT: Final = Path("logs/skrl/cube_place")
+LOGS_ROOT: Final = Path("logs/skrl/tensegrity_reach")
 FIGURES_DIR: Final = Path(
     "source/tensegrity_pick/tensegrity_pick/tasks/"
-    "manager_based/cube_place/figures"
+    "manager_based/tensegrity_reach/figures"
 )
 
-CURRICULUM_RED_CUBE_STEP: Final = 100_000
-CURRICULUM_REGULARISATION_STEP: Final = 200_000
+CURRICULUM_REGULARISATION_STEP: Final = 12_000
 
-SMOOTHING_WEIGHT: Final = 0.92  # EMA smoothing factor for noisy curves
+SMOOTHING_WEIGHT: Final = 0.85
 DPI: Final = 180
 FIGSIZE_WIDE: Final = (11, 4.5)
-FIGSIZE_TALL: Final = (11, 5.5)
-FIGSIZE_SQUARE: Final = (6, 5)
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +71,6 @@ PALETTE = Palette()
 # ---------------------------------------------------------------------------
 
 def resolve_latest_run(root: Path) -> Path:
-    """Return the path to the most recent ``*_ppo_torch`` run directory."""
     candidates = sorted(root.glob("*_ppo_torch"))
     if not candidates:
         raise FileNotFoundError(f"No PPO runs found under {root}")
@@ -85,7 +81,6 @@ def load_scalars(
     accumulator: EventAccumulator,
     tag: str,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Extract (steps, values) arrays for *tag*, or empty arrays if absent."""
     if tag not in accumulator.Tags().get("scalars", []):
         return np.array([]), np.array([])
     events = accumulator.Scalars(tag)
@@ -95,7 +90,6 @@ def load_scalars(
 
 
 def smooth(values: np.ndarray, weight: float = SMOOTHING_WEIGHT) -> np.ndarray:
-    """Exponential moving average with *weight* ∈ (0, 1)."""
     if len(values) == 0:
         return values
     smoothed = np.empty_like(values)
@@ -105,16 +99,11 @@ def smooth(values: np.ndarray, weight: float = SMOOTHING_WEIGHT) -> np.ndarray:
     return smoothed
 
 
-def add_curriculum_markers(axis: plt.Axes) -> None:
-    """Add vertical dashed lines for curriculum events."""
-    axis.axvline(
-        steps_to_k(CURRICULUM_RED_CUBE_STEP),
-        color=PALETTE.red,
-        linestyle="--",
-        linewidth=0.9,
-        alpha=0.7,
-        label="_nolegend_",
-    )
+def steps_to_k(steps: np.ndarray) -> np.ndarray:
+    return steps / 1000.0
+
+
+def add_curriculum_marker(axis: plt.Axes) -> None:
     axis.axvline(
         steps_to_k(CURRICULUM_REGULARISATION_STEP),
         color=PALETTE.grey,
@@ -126,19 +115,7 @@ def add_curriculum_markers(axis: plt.Axes) -> None:
 
 
 def annotate_curriculum(axis: plt.Axes, y_frac: float = 0.95) -> None:
-    """Place text labels for curriculum events at *y_frac* of the axis."""
     transform = axis.get_xaxis_transform()
-    axis.text(
-        steps_to_k(CURRICULUM_RED_CUBE_STEP),
-        y_frac,
-        " Red cube",
-        transform=transform,
-        fontsize=7.5,
-        color=PALETTE.red,
-        va="top",
-        ha="left",
-        alpha=0.85,
-    )
     axis.text(
         steps_to_k(CURRICULUM_REGULARISATION_STEP),
         y_frac,
@@ -152,17 +129,7 @@ def annotate_curriculum(axis: plt.Axes, y_frac: float = 0.95) -> None:
     )
 
 
-def steps_to_k(steps: np.ndarray) -> np.ndarray:
-    """Convert steps to thousands for cleaner x-axis labels."""
-    return steps / 1000.0
-
-
-def finalise(
-    figure: plt.Figure,
-    path: Path,
-    tight: bool = True,
-) -> None:
-    """Save figure and close."""
+def finalise(figure: plt.Figure, path: Path, tight: bool = True) -> None:
     if tight:
         figure.tight_layout()
     figure.savefig(path, dpi=DPI, bbox_inches="tight", facecolor="white")
@@ -174,10 +141,7 @@ def finalise(
 # Plot functions
 # ---------------------------------------------------------------------------
 
-def plot_total_reward(
-    accumulator: EventAccumulator,
-    output: Path,
-) -> None:
+def plot_total_reward(accumulator: EventAccumulator, output: Path) -> None:
     """Fig 1 — Total episode reward with min/max envelope."""
     steps_mean, values_mean = load_scalars(accumulator, "Reward / Total reward (mean)")
     _, values_max = load_scalars(accumulator, "Reward / Total reward (max)")
@@ -188,17 +152,17 @@ def plot_total_reward(
 
     ax.fill_between(
         x,
-        smooth(values_min, 0.85),
-        smooth(values_max, 0.85),
+        smooth(values_min, 0.80),
+        smooth(values_max, 0.80),
         alpha=0.15,
         color=PALETTE.blue,
         linewidth=0,
     )
     ax.plot(x, smooth(values_mean), color=PALETTE.blue, linewidth=1.8, label="Mean")
-    ax.plot(x, smooth(values_max, 0.85), color=PALETTE.blue, linewidth=0.6, alpha=0.5, linestyle="--", label="Max")
-    ax.plot(x, smooth(values_min, 0.85), color=PALETTE.blue, linewidth=0.6, alpha=0.5, linestyle=":", label="Min")
+    ax.plot(x, smooth(values_max, 0.80), color=PALETTE.blue, linewidth=0.6, alpha=0.5, linestyle="--", label="Max")
+    ax.plot(x, smooth(values_min, 0.80), color=PALETTE.blue, linewidth=0.6, alpha=0.5, linestyle=":", label="Min")
 
-    add_curriculum_markers(ax)
+    add_curriculum_marker(ax)
     annotate_curriculum(ax)
 
     ax.set_xlabel("Training Steps (×1 000)", fontsize=10)
@@ -211,44 +175,37 @@ def plot_total_reward(
     finalise(fig, output)
 
 
-def plot_task_success(
-    accumulator: EventAccumulator,
-    output: Path,
-) -> None:
-    """Fig 2 — Grasp rate and placement success (green_in_target)."""
-    steps_grasp, values_grasp = load_scalars(accumulator, "Info / Metrics/grasp_rate")
-    steps_green, values_green = load_scalars(accumulator, "Info / Episode_Reward/green_in_target")
+def plot_task_success(accumulator: EventAccumulator, output: Path) -> None:
+    """Fig 2 — Goal reached rate and fine position tracking."""
+    steps_goal, values_goal = load_scalars(accumulator, "Info / Episode_Reward/goal_reached")
+    steps_prox, values_prox = load_scalars(accumulator, "Info / Episode_Reward/end_effector_position_tracking_proximity")
 
     fig, ax_left = plt.subplots(figsize=FIGSIZE_WIDE)
     ax_right = ax_left.twinx()
 
-    # Grasp rate (left axis, %)
     ax_left.plot(
-        steps_to_k(steps_grasp),
-        smooth(values_grasp * 100),
+        steps_to_k(steps_goal),
+        smooth(values_goal),
         color=PALETTE.green,
         linewidth=1.8,
-        label="Grasp Rate",
+        label="Goal Reached",
     )
-    ax_left.set_ylabel("Grasp Rate (%)", fontsize=10, color=PALETTE.green)
+    ax_left.set_ylabel("Goal Reached Reward", fontsize=10, color=PALETTE.green)
     ax_left.tick_params(axis="y", labelcolor=PALETTE.green)
-    ax_left.set_ylim(-5, 105)
 
-    # Green in target (right axis)
     ax_right.plot(
-        steps_to_k(steps_green),
-        smooth(values_green),
+        steps_to_k(steps_prox),
+        smooth(values_prox),
         color=PALETTE.blue,
         linewidth=1.8,
-        label="Green in Target",
+        label="Position Proximity",
     )
-    ax_right.set_ylabel("Green-in-Target Reward", fontsize=10, color=PALETTE.blue)
+    ax_right.set_ylabel("Fine Position Reward", fontsize=10, color=PALETTE.blue)
     ax_right.tick_params(axis="y", labelcolor=PALETTE.blue)
 
-    add_curriculum_markers(ax_left)
+    add_curriculum_marker(ax_left)
     annotate_curriculum(ax_left)
 
-    # Combined legend
     lines_left, labels_left = ax_left.get_legend_handles_labels()
     lines_right, labels_right = ax_right.get_legend_handles_labels()
     ax_left.legend(
@@ -267,19 +224,16 @@ def plot_task_success(
     finalise(fig, output)
 
 
-def plot_reward_decomposition(
-    accumulator: EventAccumulator,
-    output: Path,
-) -> None:
-    """Fig 3 — Sequential skill acquisition shown through reward components."""
+def plot_reward_decomposition(accumulator: EventAccumulator, output: Path) -> None:
+    """Fig 3 — All reward components stacked vertically."""
     reward_terms: list[tuple[str, str, str]] = [
-        ("Info / Episode_Reward/reaching_object", "Reach", PALETTE.cyan),
-        ("Info / Episode_Reward/grasping", "Grasp", PALETTE.yellow),
-        ("Info / Episode_Reward/lifting_object", "Lift", PALETTE.orange),
-        ("Info / Episode_Reward/height_bonus", "Height", PALETTE.red),
-        ("Info / Episode_Reward/goal_tracking", "Transport", PALETTE.blue),
-        ("Info / Episode_Reward/release", "Release", PALETTE.purple),
-        ("Info / Episode_Reward/green_in_target", "Success", PALETTE.green),
+        ("Info / Episode_Reward/end_effector_position_tracking", "Pos. Error", PALETTE.red),
+        ("Info / Episode_Reward/end_effector_position_tracking_fine_grained", "Pos. Fine", PALETTE.cyan),
+        ("Info / Episode_Reward/end_effector_position_tracking_proximity", "Pos. Proximity", PALETTE.blue),
+        ("Info / Episode_Reward/end_effector_orientation_tracking", "Orient. Error", PALETTE.orange),
+        ("Info / Episode_Reward/goal_reached", "Goal Reached", PALETTE.green),
+        ("Info / Episode_Reward/action_rate", "Action Rate", PALETTE.grey),
+        ("Info / Episode_Reward/joint_vel", "Joint Velocity", PALETTE.purple),
     ]
 
     fig, axes = plt.subplots(
@@ -297,19 +251,17 @@ def plot_reward_decomposition(
         ax.fill_between(x, 0, smooth(values), alpha=0.25, color=colour, linewidth=0)
         ax.plot(x, smooth(values), color=colour, linewidth=1.4)
 
-        add_curriculum_markers(ax)
+        add_curriculum_marker(ax)
 
-        ax.set_ylabel(label, fontsize=9, fontweight="bold", rotation=0, labelpad=55, ha="right")
+        ax.set_ylabel(label, fontsize=9, fontweight="bold", rotation=0, labelpad=65, ha="right")
         ax.tick_params(axis="y", labelsize=8)
         ax.grid(True, alpha=0.2)
         ax.set_xlim(left=0)
-
-        # Keep y-axis clean
         ax.yaxis.set_major_locator(plt.MaxNLocator(3))
 
     axes[-1].set_xlabel("Training Steps (×1 000)", fontsize=10)
     fig.suptitle(
-        "Reward Decomposition — Sequential Skill Acquisition",
+        "Reward Decomposition",
         fontsize=12,
         fontweight="bold",
         y=0.98,
@@ -319,88 +271,45 @@ def plot_reward_decomposition(
     finalise(fig, output, tight=False)
 
 
-def plot_penalties(
-    accumulator: EventAccumulator,
-    output: Path,
-) -> None:
-    """Fig 4 — Penalty and regularisation terms with curriculum markers."""
-    penalty_terms: list[tuple[str, str, str]] = [
-        ("Info / Episode_Reward/base_velocity", "Base Velocity", PALETTE.blue),
-        ("Info / Episode_Reward/cube_off_conveyor", "Cube Off Conveyor", PALETTE.red),
-        ("Info / Episode_Reward/red_in_target", "Red in Target", PALETTE.orange),
-        ("Info / Episode_Reward/belt_contact", "Belt Contact", PALETTE.purple),
-        ("Info / Episode_Reward/action_rate", "Action Rate", PALETTE.cyan),
-        ("Info / Episode_Reward/joint_vel", "Joint Velocity", PALETTE.grey),
-        ("Info / Episode_Reward/joint_torque", "Joint Torque", PALETTE.yellow),
-    ]
-
-    fig, ax = plt.subplots(figsize=FIGSIZE_WIDE)
-
-    for tag, label, colour in penalty_terms:
-        steps, values = load_scalars(accumulator, tag)
-        if len(steps) == 0:
-            continue
-        ax.plot(steps_to_k(steps), smooth(values), color=colour, linewidth=1.3, label=label)
-
-    add_curriculum_markers(ax)
-    annotate_curriculum(ax, y_frac=0.08)
-
-    ax.set_xlabel("Training Steps (×1 000)", fontsize=10)
-    ax.set_ylabel("Episode Penalty", fontsize=10)
-    ax.set_title("Penalties & Regularisation", fontsize=12, fontweight="bold")
-    ax.legend(loc="lower left", fontsize=8, framealpha=0.9, ncol=2)
-    ax.grid(True, alpha=0.3)
-    ax.set_xlim(left=0)
-
-    finalise(fig, output)
-
-
-def plot_policy_diagnostics(
-    accumulator: EventAccumulator,
-    output: Path,
-) -> None:
-    """Fig 5 — Policy standard deviation, losses, and learning rate."""
+def plot_policy_diagnostics(accumulator: EventAccumulator, output: Path) -> None:
+    """Fig 4 — Policy standard deviation, losses, and learning rate."""
     fig, axes = plt.subplots(2, 2, figsize=(11, 7))
 
-    # (a) Policy std
     ax = axes[0, 0]
     steps, values = load_scalars(accumulator, "Policy / Standard deviation")
     ax.plot(steps_to_k(steps), smooth(values), color=PALETTE.blue, linewidth=1.4)
-    add_curriculum_markers(ax)
+    add_curriculum_marker(ax)
     ax.set_title("Policy Std. Deviation", fontsize=10, fontweight="bold")
     ax.set_ylabel("σ", fontsize=10)
     ax.grid(True, alpha=0.3)
 
-    # (b) Policy loss
     ax = axes[0, 1]
     steps, values = load_scalars(accumulator, "Loss / Policy loss")
     ax.plot(steps_to_k(steps), smooth(values), color=PALETTE.green, linewidth=1.4)
-    add_curriculum_markers(ax)
+    add_curriculum_marker(ax)
     ax.set_title("Policy (Surrogate) Loss", fontsize=10, fontweight="bold")
     ax.grid(True, alpha=0.3)
 
-    # (c) Value loss
     ax = axes[1, 0]
     steps, values = load_scalars(accumulator, "Loss / Value loss")
     ax.plot(steps_to_k(steps), smooth(values), color=PALETTE.orange, linewidth=1.4)
-    add_curriculum_markers(ax)
+    add_curriculum_marker(ax)
     ax.set_title("Value Function Loss", fontsize=10, fontweight="bold")
     ax.set_xlabel("Steps (×1 000)", fontsize=10)
     ax.set_ylabel("MSE", fontsize=10)
     ax.grid(True, alpha=0.3)
 
-    # (d) Learning rate
     ax = axes[1, 1]
     steps, values = load_scalars(accumulator, "Learning / Learning rate")
     ax.plot(steps_to_k(steps), values, color=PALETTE.purple, linewidth=1.4)
-    add_curriculum_markers(ax)
+    add_curriculum_marker(ax)
     ax.set_title("Learning Rate (KL-adaptive)", fontsize=10, fontweight="bold")
     ax.set_xlabel("Steps (×1 000)", fontsize=10)
     ax.grid(True, alpha=0.3)
 
     for row in axes:
-        for ax in row:
-            ax.set_xlim(left=0)
+        for a in row:
+            a.set_xlim(left=0)
 
     fig.suptitle(
         "Policy & Training Diagnostics",
@@ -412,33 +321,20 @@ def plot_policy_diagnostics(
     finalise(fig, output)
 
 
-def plot_converged_summary(
-    accumulator: EventAccumulator,
-    output: Path,
-) -> None:
-    """Fig 6 — Final converged performance bar chart."""
+def plot_converged_summary(accumulator: EventAccumulator, output: Path) -> None:
+    """Fig 5 — Final converged performance bar chart."""
     reward_tags: list[tuple[str, str]] = [
-        ("Info / Episode_Reward/green_in_target", "Success"),
-        ("Info / Episode_Reward/goal_tracking", "Transport"),
-        ("Info / Episode_Reward/arm_utilization", "Arm Use"),
-        ("Info / Episode_Reward/grasping", "Grasp"),
-        ("Info / Episode_Reward/reaching_object", "Reach"),
-        ("Info / Episode_Reward/release", "Release"),
-        ("Info / Episode_Reward/goal_tracking_fine", "Fine Pos."),
-        ("Info / Episode_Reward/lifting_object", "Lift"),
-        ("Info / Episode_Reward/height_bonus", "Height"),
+        ("Info / Episode_Reward/goal_reached", "Goal Reached"),
+        ("Info / Episode_Reward/end_effector_position_tracking_proximity", "Pos. Proximity"),
+        ("Info / Episode_Reward/end_effector_position_tracking_fine_grained", "Pos. Fine"),
     ]
     penalty_tags: list[tuple[str, str]] = [
-        ("Info / Episode_Reward/cube_off_conveyor", "Cube Off"),
-        ("Info / Episode_Reward/base_velocity", "Base Vel."),
-        ("Info / Episode_Reward/red_in_target", "Red in Drum"),
-        ("Info / Episode_Reward/belt_contact", "Belt"),
-        ("Info / Episode_Reward/joint_torque", "Torque"),
-        ("Info / Episode_Reward/action_rate", "Act. Rate"),
-        ("Info / Episode_Reward/joint_vel", "Jnt. Vel"),
+        ("Info / Episode_Reward/end_effector_position_tracking", "Pos. Error"),
+        ("Info / Episode_Reward/end_effector_orientation_tracking", "Orient. Error"),
+        ("Info / Episode_Reward/action_rate", "Action Rate"),
+        ("Info / Episode_Reward/joint_vel", "Joint Velocity"),
     ]
 
-    # Average over last 10% of steps
     def final_mean(tag: str) -> float:
         steps, values = load_scalars(accumulator, tag)
         if len(values) == 0:
@@ -453,13 +349,12 @@ def plot_converged_summary(
 
     fig, (ax_r, ax_p) = plt.subplots(
         1, 2,
-        figsize=(12, 4.5),
-        gridspec_kw={"width_ratios": [1.3, 1]},
+        figsize=(12, 4.0),
+        gridspec_kw={"width_ratios": [1.0, 1.3]},
     )
 
-    # Positive rewards
     y_pos = np.arange(len(reward_labels))
-    bars_r = ax_r.barh(y_pos, reward_values, color=PALETTE.green, alpha=0.8, height=0.65)
+    bars_r = ax_r.barh(y_pos, reward_values, color=PALETTE.green, alpha=0.8, height=0.55)
     ax_r.set_yticks(y_pos)
     ax_r.set_yticklabels(reward_labels, fontsize=9)
     ax_r.set_xlabel("Mean Episode Reward (last 10%)", fontsize=9)
@@ -469,17 +364,16 @@ def plot_converged_summary(
 
     for bar, val in zip(bars_r, reward_values):
         ax_r.text(
-            bar.get_width() + max(reward_values) * 0.01,
+            bar.get_width() + max(max(reward_values), 0.01) * 0.02,
             bar.get_y() + bar.get_height() / 2,
-            f"{val:.2f}",
+            f"{val:.3f}",
             va="center",
             fontsize=8,
             color=PALETTE.dark,
         )
 
-    # Penalties (negative values)
     y_neg = np.arange(len(penalty_labels))
-    bars_p = ax_p.barh(y_neg, penalty_values, color=PALETTE.red, alpha=0.8, height=0.65)
+    bars_p = ax_p.barh(y_neg, penalty_values, color=PALETTE.red, alpha=0.8, height=0.55)
     ax_p.set_yticks(y_neg)
     ax_p.set_yticklabels(penalty_labels, fontsize=9)
     ax_p.set_xlabel("Mean Episode Penalty (last 10%)", fontsize=9)
@@ -488,7 +382,7 @@ def plot_converged_summary(
     ax_p.invert_yaxis()
 
     for bar, val in zip(bars_p, penalty_values):
-        offset = min(penalty_values) * 0.02
+        offset = min(min(penalty_values), -0.01) * 0.02
         ax_p.text(
             bar.get_width() + offset if val >= 0 else bar.get_width() - abs(offset),
             bar.get_y() + bar.get_height() / 2,
@@ -518,7 +412,7 @@ def main() -> None:
         "--run",
         type=str,
         default=None,
-        help="Specific run directory name (e.g. 2026-03-06_21-05-45_ppo_torch)",
+        help="Specific run directory name (e.g. 2026-02-18_23-48-54_ppo_torch)",
     )
     args = parser.parse_args()
 
@@ -548,11 +442,10 @@ def main() -> None:
     plot_total_reward(accumulator, FIGURES_DIR / "01_total_reward.png")
     plot_task_success(accumulator, FIGURES_DIR / "02_task_success.png")
     plot_reward_decomposition(accumulator, FIGURES_DIR / "03_reward_decomposition.png")
-    plot_penalties(accumulator, FIGURES_DIR / "04_penalties.png")
-    plot_policy_diagnostics(accumulator, FIGURES_DIR / "05_policy_diagnostics.png")
-    plot_converged_summary(accumulator, FIGURES_DIR / "06_converged_breakdown.png")
+    plot_policy_diagnostics(accumulator, FIGURES_DIR / "04_policy_diagnostics.png")
+    plot_converged_summary(accumulator, FIGURES_DIR / "05_converged_breakdown.png")
 
-    print("Done — 6 figures generated.")
+    print("Done — 5 figures generated.")
 
 
 if __name__ == "__main__":
