@@ -47,7 +47,7 @@ GRASP_BODIES = [EE_LINK]
 CUBES_KEY = "cubes"
 
 _SPAWN_BOX = task_mdp.SpawnBox(
-    x_range=(CONVEYOR_START_X + 0.10, CONVEYOR_START_X + 1.80),
+    x_range=(CONVEYOR_START_X + 1.50, CONVEYOR_START_X + 2.70),
     y_range=(-0.20, 0.20),
     z_range=(BELT_HEIGHT_M + 0.03, BELT_HEIGHT_M + 0.05),
 )
@@ -256,11 +256,11 @@ class EventsCfg:
         },
     )
 
-    # Stage 1: slow belt speed 0.1-0.3 m/s
+    # Stage 1: moderate belt speed 0.2-0.5 m/s
     sample_belt_speed = EventTerm(
         func=task_mdp.sample_and_store_belt_speed,
         mode="reset",
-        params={"high": 0.3, "low": 0.1, "key": "belt_speed"},
+        params={"high": 0.5, "low": 0.2, "key": "belt_speed"},
     )
 
     apply_conveyor = EventTerm(
@@ -291,16 +291,29 @@ class RewardsCfg:
       Re-orient (2) > Reach (1)
     """
 
-    # ── 1. Reach (gated: only when not holding) ──────────────────────
+    # ── 1a. Reach coarse (long-range gradient) ───────────────────────
     reaching_object = RewTerm(
         func=task_rew.cube_ee_distance,
-        weight=1.0,
+        weight=2.0,
         params={
             "ee_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES),
             "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
             "collection_name": CUBES_KEY,
             "label": TARGET_LABEL,
-            "std": 0.1,
+            "std": 2.0,
+        },
+    )
+
+    # ── 1b. Reach fine (near-field gradient) ─────────────────────────
+    reaching_object_fine = RewTerm(
+        func=task_rew.cube_ee_distance,
+        weight=5.0,
+        params={
+            "ee_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES),
+            "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
+            "collection_name": CUBES_KEY,
+            "label": TARGET_LABEL,
+            "std": 0.5,
         },
     )
 
@@ -388,7 +401,7 @@ class RewardsCfg:
     # ── 5. Release ───────────────────────────────────────────────────
     release = RewTerm(
         func=task_rew.release_above_target,
-        weight=8.0,
+        weight=25.0,
         params={
             "collection_name": CUBES_KEY,
             "label": TARGET_LABEL,
@@ -409,7 +422,7 @@ class RewardsCfg:
             "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
             "collection_name": CUBES_KEY,
             "label": TARGET_LABEL,
-            "std": 0.3,
+            "std": 2.0,
         },
     )
 
@@ -438,7 +451,7 @@ class RewardsCfg:
     # ── Arm utilisation bonus ────────────────────────────────────────
     arm_utilization = RewTerm(
         func=shared_rew.arm_velocity_bonus,
-        weight=1.5,
+        weight=0.5,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot", joint_names=["elbow_joint", "wrist_y_joint", "wrist_x_joint"],
@@ -561,7 +574,7 @@ class TensegrityCubeSortEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.physx.gpu_max_rigid_patch_count = 2**20
         self.sim.physx.gpu_collision_stack_size = 2**28
         self.sim.physx.gpu_found_lost_aggregate_pairs_capacity = 1024 * 1024 * 4
-        self.sim.physx.gpu_total_aggregate_pairs_capacity = 32 * 1024
+        self.sim.physx.gpu_total_aggregate_pairs_capacity = 64 * 1024
         self.sim.physx.friction_correlation_distance = 0.00625
 
 

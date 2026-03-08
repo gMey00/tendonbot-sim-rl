@@ -195,7 +195,7 @@ def cube_ee_distance(
     tip = dynamic_finger_tip_w(robot, ee_cfg, finger_cfg)
     pos, _idx, has_any = _nearest_active_by_label(env, tip, collection_name, label)
     distance = torch.norm(pos - tip, dim=-1)
-    proximity = 1.0 - torch.tanh(distance / std)
+    proximity = torch.exp(-distance / std)
     result = torch.where(has_any, proximity, torch.zeros_like(proximity))
     if hasattr(env, "grasp_active"):
         result = result * (~env.grasp_active).float()
@@ -217,7 +217,7 @@ def cube_grasp_reward(
     tip = dynamic_finger_tip_w(robot, ee_cfg, finger_cfg)
     pos, _idx, has_any = _nearest_active_by_label(env, tip, collection_name, label)
     distance = torch.norm(pos - tip, dim=-1)
-    proximity = 1.0 - torch.tanh(distance / std)
+    proximity = torch.exp(-distance / std)
 
     finger_pos = robot.data.joint_pos[:, finger_cfg.joint_ids[0]]
     closure = torch.clamp(finger_pos / FINGER_JOINT_CLOSE_POS, 0.0, 1.0)
@@ -411,7 +411,7 @@ def reorient_to_belt(
     tip = dynamic_finger_tip_w(robot, ee_cfg, finger_cfg)
     pos, _idx, has_any = _nearest_active_by_label(env, tip, collection_name, label)
     distance = torch.norm(pos - tip, dim=-1)
-    proximity = 1.0 - torch.tanh(distance / std)
+    proximity = torch.exp(-distance / std)
     result = torch.where(has_any, proximity, torch.zeros_like(proximity))
 
     # Only active when NOT holding a cube

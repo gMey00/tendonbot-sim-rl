@@ -375,9 +375,9 @@ component — a known consequence of manipulating cubes near the belt edge.
 
 ```bash
 cd src/tensegrity_pick
-conda run --no-capture-output -n env_isaaclab python3 scripts/plot_training_results.py
+conda run --no-capture-output -n env_isaaclab python3 scripts/plot_place_training_results.py
 # Or specify a run:
-conda run --no-capture-output -n env_isaaclab python3 scripts/plot_training_results.py \
+conda run --no-capture-output -n env_isaaclab python3 scripts/plot_place_training_results.py \
     --run 2026-03-06_21-05-45_ppo_torch
 ```
 
