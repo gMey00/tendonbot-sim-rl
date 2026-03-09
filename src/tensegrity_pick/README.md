@@ -23,8 +23,8 @@ simulation documentation.
 | Reach | [tensegrity_reach/README.md](source/tensegrity_pick/tensegrity_pick/tasks/manager_based/tensegrity_reach/README.md) |
 | Cube Place | [cube_place/README.md](source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/README.md) |
 | Cube Sort | [cube_sort/README.md](source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/README.md) |
-| Shirt Place | *(template — not yet implemented)* |
-| Shirt Sort | *(template — not yet implemented)* |
+| Shirt Place | [shirt_place/README.md](source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shirt_place/README.md) |
+| Shirt Sort | [shirt_sort/README.md](source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shirt_sort/README.md) |
 
 ### Related
 

@@ -12,6 +12,21 @@ belt, transport it to a target drum, and release it inside.
 
 ![Task Scene](figures/scene_setup.png)
 
+## Table of Contents
+
+- [Goal](#goal)
+- [Variants](#variants)
+- [Scene](#scene)
+- [Controlled Joints](#controlled-joints)
+- [Actions (6 dims)](#actions-6-dims)
+- [Observations](#observations)
+- [Rewards](#rewards)
+- [Terminations](#terminations)
+- [Simulation Parameters](#simulation-parameters)
+- [Training](#training)
+- [Running](#running)
+- [Related](#related)
+
 ## Goal
 
 Train an RL agent to perform a full pick → transport → place sequence with

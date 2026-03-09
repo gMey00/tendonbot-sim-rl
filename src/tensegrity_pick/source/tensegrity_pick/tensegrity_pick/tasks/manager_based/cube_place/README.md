@@ -9,6 +9,25 @@ cube that is introduced mid-training via curriculum.
 
 ![Task Scene](figures/scene_setup.png)
 
+## Table of Contents
+
+- [Goal](#goal)
+- [Variants](#variants)
+- [Scene](#scene)
+- [Controlled Joints](#controlled-joints)
+- [Actions](#actions)
+- [Observations (policy group)](#observations-policy-group)
+- [Rewards](#rewards)
+- [Terminations](#terminations)
+- [Curriculum](#curriculum)
+- [Reset Events](#reset-events)
+- [Simulation Parameters](#simulation-parameters)
+- [Training](#training)
+- [Design Decisions & Lessons Learned](#design-decisions--lessons-learned)
+- [Running](#running)
+- [Training Results](#training-results)
+- [Related](#related)
+
 ## Goal
 
 Train an RL agent to perform a full pick → transport → place sequence:

@@ -8,6 +8,25 @@ reachable by construction.
 
 ![Task Scene](figures/scene_setup.png)
 
+## Table of Contents
+
+- [Goal](#goal)
+- [Variants](#variants)
+- [Scene](#scene)
+- [Controlled Joints](#controlled-joints)
+- [Actions](#actions)
+- [Observations (policy group)](#observations-policy-group)
+- [Command Generator — FK-Sampled Pose](#command-generator--fk-sampled-pose)
+- [Rewards](#rewards)
+- [Terminations](#terminations)
+- [Curriculum](#curriculum)
+- [Reset Events](#reset-events)
+- [Simulation Parameters](#simulation-parameters)
+- [Training](#training)
+- [Running](#running)
+- [Training Results](#training-results)
+- [Related](#related)
+
 ## Goal
 
 Teach an RL agent to track arbitrary end-effector poses (position **and**

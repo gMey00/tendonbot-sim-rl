@@ -15,6 +15,25 @@ as a `RigidObjectCollection`.
 
 ![Scene Setup](./figures/scene_setup.png)
 
+## Table of Contents
+
+- [Goal](#goal)
+- [Variants](#variants)
+- [Scene](#scene)
+- [Controlled Joints](#controlled-joints)
+- [Actions (6 dims)](#actions-6-dims)
+- [Observations (policy group)](#observations-policy-group)
+- [Rewards](#rewards)
+- [Terminations](#terminations)
+- [Curriculum](#curriculum)
+- [Reset Events](#reset-events)
+- [Simulation Parameters](#simulation-parameters)
+- [Training](#training)
+- [Design Decisions & Lessons Learned](#design-decisions--lessons-learned)
+- [Running](#running)
+- [Training Results](#training-results)
+- [Related](#related)
+
 ## Goal
 
 Train an RL agent to sort cubes from a moving conveyor into a target drum:

@@ -1,11 +1,11 @@
 # Simulation and Reinforcement Learning for Autonomous Robotics with Isaac Sim
 
-![Isaac Sim](https://img.shields.io/badge/Isaac%20Sim-5.1.0-76b900?logo=nvidia)
-![Isaac Lab](https://img.shields.io/badge/Isaac%20Lab-latest-76b900?logo=nvidia)
-![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
-![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04-E95420?logo=ubuntu&logoColor=white)
-![License](https://img.shields.io/badge/License-BSD--3--Clause-blue)
-![RL Framework](https://img.shields.io/badge/RL-skrl%20%7C%20PPO-orange)
+[![Isaac Sim](https://img.shields.io/badge/Isaac%20Sim-5.1.0-76b900?logo=nvidia)](https://developer.nvidia.com/isaac-sim)
+[![Isaac Lab](https://img.shields.io/badge/Isaac%20Lab-latest-76b900?logo=nvidia)](https://github.com/isaac-sim/IsaacLab)
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04-E95420?logo=ubuntu&logoColor=white)](https://ubuntu.com/)
+[![License](https://img.shields.io/badge/License-BSD--3--Clause-blue)](https://opensource.org/licenses/BSD-3-Clause)
+[![RL Framework](https://img.shields.io/badge/RL-skrl%20%7C%20PPO-orange)](https://skrl.readthedocs.io/)
 
 > Reinforcement-learning environments for a ceiling-mounted **tensegrity manipulator** in
 > NVIDIA Isaac Sim / Isaac Lab.  The project provides PD-driven and **tendon-driven** robot
@@ -16,12 +16,17 @@
 
 ## Table of Contents
 
-- [About](#-about)
-- [Repository Structure](#-repository-structure)
-- [Prerequisites](#-prerequisites)
-- [Getting Started](#-getting-started)
-- [Documentation](#-documentation)
-- [Organisational](#-organisational)
+- [Simulation and Reinforcement Learning for Autonomous Robotics with Isaac Sim](#simulation-and-reinforcement-learning-for-autonomous-robotics-with-isaac-sim)
+  - [Table of Contents](#table-of-contents)
+  - [🚀 About](#-about)
+  - [📁 Repository Structure](#-repository-structure)
+  - [🔧 Prerequisites](#-prerequisites)
+  - [📝 Getting Started](#-getting-started)
+    - [Training](#training)
+    - [Evaluation](#evaluation)
+    - [Step Response Validation](#step-response-validation)
+  - [📚 Documentation](#-documentation)
+  - [🗓️ Organisational](#️-organisational)
 
 ---
 
