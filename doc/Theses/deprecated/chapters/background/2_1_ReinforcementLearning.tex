@@ -1,0 +1,159 @@
+%===================================================================%
+\section{Reinforcement Learning for Robotic Manipulation}
+\label{sec:rl_manipulation}
+%===================================================================%
+% ==========================================================
+% 2.1 Reinforcement Learning for Robotic Manipulation
+% Expanded with exploration/exploitation + sim2real considerations
+%
+% BibTeX keys:
+% SuttonBarto2018
+% Kober2013Survey
+% Schulman2015GAE
+% Schulman2017PPO
+% SerranoMunoz2023skrl
+% Tobin2017DomainRand
+% Peng2018DynamicsRand
+% ==========================================================
+
+
+Robotic manipulation requires generating control commands that achieve a goal while dealing with uncertainty,
+partial observability, contacts, and high-dimensional configuration spaces. Classical approaches rely on analytical
+models, trajectory optimisation, and carefully engineered feedback control. However, accurate models of frictional
+contact, deformable objects, or cluttered interactions are often difficult to obtain, and manually designing robust
+policies can be time-consuming. \ac{RL} provides an alternative: it enables learning control
+policies from interaction data by optimising a task objective, thereby reducing reliance on explicit modelling and
+hand-crafted strategies. General \ac{RL} background and formalism are treated in standard texts such as Sutton and
+Barto~\cite{SuttonBarto2018}, and robotics-specific perspectives (including practical constraints and common failure
+modes) are discussed in Kober \emph{et al.}~\cite{Kober2013Survey}.
+
+\paragraph{MDP viewpoint and partial observability.}
+A manipulation task can be modelled as an \ac{MDP}
+$\mathcal{M} = (\mathcal{S}, \mathcal{A}, P, r, \gamma)$, where $\mathcal{S}$ is the state space,
+$\mathcal{A}$ the action space, $P(s_{t+1}\mid s_t,a_t)$ the transition dynamics, $r(s_t,a_t)$ the reward,
+and $\gamma \in [0,1)$ the discount factor~\cite{SuttonBarto2018}.
+A policy $\pi_\theta(a\mid s)$ (parameterized by $\theta$) induces trajectories
+$(s_0,a_0,r_0,\ldots,s_T)$ and is trained to maximize the expected discounted return
+$J(\theta)=\mathbb{E}_{\pi_\theta}\!\left[\sum_{t=0}^{T}\gamma^t r_t\right]$~\cite{SuttonBarto2018}.
+In real manipulation systems, the full state $s_t$ is typically not directly accessible; instead, control is based on
+observations $o_t$ (e.g., proprioception, gripper state, pose estimates, perception features). This partial observability
+motivates careful observation design and, where appropriate, augmenting policies with memory (e.g., recurrent networks),
+or stacking observation histories to approximate the Markov property in practice~\cite{Kober2013Survey}.
+
+\paragraph{Key challenges in manipulation.}
+Three aspects commonly make \ac{RL} for manipulation demanding:
+(i) \textbf{continuous, high-dimensional control}, where actions may correspond to joint torques, velocities, or
+Cartesian increments for many degrees of freedom;
+(ii) \textbf{contact-rich and nonlinear dynamics}, where small modelling errors in friction or contact impulses can lead
+to qualitatively different outcomes; and
+(iii) \textbf{sparse or delayed feedback}, where success may only be measurable after long sequences of intermediate steps.
+Further practical constraints include safety, limited real-world interaction budgets, and the need for robustness across
+object variations and perception noise~\cite{Kober2013Survey}. These characteristics influence algorithm choice,
+reward design, termination conditions, and the role of simulation during training.
+
+\paragraph{Reward design and task specification.}
+In \ac{RL}, the reward function encodes the task objective. For manipulation, rewards are often composed of shaping terms
+(e.g., distance-to-target, alignment, grasp quality proxies) and sparse success signals (e.g., ``object lifted above
+height''). Well-shaped rewards can accelerate learning but risk biasing the learned behavior toward unintended shortcuts;
+conversely, sparse rewards better reflect the true objective but can make exploration difficult. Robotics \ac{RL} workflows
+therefore often iterate on reward definitions and termination criteria to balance learnability and task fidelity~\cite{Kober2013Survey,SuttonBarto2018}.
+
+\subsubsection{Learning objectives and algorithm families}
+\label{sec:rl_algorithm_families}
+
+For continuous control, modern deep \ac{RL} methods commonly use \emph{policy gradient} and \emph{actor--critic} approaches.
+Policy gradient methods directly optimise the policy parameters by ascending an estimate of $\nabla_\theta J(\theta)$,
+which naturally supports continuous actions through differentiable policy parameterizations~\cite{SuttonBarto2018}.
+Actor--critic methods introduce a learned critic (value function) that provides lower-variance learning signals for the actor,
+often improving stability and learning speed in practice~\cite{SuttonBarto2018}.
+A central quantity is the advantage function $A^\pi(s_t,a_t)$, which measures how much better an action is compared to the
+policy's baseline behaviour at a state. In practice, advantage estimates $\hat{A}_t$ are computed from value predictions
+and collected rollouts, and then used to weight policy updates~\cite{SuttonBarto2018}.
+
+\paragraph{Bias--variance trade-off in advantage estimation.}
+A practical challenge is balancing low-variance learning signals with accurate credit assignment over time.
+\ac{GAE} provides a widely used mechanism to interpolate between Monte Carlo returns
+and bootstrapped temporal-difference estimates by exponentially weighting temporal-difference residuals~\cite{Schulman2015GAE}.
+This improves learning stability in many continuous-control applications and is commonly paired with actor--critic training.
+
+\subsubsection{Exploration and data collection in manipulation}
+\label{sec:rl_exploration}
+
+A defining challenge in \ac{RL} is the \emph{exploration--exploitation trade-off}: the agent must explore sufficiently to
+discover high-reward behaviours while exploiting learned knowledge to improve performance~\cite{SuttonBarto2018}.
+In manipulation, exploration is complicated by (i) long horizons, (ii) sparse success signals, and (iii) irreversible or
+unsafe states (in real systems)~\cite{Kober2013Survey}. Common practical measures include:
+\begin{itemize}
+  \item \textbf{Stochastic policies and action sampling}, which induce exploratory behavior while still allowing
+  gradient-based optimization~\cite{SuttonBarto2018}.
+  \item \textbf{Reward shaping and curricula}, where training starts from simplified conditions (e.g., easier initial
+  object poses) and progressively increases difficulty to maintain a learnable signal~\cite{Kober2013Survey}.
+  \item \textbf{Episode resets and termination design}, which affect state visitation and can substantially change the
+  data distribution seen by the learner~\cite{Kober2013Survey}.
+\end{itemize}
+These aspects tie the learning algorithm closely to environment design: even a robust optimiser can fail if exploration
+is insufficient or if the reward/termination specification induces pathological behavior~\cite{Kober2013Survey,SuttonBarto2018}.
+
+\subsubsection{Simulation-to-reality considerations}
+\label{sec:rl_sim2real}
+
+\ac{RL} policies are frequently trained in simulation to avoid wear, risk, and slow data collection on real robots~\cite{Kober2013Survey}.
+However, transferring policies to the real world is challenging due to the \emph{reality gap}: discrepancies in geometry,
+contact parameters, actuator dynamics, sensor noise, and unmodeled effects can degrade performance.
+A common strategy is \textbf{domain randomization}, where visual and physical parameters are randomized during training so that
+the policy learns behaviors that are robust across a range of plausible conditions~\cite{Tobin2017DomainRand}.
+A closely related approach is \textbf{dynamics randomization}, which targets uncertainties in physical parameters (e.g., mass,
+friction, motor gains, delays) to improve transfer for control policies~\cite{Peng2018DynamicsRand}.
+In practice, these methods motivate designing training environments that reflect not only the nominal task but also a
+distribution of plausible perturbations, thereby improving robustness of learned manipulation policies when deployed outside
+the simulator~\cite{Kober2013Survey,Tobin2017DomainRand,Peng2018DynamicsRand}.
+
+\subsubsection{Proximal Policy Optimization (PPO)}
+\label{sec:ppo}
+
+Among actor--critic methods, \ac{PPO} is a popular choice due to its robustness and simplicity.
+\ac{PPO} performs iterative policy improvement by collecting trajectories with the current policy and updating the policy with a
+surrogate objective that discourages overly large steps in policy space~\cite{Schulman2017PPO}.
+Define the importance ratio
+$r_t(\theta)=\frac{\pi_\theta(a_t\mid s_t)}{\pi_{\theta_{\text{old}}}(a_t\mid s_t)}$.
+\ac{PPO} maximizes the clipped objective
+\begin{equation}
+  \mathcal{L}^{\text{CLIP}}(\theta)=
+  \mathbb{E}\left[
+    \min\left(
+      r_t(\theta)\hat{A}_t,\;
+      \text{clip}(r_t(\theta),1-\epsilon,1+\epsilon)\hat{A}_t
+    \right)
+  \right],
+\end{equation}
+where $\hat{A}_t$ is an advantage estimate (commonly computed with \ac{GAE})~\cite{Schulman2015GAE,Schulman2017PPO}.
+Intuitively, clipping limits the incentive to change the policy too aggressively, which helps prevent performance collapse
+from unstable updates---a practical consideration in contact-rich manipulation where learning can be sensitive to abrupt
+policy changes~\cite{Schulman2017PPO,Kober2013Survey}.
+
+\subsubsection{Why PPO is often used for robotic manipulation}
+\label{sec:ppo_for_manipulation}
+
+From a robotics perspective, \ac{PPO} has several properties that make it attractive in manipulation pipelines:
+\begin{itemize}
+  \item \textbf{Stable learning dynamics:} The clipped objective yields conservative and typically reliable updates~\cite{Schulman2017PPO}.
+  \item \textbf{Compatibility with continuous actions:} \ac{PPO} naturally supports Gaussian policies over continuous controls~\cite{SuttonBarto2018}.
+  \item \textbf{Practical training loop:} The rollout-and-update structure integrates well with simulator-based training and
+  supports systematic iteration on reward and termination design~\cite{Kober2013Survey}.
+\end{itemize}
+These considerations motivate \ac{PPO} as a strong baseline for manipulation, especially when training stability and predictable
+iteration cycles are prioritized.
+
+\subsubsection{Implementation in this thesis}
+\label{sec:rl_implementation_thesis}
+
+In this thesis, \ac{PPO} is used as the primary learning algorithm, together with \ac{GAE} for advantage estimation, following
+standard actor--critic practice~\cite{Schulman2015GAE,Schulman2017PPO}.
+The training loop is implemented with the \texttt{skrl} library, which provides modular \ac{PPO} components (policy, value function,
+rollout storage, and optimization routines) and supports integration with simulator-based environments~\cite{SerranoMunoz2023skrl}.
+This allows the thesis to focus on environment formulation---observation design, action parameterization, reward shaping,
+termination conditions, and robustness measures such as randomization---while relying on a consistent and reproducible \ac{PPO}
+implementation~\cite{SerranoMunoz2023skrl}.
+
+% Optional: ensure entries appear during drafting
+% \nocite{SuttonBarto2018,Kober2013Survey,Schulman2015GAE,Schulman2017PPO,SerranoMunoz2023skrl,Tobin2017DomainRand,Peng2018DynamicsRand}

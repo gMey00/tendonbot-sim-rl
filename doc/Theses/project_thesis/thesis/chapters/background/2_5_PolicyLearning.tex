@@ -1,0 +1,433 @@
+% NEW ACRONYM — add to formatting/Acronyms.tex:
+% \DeclareAcronym{POMDP}{short=POMDP, long=Partially Observable Markov Decision Process, tag=abbrev, sort=POMDP}
+
+%===================================================================%
+\section{Policy Learning Pipeline} % (MDP Workflow)
+\label{sec:policy_learning}
+%===================================================================%
+
+Reinforcement learning-based control is typically realized as an iterative interaction loop between an agent (policy) and an environment (simulation), in which behavior is improved by maximizing an expected return defined over episodes~\cite{SuttonBarto2018,Puterman1994}. In IsaacLab, task construction is formalized through an explicit \ac{MDP} specification and a software architecture that decomposes environment logic into reusable terms for observations, actions, rewards, terminations, events, and curriculum scheduling~\cite{nvidia_isaaclab_mdp_managers_getting_started,isaaclab_task_design_workflows,isaaclab_mdp_terms_api}. This section describes the standard \ac{RL} pipeline under this workflow and derives an \ac{MDP} formulation suitable for cloth grasping and stretching tasks in simulation.
+
+\subsection{Agent--Environment Cycle and Markov Decision Processes}
+
+An \ac{MDP} is commonly defined as a tuple $\mathcal{M} = (\mathcal{S}, \mathcal{A}, \mathcal{P}, r, \gamma)$, where $\mathcal{S}$ denotes the state space, $\mathcal{A}$ denotes the action space, $\mathcal{P}(s' \mid s, a)$ denotes the transition kernel, $r(s,a,s')$ denotes the immediate reward, and $\gamma \in [0,1)$ denotes the discount factor~\cite{Puterman1994,SuttonBarto2018}. The \ac{RL} objective is formulated as maximizing the expected discounted return under a policy $\pi$:
+\begin{equation}
+J(\pi) = \mathbb{E}\left[\sum_{t=0}^{T-1} \gamma^t \, r(s_t, a_t, s_{t+1})\right], \qquad a_t \sim \pi(\cdot \mid o_t), \qquad s_{t+1} \sim \mathcal{P}(\cdot \mid s_t, a_t),
+\label{eq:mdp_objective_discounted_return}
+\end{equation}
+where $T$ denotes the episode horizon and $o_t$ denotes the agent's observation at time step $t$~\cite{SuttonBarto2018,Puterman1994}.
+
+For robotic manipulation tasks, especially those involving deformable objects, the \emph{true} state $s_t$ (e.g., all cloth vertex/particle states and contact states) is typically not directly observable, and the policy is conditioned on a partial observation $o_t = g(s_t)$ constructed from sensors or engineered features~\cite{Lin2021SoftGym,Kadi2023ClothLikeReview}. This setting is naturally described as a partially observable \ac{MDP} (\ac{POMDP}), in which observations are related probabilistically to the hidden state and optimal decision making may require memory or state estimation~\cite{Spaan2012POMDP}. In practice, many manipulation policies are implemented as \emph{memoryless} mappings $\pi(a \mid o)$, such that the observation vector (or a short history of observations) is treated as the effective policy input~\cite{SuttonBarto2018,Lin2021SoftGym}.
+
+The standard on-policy learning pipeline alternates between (i) collecting rollouts by executing the current policy in the environment and (ii) updating the policy parameters by optimizing a surrogate objective using the collected trajectories~\cite{Schulman2017PPO}. For example, \ac{PPO} explicitly follows this alternation and performs multiple epochs of minibatch optimization over a clipped surrogate objective to stabilize policy gradient updates~\cite{Schulman2017PPO}. Regardless of the specific algorithm, this structure implies that the environment must provide: batched observations $o_t$, the ability to apply actions $a_t$, a reward signal $r_t$, and episode termination flags to delineate trajectories for return/advantage estimation~\cite{SuttonBarto2018,Schulman2017PPO}.
+
+\subsection{IsaacLab MDP Workflow for Task Construction}
+
+IsaacLab provides two task design workflows: a \emph{manager-based} workflow, in which environment functionality is decomposed into modular managers, and a \emph{direct} workflow, in which environment logic is implemented in a single class in a more monolithic style~\cite{isaaclab_task_design_workflows,nvidia_isaaclab_mdp_managers_getting_started}. The manager-based workflow is explicitly organized around \ac{MDP} components such as observations, actions, rewards, terminations, and curriculum, where each component is represented by configuration classes (implemented with a Python \texttt{@configclass} pattern) and is coordinated by the environment instance~\cite{nvidia_isaaclab_mdp_managers_getting_started,isaaclab_task_design_workflows,isaaclab_mdp_terms_api}.
+
+\begin{figure}[ht!]
+\centering
+\fbox{\parbox{0.8\textwidth}{\centering \vspace{0.1in}Placeholder for \textit{diagram of IsaacLab manager-based MDP workflow: observation/action/reward/termination/curriculum managers coordinated by env.step()} image\vspace{0.1in}}}
+\caption[IsaacLab manager-based MDP decomposition]{Conceptual decomposition of an IsaacLab \ac{MDP} into managers. In the manager-based workflow, action processing, observation computation, reward accumulation, and termination checks are implemented as modular terms and orchestrated by the environment step loop.}\label{fig:isaaclab_manager_based_mdp_workflow}
+\end{figure}
+
+In the manager-based workflow, IsaacLab defines reusable \emph{term functions} (e.g., joint-state observations, generic reward primitives, and standard termination checks) in a dedicated \ac{MDP} module, which is designed to be consumed by corresponding managers~\cite{isaaclab_mdp_terms_api,isaaclab_managers_api}. Concretely, observation terms are configured via an observation manager, action terms via an action manager, reward terms via a reward manager, and termination terms via a termination manager~\cite{isaaclab_mdp_terms_api,isaaclab_managers_api}. Additionally, an event manager is typically used for randomization and episodic events, and a curriculum manager is provided to schedule changes to environment parameters or term weights over training~\cite{isaaclab_mdp_terms_api,isaaclab_managers_api}.
+
+The direct workflow is supported for cases where decomposition is inconvenient or where large blocks of logic are implemented in optimized kernels, but it retains the same high-level requirements imposed by \ac{RL}: an environment class must provide observations, apply actions, compute rewards, and implement reset/termination logic~\cite{isaaclab_task_design_workflows,isaaclab_envs_api}. Both workflows are compatible with ecosystem interfaces influenced by the OpenAI Gym API, which standardizes methods such as \texttt{reset()} and \texttt{step()} for \ac{RL} benchmarking and algorithm development~\cite{Brockman2016OpenAIGym,isaaclab_wrap_env}.
+
+\subsection{MDP Definition for Cloth Manipulation}
+
+The cloth manipulation task considered in this thesis is characterized by (i) high-dimensional deformable-object dynamics, (ii) contact-rich interactions during grasping, and (iii) task objectives that are naturally expressed through geometric measures such as cloth spread/coverage, corner-to-corner distances, and alignment with a target configuration~\cite{Lin2021SoftGym,Kadi2023ClothLikeReview,Seita2020FabricSmoothing}. While the \emph{true} simulator state may include all internal cloth degrees of freedom, the \ac{MDP} induced for learning is typically specified through an observation function, an action parameterization, a shaped reward, and explicit termination conditions.
+
+\begin{table}[htb]
+    \centering
+    \caption{Recommended \ac{MDP} specification elements for cloth grasp-and-stretch in simulation.}\label{tab:cloth_mdp_summary}
+    \begin{tabular}{l c c}
+    \hline
+    \textbf{Component} & \textbf{Design choice} & \textbf{Rationale} \\
+    \hline
+    Observations $o_t$ & Proprioception + cloth features / vision & Partial observability and high DoF cloth state~\cite{Lin2021SoftGym,Spaan2012POMDP} \\
+    Actions $a_t$ & Joint targets or end-effector deltas + gripper & Continuous control with constrained actuation~\cite{Siciliano2009Robotics,isaaclab_mdp_terms_api} \\
+    Reward $r_t$ & Coverage/stretching + grasp success + penalties & Dense shaping for sparse geometric goals~\cite{Lin2021SoftGym,Seita2020FabricSmoothing} \\
+    Termination & Timeout + success + safety/failure events & Stable episodes and safety constraints~\cite{isaaclab_mdp_terms_api,isaaclab_envs_api} \\
+    \hline
+    \end{tabular}
+\end{table}
+
+\subsubsection{State and observations}
+
+\paragraph{Underlying state.}
+In an \ac{MDP} formulation, the state $s_t \in \mathcal{S}$ is assumed to satisfy the Markov property, i.e., $s_{t+1}$ is conditionally independent of past states given $(s_t,a_t)$~\cite{Puterman1994,SuttonBarto2018}. For deformable-object manipulation, $s_t$ may be conceptualized as a concatenation of robot states (joint positions/velocities, tendon states, actuator internal states) and cloth states (e.g., all cloth vertex/particle positions and velocities, plus contact and constraint states)~\cite{Lin2021SoftGym,Kadi2023ClothLikeReview}. This state is generally too high-dimensional to use directly for learning on real hardware, and it is often not directly measurable even in simulation when the goal is to preserve a realistic sensing setup~\cite{Lin2021SoftGym,Kadi2023ClothLikeReview}.
+
+\paragraph{Observation design.}
+The policy input is therefore defined as an observation vector $o_t \in \mathcal{O}$ constructed from simulated sensors and engineered features. In cloth-like deformable object tasks, a central difficulty is that sufficient low-dimensional state representations are hard to define and that observation is typically partial or noisy, motivating \ac{POMDP} modelling assumptions~\cite{Lin2021SoftGym,Spaan2012POMDP}. In simulation, observations may be selected along a spectrum from privileged (full cloth state) to realistic (vision/tactile-based). The following observation groups are commonly used for cloth manipulation and align with IsaacLab's modular observation manager concept~\cite{Lin2021SoftGym,Kadi2023ClothLikeReview,isaaclab_mdp_terms_api,isaaclab_managers_api}:
+
+\begin{itemize}
+    \item \textbf{Robot proprioception:} Joint positions/velocities, end-effector pose, gripper opening, and optionally actuator-related signals (e.g., efforts) to support closed-loop manipulation~\cite{Siciliano2009Robotics,isaaclab_mdp_terms_api}.
+    \item \textbf{Cloth configuration features:} Reduced descriptors such as cloth corner positions, edge/contour points, keypoint sets, or a heightmap/coverage estimate, reflecting the observation biases reported in cloth-shaping systems that track corners and contours~\cite{Kadi2023ClothLikeReview}.
+    \item \textbf{Visual observations:} RGB, depth, or RGB-D camera inputs. Image-based policies have been trained to infer grasp points and pull vectors for fabric smoothing, and depth has been shown to provide valuable information in such settings~\cite{Seita2020FabricSmoothing}. Benchmark studies also emphasize that learning purely from visual observations can be substantially more challenging than learning from ground-truth state in deformable tasks~\cite{Lin2021SoftGym}.
+    \item \textbf{Contact and event signals:} Binary/continuous indicators derived from contact sensing (e.g., cloth grasp detected, contact forces above threshold) to disambiguate grasp success and failure events under partial observability~\cite{isaaclab_task_design_workflows}. % TODO: find citation for cloth grasp detection via contact sensing in IsaacLab
+\end{itemize}
+
+In IsaacLab manager-based environments, these observation components are operationalized by defining observation terms and grouping them into observation groups, which are then evaluated each environment step to produce the policy input tensor~\cite{isaaclab_mdp_terms_api,isaaclab_managers_api}.
+
+\subsubsection{Action space}
+
+\paragraph{Low-level versus higher-level actions.}
+For robotic manipulation, the action space $\mathcal{A}$ can be defined at different abstraction levels. At the lowest level, actions may be joint torques $\boldsymbol{\tau} \in \mathbb{R}^{n}$ applied to an $n$-\ac{DoF} manipulator, corresponding to direct actuation in the robot dynamics model~\cite{Siciliano2009Robotics}. Alternatively, actions may be expressed as joint velocity commands, joint position targets, or incremental joint displacements, which are then realized through an internal controller in the simulator or robot stack~\cite{Siciliano2009Robotics}. In deformable manipulation, action abstraction is frequently used to reduce exploration complexity and to stabilize contact interactions, since learning directly in torque space can induce highly non-smooth exploration when contact constraints and deformable dynamics are present~\cite{Kadi2023ClothLikeReview}. % TODO: find citation specifically comparing torque vs position control for deformable manipulation stability
+
+\paragraph{Action spaces compatible with IsaacLab terms.}
+IsaacLab explicitly supports action terms that map normalized policy outputs to robot commands via an action manager~\cite{isaaclab_mdp_terms_api,isaaclab_managers_api}. This interface enables several action parameterizations relevant to cloth grasp-and-stretch:
+
+\begin{itemize}
+    \item \textbf{Joint-level continuous control:} Actions are mapped to joint targets (e.g., position or velocity) for selected joint subsets through configured action terms~\cite{isaaclab_mdp_terms_api}. The general batched action tensor is processed per environment instance and applied during the physics step loop~\cite{isaaclab_envs_api}.
+    \item \textbf{Cartesian end-effector motion primitives:} Actions are defined as incremental end-effector translations/rotations (and gripper commands), which are converted to joint targets through inverse kinematics or task-space controllers available in IsaacLab/Isaac Sim toolchains~\cite{NVIDIA2025IsaacLab,isaaclab_task_design_workflows}. This abstraction aligns with common cloth manipulation formulations that predict pick points and pull vectors rather than raw joint torques~\cite{Seita2020FabricSmoothing}.
+    \item \textbf{Robust gripper open/close actions:} For grasping-heavy tasks, IsaacLab provides an action term that converts a continuous gripper input into binary open/close commands using a threshold mechanism, with the stated aim of producing more predictable grasping behavior~\cite{isaaclab_mdp_terms_api}. This mapping is suitable when grasp success is more sensitive to discrete state (open vs. closed) than to continuous gripper width modulation.
+\end{itemize}
+
+For cloth manipulation with a parallel-jaw gripper, a practical action vector is often defined as
+\[
+\mathbf{a}_t = \bigl[\Delta \mathbf{x}_t^\top \;\; \Delta \boldsymbol{\phi}_t^\top \;\; a^{\text{grip}}_t\bigr]^\top,
+\]
+where $\Delta \mathbf{x}_t \in \mathbb{R}^3$ and $\Delta \boldsymbol{\phi}_t \in \mathbb{R}^3$ denote incremental Cartesian translation and rotation commands, and $a^{\text{grip}}_t$ denotes a gripper command (continuous or binary)~\cite{Seita2020FabricSmoothing,isaaclab_mdp_terms_api}. In IsaacLab, such a design is realized by composing multiple action terms under the action manager, allowing joint-space actuation and gripper commands to be processed consistently in a single step~\cite{isaaclab_managers_api,isaaclab_task_design_workflows}.
+
+\subsubsection{Reward function design}
+
+\paragraph{Success criteria for cloth grasping and stretching.}
+Reward design for cloth manipulation is difficult because task success is geometric and often sparse (e.g., ``the cloth is sufficiently spread''), while exploration under contact and occlusion is challenging~\cite{Lin2021SoftGym,Kadi2023ClothLikeReview}. In deformable-object benchmarks, spreading or smoothing tasks have been operationalized using coverage/area metrics computed from top-down projections of the cloth configuration~\cite{Lin2021SoftGym}. Similarly, sequential fabric smoothing work has used the objective of maximizing cloth coverage as a success measure when learning pick-and-pull actions from visual observations~\cite{Seita2020FabricSmoothing}.
+
+\paragraph{Dense reward decomposition.}
+To support stable learning, a dense reward can be constructed as a weighted sum of interpretable terms:
+\begin{equation}
+r_t = w_{\text{grasp}} \, r^{\text{grasp}}_t + w_{\text{stretch}} \, r^{\text{stretch}}_t + w_{\text{align}} \, r^{\text{align}}_t - w_{\text{act}} \, r^{\text{act}}_t - w_{\text{viol}} \, r^{\text{viol}}_t,
+\label{eq:cloth_reward_decomposition}
+\end{equation}
+where each term targets a specific behavioral component and weights are tuned to balance shaping strength~\cite{SuttonBarto2018,isaaclab_task_design_workflows}.
+
+A concrete instantiation suitable for grasp-and-stretch includes:
+
+\begin{itemize}
+    \item \textbf{Grasp acquisition $r^{\text{grasp}}_t$:} A sparse positive reward is assigned when the cloth is successfully grasped (e.g., when the gripper is closed and cloth contact/grasp conditions are satisfied), since grasp failure prevents downstream stretching behavior. This mirrors the emphasis on successful pick selection in cloth shaping pipelines~\cite{Kadi2023ClothLikeReview}. % TODO: find citation for simulated grasp success criteria for cloth in PhysX/IsaacLab
+    \item \textbf{Spreading/stretching $r^{\text{stretch}}_t$:} A natural choice is a coverage-based metric, such as the top-down area covered by the cloth, which is explicitly used as the reward in the SoftGym \texttt{SpreadCloth} task~\cite{Lin2021SoftGym}. When the task is formulated as stretching between grasp points (e.g., two corners), $r^{\text{stretch}}_t$ may alternatively be defined as the increase in distance between target cloth keypoints, consistent with pick-and-pull vector formulations~\cite{Seita2020FabricSmoothing}.
+    \item \textbf{Alignment/placement $r^{\text{align}}_t$:} If the cloth is required to be stretched into a target pose (e.g., aligned on a conveyor or within a region of interest), an auxiliary term can penalize deviations between current and desired keypoint positions or between the cloth centroid and a target centroid. Distance-based terms are widely used in deformable manipulation benchmarks that compare current particle positions to a target configuration~\cite{Lin2021SoftGym}.
+    \item \textbf{Action regularization $r^{\text{act}}_t$:} Smoothness penalties (e.g., $\|a_t\|^2$) or effort penalties discourage high-frequency control signals and can improve numerical stability and hardware transfer compatibility~\cite{Siciliano2009Robotics}. % TODO: find citation specifically linking action penalties to sim-to-real robustness in IsaacLab
+    \item \textbf{Constraint/safety violations $r^{\text{viol}}_t$:} Penalties can be applied when joint limits are approached, self-collisions occur, or the cloth leaves the workspace, complementing termination logic and discouraging destructive exploration~\cite{isaaclab_mdp_terms_api}.
+\end{itemize}
+
+In IsaacLab manager-based tasks, each component in \autoref{eq:cloth_reward_decomposition} is implemented as a reward term with an associated weight and optional parameters, enabling systematic ablations and incremental shaping~\cite{isaaclab_task_design_workflows,isaaclab_mdp_terms_api}. This design is particularly aligned with deformable tasks where a single sparse success reward is often insufficient to drive exploration~\cite{Lin2021SoftGym,Kadi2023ClothLikeReview}.
+
+\subsubsection{Episode termination conditions}
+
+\paragraph{Timeout and truncation.}
+Finite-horizon episodes are typically enforced through a maximum episode length $T$ to bound return estimation and stabilize training statistics~\cite{SuttonBarto2018}. IsaacLab provides a standard termination term that triggers episode termination when the episode length exceeds the configured limit (\texttt{time\_out})~\cite{isaaclab_mdp_terms_api}. In vectorized execution, environment stepping is designed such that terminated sub-environments are reset internally by the \texttt{step()} implementation, and it is therefore recommended that \texttt{reset()} is called only once prior to the first \texttt{step()} call~\cite{isaaclab_envs_api}.
+
+\paragraph{Success termination.}
+A success condition for cloth grasp-and-stretch is most naturally defined as achieving a threshold on a geometric metric, such as:
+(i) area coverage exceeding a fraction of the maximum possible area (coverage-based completion)~\cite{Lin2021SoftGym}, or
+(ii) keypoint alignment error falling below a tolerance (target-configuration completion)~\cite{Lin2021SoftGym}. In a manager-based implementation, such conditions are introduced as termination terms (custom or built-in) evaluated each step by the termination manager~\cite{isaaclab_mdp_terms_api,isaaclab_managers_api}.
+
+\paragraph{Failure termination.}
+To prevent unproductive exploration and to approximate physical safety constraints, failure termination conditions are typically included, such as:
+\begin{itemize}
+    \item \textbf{Robot constraint violations:} Episode termination when joint positions exceed soft limits is supported by built-in termination primitives (e.g., \texttt{joint\_pos\_out\_of\_limit})~\cite{isaaclab_mdp_terms_api}.
+    \item \textbf{Task failure events:} Termination when the cloth leaves the workspace, when grasp is lost irrecoverably (e.g., cloth is dropped and not re-grasped within a horizon), or when excessive collisions occur. These conditions are task-specific and are typically implemented as custom termination terms~\cite{isaaclab_task_design_workflows}. % TODO: find citation for workspace-out-of-bounds termination patterns in IsaacLab cloth tasks
+\end{itemize}
+
+In addition to providing episode boundaries, termination events can be incorporated into the reward via explicit termination penalties, which are supported as reusable reward terms that penalize non-timeout terminations~\cite{isaaclab_mdp_terms_api}.
+
+\subsection{Reward Shaping and Curriculum Strategies}
+
+\paragraph{Reward shaping and policy invariance.}
+Reward shaping refers to modifying or augmenting the environment reward signal to accelerate learning by providing denser feedback for intermediate behaviors~\cite{SuttonBarto2018}. In \ac{RL} theory, a central concern is whether reward transformations preserve the optimal policy. A sufficient condition is potential-based shaping, in which an additional shaping reward is constructed from a potential function $\Phi: \mathcal{S} \rightarrow \mathbb{R}$ such that
+\begin{equation}
+F(s_t, s_{t+1}) = \gamma \, \Phi(s_{t+1}) - \Phi(s_t),
+\label{eq:potential_based_shaping}
+\end{equation}
+and the shaped reward is defined as $r'_t = r_t + F(s_t, s_{t+1})$~\cite{Ng1999RewardShaping,Asmuth2008PotentialBasedShaping}. It has been shown that, under this construction, the optimal policy of the shaped \ac{MDP} is preserved while learning dynamics and exploration behavior can be improved~\cite{Asmuth2008PotentialBasedShaping}. This principle is particularly relevant for cloth tasks, where sparse terminal rewards (e.g., ``cloth fully stretched'') provide limited guidance during exploration in high-dimensional state spaces~\cite{Lin2021SoftGym,Kadi2023ClothLikeReview}.
+
+\paragraph{Curriculum learning.}
+Curriculum learning formalizes the idea that training can be accelerated by presenting tasks in an order of increasing difficulty, rather than sampling uniformly from the full difficulty distribution from the outset~\cite{Bengio2009Curriculum}. For deformable-object manipulation, curriculum strategies are frequently motivated by the large configuration space and the dependence of success on first achieving prerequisite behaviors (e.g., reliable grasp before stretching)~\cite{Kadi2023ClothLikeReview}. In a cloth grasp-and-stretch setting, a curriculum can be instantiated by gradually increasing:
+(i) initial cloth disorder (wrinkles, random folds),
+(ii) friction/contact difficulty,
+(iii) domain randomization ranges (material parameters, observation noise), or
+(iv) task precision requirements (tighter alignment tolerances). % TODO: find citation for curriculum schedules used in cloth manipulation RL specifically
+
+\paragraph{Curriculum support in IsaacLab.}
+IsaacLab natively supports curriculum specification through a curriculum manager, and includes built-in curriculum terms that modify reward weights or environment parameters according to step-wise schedules (e.g., \texttt{modify\_reward\_weight}, \texttt{modify\_env\_param})~\cite{isaaclab_mdp_terms_api}. This enables curriculum learning to be operationalized without restructuring the core environment logic: shaped reward weights can be increased as competence improves, and environment parameters controlling task difficulty can be updated online during training~\cite{isaaclab_mdp_terms_api,isaaclab_managers_api}. In the manager-based workflow, such curricula are configured alongside observation, action, reward, and termination specifications, supporting controlled experimentation with staged training protocols~\cite{isaaclab_task_design_workflows,nvidia_isaaclab_mdp_managers_getting_started}.
+
+\subsection{GPU-Vectorized Training and Environment Wrappers}
+
+\paragraph{Vectorized environments on the GPU.}
+High sample throughput is essential for deep \ac{RL} in robotics, particularly for contact-rich tasks with deformable dynamics. GPU-accelerated simulation frameworks have demonstrated substantial speedups by executing many environment instances in parallel and by avoiding CPU--GPU transfer bottlenecks between simulation and learning~\cite{Makoviychuk2021IsaacGym,NVIDIA2025IsaacLab}. Isaac Gym established an end-to-end GPU pipeline in which physics simulation and neural network training reside on the GPU and communicate through tensor interfaces, enabling large-scale batched rollouts~\cite{Makoviychuk2021IsaacGym}. IsaacLab is positioned as the successor to this paradigm, extending GPU-native simulation with additional capabilities (e.g., richer sensors, actuator models, and support for deformable objects) while remaining oriented toward large-scale parallel learning~\cite{NVIDIA2025IsaacLab}.
+
+In IsaacLab, \ac{RL} environments are designed to run as vectorized simulations with a configurable number of sub-environments (\texttt{num\_envs}), where observations and actions are batched per step~\cite{isaaclab_envs_api}. The environment implements a Gym-like interface, but it is not itself a \texttt{gym.vector.VectorEnv}; instead, wrappers are used to adapt to the varying vector-environment conventions of different learning libraries~\cite{isaaclab_envs_api,isaaclab_training_rl_agent}.
+
+\paragraph{Environment wrappers and library integration.}
+The OpenAI Gym interface popularized the concept of wrapping environments to modify observations, rewards, and logging behavior without changing the underlying task implementation~\cite{Brockman2016OpenAIGym}. IsaacLab follows this design pattern and states that \ac{RL} environments inheriting from its base classes implement the \texttt{gymnasium.Env} interface and are compatible with \texttt{gymnasium.Wrapper}~\cite{isaaclab_wrap_env}. Wrappers are used both for generic purposes (e.g., enforcing call order, recording videos) and for adapting to \ac{RL} library-specific APIs~\cite{isaaclab_wrap_env,isaaclab_training_rl_agent}.
+
+IsaacLab explicitly provides wrappers that convert the environment I/O to match the expectations of multiple \ac{RL} libraries (e.g., vectorized environment APIs that require particular tensor/array formats) and recommends applying learning-framework wrappers last, since such wrappers may modify interpretation of environment calls~\cite{isaaclab_training_rl_agent,isaaclab_rl_api}. This design preserves a single environment implementation while enabling interchangeability of training backends, which is consistent with the manager-based objective of modularity and reuse~\cite{isaaclab_task_design_workflows,isaaclab_rl_api}.
+
+\paragraph{Scene replication for parallelism.}
+Vectorization at the simulation level is enabled not only by batched stepping but also by scene replication. Isaac Sim provides a ``Cloner'' interface designed to simplify constructing scenes with many replicated environment instances and includes utilities for generating clone paths, computing transforms, and filtering collisions between clones~\cite{isaacsim_cloner_tutorial}. The same documentation emphasizes that such vectorized copies are beneficial for collecting trajectories in parallel during \ac{RL} training~\cite{isaacsim_cloner_tutorial}. Together with IsaacLab's batched environment APIs, this supports scalable data collection for policy learning in simulation~\cite{isaaclab_envs_api,NVIDIA2025IsaacLab}.
+
+% ---------------------------------------------------------------------------
+% BibTeX keys used in this section:
+%  - SuttonBarto2018                    (RL textbook; MDPs and RL pipeline)
+%  - Puterman1994                       (MDP textbook reference)
+%  - Spaan2012POMDP                      (POMDP definition and partial observability)
+%  - Brockman2016OpenAIGym               (OpenAI Gym interface and wrapper concept)
+%  - Schulman2017PPO                     (PPO; alternating rollout collection and optimization)
+%  - Bengio2009Curriculum                (curriculum learning)
+%  - Ng1999RewardShaping                 (original reward shaping citation metadata)
+%  - Asmuth2008PotentialBasedShaping     (potential-based shaping formula and policy invariance discussion)
+%  - Makoviychuk2021IsaacGym             (GPU-vectorized simulation and learning pipeline; Isaac Gym)
+%  - NVIDIA2025IsaacLab                  (IsaacLab technical report; GPU-native successor to Isaac Gym)
+%  - Lin2021SoftGym                      (SoftGym; deformable manipulation benchmark; cloth coverage reward)
+%  - Seita2020FabricSmoothing            (fabric smoothing; grasp-and-pull to maximize coverage)
+%  - Kadi2023ClothLikeReview             (review; CDO challenges; observation biases; reward shaping difficulty)
+%  - Siciliano2009Robotics               (robot joint/torque/velocity control foundations)
+%  - nvidia_isaaclab_mdp_managers_getting_started (NVIDIA Getting Started; MDP managers concept)
+%  - isaaclab_task_design_workflows      (IsaacLab docs; manager-based vs direct workflows)
+%  - isaaclab_mdp_terms_api              (IsaacLab API; observation/reward/termination/action/curriculum terms)
+%  - isaaclab_managers_api               (IsaacLab API; manager classes)
+%  - isaaclab_envs_api                   (IsaacLab API; vectorized env semantics and reset handling)
+%  - isaaclab_wrap_env                   (IsaacLab docs; gymnasium wrappers compatibility)
+%  - isaaclab_training_rl_agent          (IsaacLab tutorial; wrappers for various RL libraries; wrapper ordering)
+%  - isaaclab_rl_api                     (IsaacLab RL module; wrappers and export utilities)
+%  - isaacsim_cloner_tutorial            (Isaac Sim docs; Cloner and environment replication)
+% ---------------------------------------------------------------------------
+
+% ---------------------------------------------------------------------------
+% BibTeX entries — add to bibliography/literature.bib:
+%
+% @book{SuttonBarto2018,
+%   author    = {Richard S. Sutton and Andrew G. Barto},
+%   title     = {Reinforcement Learning: An Introduction},
+%   edition   = {Second},
+%   publisher = {The MIT Press},
+%   year      = {2018},
+%   isbn      = {9780262039246},
+%   url       = {https://mitpress.mit.edu/9780262039246/reinforcement-learning/},
+%   urldate   = {2026-03-03},
+% }
+%
+% @book{Puterman1994,
+%   author    = {Martin L. Puterman},
+%   title     = {Markov Decision Processes: Discrete Stochastic Dynamic Programming},
+%   publisher = {John Wiley \& Sons},
+%   address   = {New York, NY, USA},
+%   year      = {1994},
+%   isbn      = {978-0-471-61977-2},
+%   doi       = {10.1002/9780470316887},
+% }
+%
+% @incollection{Spaan2012POMDP,
+%   author    = {Matthijs T. J. Spaan},
+%   title     = {Partially Observable Markov Decision Processes},
+%   booktitle = {Reinforcement Learning: State-of-the-Art},
+%   editor    = {Marco A. Wiering and Martijn van Otterlo},
+%   publisher = {Springer},
+%   year      = {2012},
+%   url       = {https://www.st.ewi.tudelft.nl/mtjspaan/pub/Spaan12pomdp.pdf},
+%   urldate   = {2026-03-03},
+%   note      = {PDF draft distributed by the author; appears in the Springer volume},
+% }
+%
+% @article{Brockman2016OpenAIGym,
+%   author        = {Greg Brockman and Vicki Cheung and Ludwig Pettersson and Jonas Schneider and John Schulman and Jie Tang and Wojciech Zaremba},
+%   title         = {OpenAI Gym},
+%   journal       = {arXiv preprint arXiv:1606.01540},
+%   year          = {2016},
+%   url           = {https://arxiv.org/abs/1606.01540},
+%   urldate       = {2026-03-03},
+%   archivePrefix = {arXiv},
+%   eprint        = {1606.01540},
+%   primaryClass  = {cs.LG},
+% }
+%
+% @article{Schulman2017PPO,
+%   author        = {John Schulman and Filip Wolski and Prafulla Dhariwal and Alec Radford and Oleg Klimov},
+%   title         = {Proximal Policy Optimization Algorithms},
+%   journal       = {arXiv preprint arXiv:1707.06347},
+%   year          = {2017},
+%   url           = {https://arxiv.org/abs/1707.06347},
+%   urldate       = {2026-03-03},
+%   archivePrefix = {arXiv},
+%   eprint        = {1707.06347},
+%   primaryClass  = {cs.LG},
+% }
+%
+% @inproceedings{Bengio2009Curriculum,
+%   author    = {Yoshua Bengio and J{\'e}r{\^o}me Louradour and Ronan Collobert and Jason Weston},
+%   title     = {Curriculum Learning},
+%   booktitle = {Proceedings of the 26th Annual International Conference on Machine Learning (ICML '09)},
+%   year      = {2009},
+%   pages     = {41--48},
+%   publisher = {ACM Press},
+%   address   = {Montreal, QC, Canada},
+%   doi       = {10.1145/1553374.1553380},
+% }
+%
+% @inproceedings{Ng1999RewardShaping,
+%   author    = {Andrew Y. Ng and Daishi Harada and Stuart J. Russell},
+%   title     = {Policy Invariance Under Reward Transformations: Theory and Application to Reward Shaping},
+%   booktitle = {Proceedings of the Sixteenth International Conference on Machine Learning (ICML 1999)},
+%   year      = {1999},
+%   pages     = {278--287},
+%   publisher = {Morgan Kaufmann},
+%   address   = {San Francisco, CA, USA},
+%   url       = {https://www.cs.utexas.edu/~shivaram/readings/b2hd-NgHR1999.html},
+%   urldate   = {2026-03-03},
+% }
+%
+% @inproceedings{Asmuth2008PotentialBasedShaping,
+%   author    = {John Asmuth and Michael L. Littman and Robert Zinkov},
+%   title     = {Potential-based Shaping in Model-based Reinforcement Learning},
+%   booktitle = {Proceedings of the Twenty-Third AAAI Conference on Artificial Intelligence (AAAI-08)},
+%   year      = {2008},
+%   pages     = {604--609},
+%   publisher = {AAAI Press},
+%   url       = {https://cdn.aaai.org/AAAI/2008/AAAI08-096.pdf},
+%   urldate   = {2026-03-03},
+% }
+%
+% @inproceedings{Makoviychuk2021IsaacGym,
+%   author    = {Viktor Makoviychuk and Lukasz Wawrzyniak and Yunrong Guo and Michelle Lu and Kier Storey and Miles Macklin and David Hoeller and Nikita Rudin and Arthur Allshire and Ankur Handa and Gavriel State},
+%   title     = {Isaac Gym: High Performance GPU Based Physics Simulation For Robot Learning},
+%   booktitle = {NeurIPS 2021 Track on Datasets and Benchmarks},
+%   year      = {2021},
+%   url       = {https://openreview.net/forum?id=fgFBtYgJQX_},
+%   urldate   = {2026-03-03},
+% }
+%
+% @article{NVIDIA2025IsaacLab,
+%   author        = {{NVIDIA} and Mayank Mittal and Pascal Roth and James Tigue and Antoine Richard and Octi Zhang and Peter Du and Antonio Serrano-Mu{\~n}oz and Xinjie Yao and Ren{\'e} Zurbr{\"u}gg and Nikita Rudin and others},
+%   title         = {Isaac Lab: A GPU-Accelerated Simulation Framework for Multi-Modal Robot Learning},
+%   journal       = {arXiv preprint arXiv:2511.04831},
+%   year          = {2025},
+%   doi           = {10.48550/arXiv.2511.04831},
+%   url           = {https://arxiv.org/abs/2511.04831},
+%   urldate       = {2026-03-03},
+%   archivePrefix = {arXiv},
+%   eprint        = {2511.04831},
+%   primaryClass  = {cs.RO},
+% }
+%
+% @inproceedings{Lin2021SoftGym,
+%   author    = {Xingyu Lin and Yufei Wang and Jake Olkin and David Held},
+%   title     = {SoftGym: Benchmarking Deep Reinforcement Learning for Deformable Object Manipulation},
+%   booktitle = {Proceedings of the 2020 Conference on Robot Learning},
+%   series    = {Proceedings of Machine Learning Research},
+%   volume    = {155},
+%   pages     = {432--448},
+%   year      = {2021},
+%   publisher = {PMLR},
+%   url       = {https://proceedings.mlr.press/v155/lin21a.html},
+%   urldate   = {2026-03-03},
+% }
+%
+% @inproceedings{Seita2020FabricSmoothing,
+%   author    = {Daniel Seita and Aditya Ganapathi and Ryan Hoque and Minho Hwang and Edward Cen and Ajay Kumar Tanwani and Ashwin Balakrishna and Brijen Thananjeyan and Jeffrey Ichnowski and Nawid Jamali and Katsu Yamane and Soshi Iba and John F. Canny and Ken Goldberg},
+%   title     = {Deep Imitation Learning of Sequential Fabric Smoothing From an Algorithmic Supervisor},
+%   booktitle = {2020 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
+%   year      = {2020},
+%   pages     = {9651--9658},
+%   publisher = {IEEE},
+%   doi       = {10.1109/IROS45743.2020.9341608},
+% }
+%
+% @article{Kadi2023ClothLikeReview,
+%   author  = {Halid Abdulrahim Kadi and Kasim Terzi{\'c}},
+%   title   = {Data-Driven Robotic Manipulation of Cloth-like Deformable Objects: The Present, Challenges and Future Prospects},
+%   journal = {Sensors},
+%   year    = {2023},
+%   volume  = {23},
+%   number  = {5},
+%   pages   = {2389},
+%   doi     = {10.3390/s23052389},
+%   url     = {https://www.mdpi.com/1424-8220/23/5/2389},
+%   urldate = {2026-03-03},
+% }
+%
+% @book{Siciliano2009Robotics,
+%   author    = {Bruno Siciliano and Lorenzo Sciavicco and Luigi Villani and Giuseppe Oriolo},
+%   title     = {Robotics: Modelling, Planning and Control},
+%   publisher = {Springer London},
+%   year      = {2009},
+%   doi       = {10.1007/978-1-84628-642-1},
+%   url       = {https://link.springer.com/book/10.1007/978-1-84628-642-1},
+%   urldate   = {2026-03-03},
+% }
+%
+% @online{nvidia_isaaclab_mdp_managers_getting_started,
+%   author  = {{NVIDIA}},
+%   title   = {Manager Configuration — Getting Started With Isaac Lab},
+%   year    = {2026},
+%   url     = {https://docs.nvidia.com/learning/physical-ai/getting-started-with-isaac-lab/latest/train-your-second-robot-with-isaac-lab/03-implementing-mdp-with-managers.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{isaaclab_task_design_workflows,
+%   author  = {{The Isaac Lab Project Developers}},
+%   title   = {Task Design Workflows — Isaac Lab Documentation},
+%   year    = {2026},
+%   url     = {https://isaac-sim.github.io/IsaacLab/main/source/overview/core-concepts/task_workflows.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{isaaclab_mdp_terms_api,
+%   author  = {{The Isaac Lab Project Developers}},
+%   title   = {isaaclab.envs.mdp — Isaac Lab Documentation},
+%   year    = {2026},
+%   url     = {https://isaac-sim.github.io/IsaacLab/main/source/api/lab/isaaclab.envs.mdp.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{isaaclab_managers_api,
+%   author  = {{The Isaac Lab Project Developers}},
+%   title   = {isaaclab.managers — Isaac Lab Documentation},
+%   year    = {2026},
+%   url     = {https://isaac-sim.github.io/IsaacLab/main/source/api/lab/isaaclab.managers.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{isaaclab_envs_api,
+%   author  = {{The Isaac Lab Project Developers}},
+%   title   = {isaaclab.envs — Isaac Lab Documentation},
+%   year    = {2026},
+%   url     = {https://isaac-sim.github.io/IsaacLab/main/source/api/lab/isaaclab.envs.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{isaaclab_wrap_env,
+%   author  = {{The Isaac Lab Project Developers}},
+%   title   = {Wrapping environments — Isaac Lab Documentation},
+%   year    = {2026},
+%   url     = {https://isaac-sim.github.io/IsaacLab/main/source/how-to/wrap_rl_env.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{isaaclab_training_rl_agent,
+%   author  = {{The Isaac Lab Project Developers}},
+%   title   = {Training with an RL Agent — Isaac Lab Documentation},
+%   year    = {2026},
+%   url     = {https://isaac-sim.github.io/IsaacLab/main/source/tutorials/03_envs/run_rl_training.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{isaaclab_rl_api,
+%   author  = {{The Isaac Lab Project Developers}},
+%   title   = {isaaclab\_rl — Isaac Lab Documentation},
+%   year    = {2026},
+%   url     = {https://isaac-sim.github.io/IsaacLab/main/source/api/lab_rl/isaaclab_rl.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{isaacsim_cloner_tutorial,
+%   author  = {{NVIDIA}},
+%   title   = {Getting Started with Cloner — Isaac Sim Documentation},
+%   year    = {2026},
+%   url     = {https://docs.isaacsim.omniverse.nvidia.com/6.0.0/isaac_lab_tutorials/tutorial_cloner.html},
+%   urldate = {2026-03-03},
+% }
+% ---------------------------------------------------------------------------

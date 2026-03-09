@@ -1,0 +1,486 @@
+\chapter{Chapter Outline}\label{ch:chapter_outline}
+\markboth{Chapter Outline}{}
+
+% ==========================================================================
+% This chapter is NOT part of the final thesis. It serves as a planning
+% reference that summarizes what each chapter and section should contain.
+% Remove the \input for this file from FAPS-Thesis.tex before submission.
+% ==========================================================================
+
+% ------------------------------------------------------------------
+\section{Chapter 1: Introduction (~5 pages)}
+% ------------------------------------------------------------------
+
+\subsection{Motivation and Context}
+\begin{itemize}
+    \item Introduce the importance of autonomous robotic cloth manipulation in manufacturing and recycling contexts
+    \item Highlight the challenges of handling deformable objects (textiles) and why simulation with reinforcement learning is a promising approach
+    \item Emphasize the specific scenario: using a 6-DOF tendon-driven robotic arm to pick up and spread cloth for inspection on a conveyor
+    \item Establish the industrial relevance: textile sorting, quality inspection, and recycling as concrete application domains
+    \item Briefly frame the sim-to-real challenge as a central theme connecting simulation training to physical deployment
+\end{itemize}
+
+\subsection{Problem Statement and Objectives}
+\begin{itemize}
+    \item Clearly state the thesis problem: developing an RL-based control strategy for a tendon-driven robot to manipulate cloth (grasp, stretch, present) in simulation and eventually real life
+    \item List the research objectives:
+    \begin{enumerate}
+        \item Establishing a high-fidelity Isaac Sim simulation environment
+        \item Designing and training RL policies for cloth manipulation tasks
+        \item Integrating a custom tendon-driven robot model
+        \item Addressing sim-to-real transfer (ensuring the learned policy can generalize or be adapted)
+    \end{enumerate}
+    \item Explain that initial simpler manipulation tasks have already been implemented as a stepping stone and the thesis builds on this foundation
+    \item Scope delimitation: explicitly state what is NOT addressed (e.g., full autonomous perception pipeline, multi-robot coordination) and justify why
+\end{itemize}
+
+\subsection{Thesis Outline}
+\begin{itemize}
+    \item Summarize the structure of the thesis (Chapters 2--7) for the reader
+    \item Chapter 2: background theory and related work
+    \item Chapter 3: research gap and refined problem
+    \item Chapter 4: methodology including simulation setup and RL approach
+    \item Chapter 5: experimental results
+    \item Chapter 6: discussion of findings and limitations
+    \item Chapter 7: conclusion and future work
+\end{itemize}
+
+% ------------------------------------------------------------------
+\section{Chapter 2: Background and State of the Art (~20 pages)}
+% ------------------------------------------------------------------
+
+\subsection{Section 2.1: Reinforcement Learning for Robotic Manipulation}
+\begin{itemize}
+    \item Introduce Markov Decision Processes (MDP) as the formalism for RL: define states, actions, transitions, rewards, and discount factor
+    \item Outline key RL algorithms relevant to continuous robot control: model-free policy gradient methods (DDPG, PPO, SAC)
+    \item Discuss why these algorithms are suitable for high-dimensional, continuous action problems like controlling robotic arms
+    \item Compare on-policy (PPO) vs.\ off-policy (SAC, DDPG) approaches: sample efficiency, stability, and suitability for GPU-parallel simulation
+    \item Highlight specific algorithms or frameworks used in this thesis (e.g., RL Games, Stable Baselines, skrl)
+    \item Briefly cover policy network architectures: MLPs, actor-critic structure, and optional recurrent layers for partial observability
+    \item Summarize prior successes of RL in simulation for manipulation tasks (e.g., OpenAI Dexterous Hand, QT-Opt)
+\end{itemize}
+
+\subsection{Section 2.2: Physics Simulation in Isaac Sim 5.1}
+\begin{itemize}
+    \item Introduce the physics engine stack of Isaac Sim 5.1: NVIDIA PhysX 5 as the core solver, with GPU-accelerated simulation capabilities
+    \item Explain why understanding the underlying physics models is essential for sim-to-real transfer and RL training fidelity
+\end{itemize}
+
+\subsubsection{Rigid Body Dynamics}
+\begin{itemize}
+    \item Cover how Isaac Sim handles rigid body simulation via PhysX: articulated bodies, joints, contacts, and friction models
+    \item Explain the Temporal Gauss-Seidel (TGS) solver used by PhysX for rigid body constraint solving
+    \item Describe relevant simulation parameters: time step, solver iterations, contact offsets, friction coefficients
+    \item Discuss GPU-accelerated rigid body simulation for parallel RL environments
+    \item Explain how articulated robots (including the tendon-driven arm and gripper) are simulated as rigid body chains with joint constraints
+    \item Cover collision detection: mesh vs.\ convex decomposition vs.\ primitive shapes; performance vs.\ accuracy tradeoffs
+\end{itemize}
+
+\subsubsection{Cloth and Deformable Object Simulation}
+\begin{itemize}
+    \item Explain why deformable objects break standard rigid-body assumptions: applied forces not only translate the object but also change its shape and contact state
+    \item Describe common cloth modeling approaches in context: mass-spring models, particle-based constraint methods, continuum formulations (FEM/MPM)
+    \item Emphasize the unique challenges of cloth dynamics: high degrees of freedom, self-collision, sensitivity to material parameters (bending stiffness, friction, damping)
+\end{itemize}
+
+\subsubsection{Position-Based Dynamics (PBD) --- PhysX Particle Cloth}
+\begin{itemize}
+    \item Explain PBD as the solver used by PhysX for particle cloth: particles with mass connected via holonomic constraints
+    \item Describe the PBD time-step algorithm: external-force velocity update, position prediction, iterative Gauss-Seidel constraint projection, velocity correction
+    \item Present the constraint correction formula and explain how stiffness depends on time step and iteration count
+    \item Introduce XPBD as an extension with compliance formulation and Lagrange multipliers for more physically meaningful stiffness
+    \item Explain why PhysX uses PBD for particle cloth: GPU parallelism via graph coloring, robustness, interaction with rigid bodies and articulations
+    \item Discuss how PBD particle cloth is characterized in Omniverse/Isaac Sim: a PBD mass-spring system distinct from newer deformable formulations
+\end{itemize}
+
+\subsubsection{Vertex Block Descent (VBD) --- Newton Thin Deformables}
+\begin{itemize}
+    \item Explain VBD as an implicit, energy-based solver targeting variational implicit Euler time integration
+    \item Describe the global energy minimization formulation and the vertex-level block coordinate descent approach
+    \item Present the local Newton update step ($3 \times 3$ Hessian solve per vertex)
+    \item Discuss key advantages: unconditional stability, convergence to implicit Euler solution, GPU parallelizability via vertex coloring
+    \item Explain Newton's role in NVIDIA's robotics context: improved performance and stability of VBD for thin deformables such as clothing
+    \item Discuss why VBD is attractive for cloth manipulation: better tolerance of stiffness ratios (near-inextensible stretch with softer bending) and larger time steps
+\end{itemize}
+
+\subsubsection{Comparison: PBD vs.\ VBD for Cloth in RL Workflows}
+\begin{itemize}
+    \item Compare mathematical targets: PBD projects positions to satisfy constraints vs.\ VBD minimizes variational implicit Euler energy
+    \item PBD: simple, robust, fast, but effective stiffness depends on time step and iteration count; harder to map to physical material properties
+    \item VBD: principled implicit integration, strong stability guarantees, favorable convergence in large-DOF systems
+    \item Relate to Omniverse ecosystem: particle cloth = PBD mass-spring; newer deformable features moving toward implicit/compliance-based formulations
+    \item Motivate the choice for this thesis: PhysX/PBD particle cloth for throughput and robustness in Isaac Sim 5.1; Newton/VBD when greater stability under stiff cloth and larger time steps is needed
+\end{itemize}
+
+\subsection{Section 2.3: NVIDIA Isaac Sim and IsaacLab Architecture}
+\begin{itemize}
+    \item Introduce NVIDIA Isaac Sim (version 5.1) as the simulation environment
+    \item Describe core features: built on Omniverse, high-fidelity physics (PhysX 5), photorealistic rendering with RTX, ROS 2 support, GPU acceleration for parallel simulations
+    \item Explain IsaacLab: NVIDIA's unified robotics learning framework built on Isaac Sim (evolved from the Orbit framework)
+    \item Note that IsaacLab combines Isaac Gym's GPU-accelerated physics with Orbit's environment library, providing a modular toolkit for RL, imitation, and motion planning
+    \item Discuss how IsaacLab's MDP workflow organizes simulation tasks: defining robots, environments, and training pipelines in a reusable way
+    \item Clarify why IsaacLab + Isaac Sim 5.1 is well-suited for this thesis (integrated cloth dynamics support, tools for distributed RL training)
+    \item Compare with alternative simulation platforms (MuJoCo, PyBullet, SOFA) to justify the choice of Isaac Sim for this specific use case
+\end{itemize}
+
+\subsection{Section 2.4: Tendon-Driven Robot Kinematics and Modeling}
+\begin{itemize}
+    \item Explain what tendon-driven robots are: actuators apply force via tendons (cables) to move joints, allowing lighter, more compliant designs but requiring complex modeling
+    \item Cover basic kinematic principles: how pulling tendons causes joint rotation or continuous bending, constant-curvature assumptions, differences in inverse kinematics/control from rigid joint robots
+    \item Discuss the specific robot model relevant to the project: the 2-DOF linear stage + 3-DOF tendon arm + Robotiq gripper assembly
+    \item Describe challenges in simulating tendon-driven systems in Isaac Sim: modeling tendon routing and elasticity, approximation via constraint forces or URDF/MJCF model with mimic joints
+    \item Include literature context on tendon-driven manipulators: how their precision and dynamics differ from direct-drive robots
+    \item Discuss the advantages of tendon-driven designs for compliant cloth interaction (inherent compliance, force limiting, safe contact)
+    % Workspace analysis:
+    \item Introduce the concept of workspace analysis for serial manipulators: the set of all end-effector poses reachable within joint limits
+    \item Define forward kinematics (FK) as the mapping from joint configuration $q$ to end-effector position/orientation; explain why FK-based sampling is used when analytical workspace boundaries are intractable (high DOF, non-standard kinematics)
+    \item Present the Monte Carlo sampling approach: uniformly sample joint configurations within joint limits, compute FK for each sample, and aggregate results in Cartesian voxels (analogous to MathWorks \texttt{generateRobotWorkspace})
+    \item Define the \textbf{Yoshikawa manipulability index} $w(q) = \sqrt{\det(J(q)\,J(q)^\top)}$: measures how well the end effector can be moved in all Cartesian directions; zero at singularities, higher values indicate better dexterity [Yoshikawa 1985]
+    \item Define the \textbf{inverse condition number} (isotropy index) $\kappa_{\mathrm{inv}} = \sigma_{\min}/\sigma_{\max}$ of the geometric Jacobian: ranges from 0 (singular) to 1 (perfectly isotropic); provides a complementary measure of motion quality [Salisbury \& Craig 1982]
+    \item Define \textbf{reachability density}: the number of FK samples per voxel, proportional to the joint-space volume mapping to that Cartesian region; higher density indicates more configurations can reach that area
+    \item Discuss how these measures inform task-space design: placing objects and setting action bounds in regions with high manipulability and reachability, avoiding singular zones
+\end{itemize}
+
+\subsection{Section 2.5: Policy Learning Pipeline (MDP Workflow)}
+\begin{itemize}
+    \item Detail the standard RL pipeline in the context of IsaacLab's MDP workflow
+    \item Define MDP components for the cloth manipulation task:
+    \begin{itemize}
+        \item State (observations)
+        \item Action space (robot joint torques/velocities or high-level gripper motions)
+        \item Reward function design (what constitutes success for grasping/stretching cloth)
+        \item Episode termination conditions
+    \end{itemize}
+    \item Explain curriculum learning or reward shaping concepts if used
+    \item Describe how IsaacLab provides API/structure for tasks (environment wrappers, vectorized environments on GPU)
+\end{itemize}
+
+\subsection{Section 2.6: Prior Work in Robotic Cloth Manipulation}
+\begin{itemize}
+    \item Review existing research on robotic cloth/deformable object manipulation
+    \item Cover both model-free approaches (deep RL, learning-based methods) and model-based/analytical approaches (vision-based controllers, heuristic methods)
+    \item Cite key studies and benchmarks: folding/unfolding tasks, cloth smoothing/flattening (Seita et al.), GarmentBench/GarmentLab benchmarks
+    \item Note outcomes: model-free RL achieves good simulation performance but needs many training samples and can struggle to generalize
+    \item Highlight open problems from surveys: generalizing to varying fabrics, dealing with noisy perception, accomplishing long-horizon multi-step cloth tasks
+    \item Discuss sim-to-real approaches specifically for deformable objects: domain randomization of cloth parameters, visual domain adaptation, teacher-student policy distillation
+    \item Situate the thesis in context: how it builds on prior work and what gaps it addresses
+    \item Provide a structured comparison table of key related works (method, robot type, task, simulation used, sim-to-real status)
+\end{itemize}
+
+\subsection{Section 2.7: Robot and Scene Description Formats (USD, URDF, MJCF)}
+\begin{itemize}
+    \item Explain USD (Universal Scene Description): extensible 3D scene graph format for constructing simulation scenes in Isaac Sim (objects, lighting, physics properties)
+    \item Explain URDF (Unified Robot Description Format) and MJCF (MuJoCo XML) as common robot model formats
+    \item Clarify which format is used for the tendon-driven robot and why
+    \item Explain the role of each format: URDF/MJCF capture kinematic structure, joint limits, inertial properties; USD integrates robot and cloth into the simulated world
+    \item Note any modifications to the robot's URDF to model tendons (workarounds for standard URDF limitations)
+\end{itemize}
+
+% ------------------------------------------------------------------
+\section{Chapter 3: Problem Statement and Research Gap (~3 pages)}
+% ------------------------------------------------------------------
+
+\subsection{Section 3.1: Critical Analysis of State of the Art}
+\begin{itemize}
+    \item Build directly on Chapter 2's review and summarize what has been done and where limitations remain
+    \item Note that while prior works achieve either cloth manipulation with traditional robots or basic RL policies in simulation, the combination of a tendon-driven arm with complex cloth tasks is unexplored
+    \item Point out unresolved questions:
+    \begin{itemize}
+        \item How to effectively train an RL policy for a high-DOF tendon-driven manipulator on cloth tasks without extensive manual reward shaping?
+        \item How to maintain sim-to-real fidelity for cloth interactions and tendon dynamics?
+    \end{itemize}
+\end{itemize}
+
+\subsection{Section 3.2: Research Gap and Justification}
+\begin{itemize}
+    \item Clearly articulate the Handlungsbedarf (need for action) per FAPS guidelines
+    \item Key gap: most existing studies use rigid-joint robots or simplified simulations; literature lacks demonstrations of RL-based control on tendon-driven robots for cloth handling; sim-to-real strategies for deformable tasks are not well established
+    \item Justify scientific value: contributing knowledge on tendon-driven robot control and RL in deformable object tasks
+    \item Justify practical relevance: automating textile recycling or clothing handling tasks
+    \item Include a summary figure or diagram visualizing the research gap: map existing work along axes (robot type vs.\ object type vs.\ method) and show the empty quadrant this thesis fills
+\end{itemize}
+
+\subsection{Section 3.3: Refined Problem Definition}
+\begin{itemize}
+    \item Formulate precise research questions or hypotheses:
+    \begin{itemize}
+        \item How can a simulation environment be configured to realistically train cloth manipulation policies for a tendon-driven robot?
+        \item Which RL algorithms and reward formulations yield stable learning for the cloth stretching task?
+        \item What strategies can improve transferability of the learned policy to a physical robot (using ROS 2)?
+    \end{itemize}
+    \item Define the scope: specific cloth size/type, specific robot design, what is not addressed (e.g., vision-based perception may be simplified)
+    \item List the main thesis contributions:
+    \begin{enumerate}
+        \item Integration of a tendon-driven robot model in Isaac Sim
+        \item An RL pipeline for cloth grasp-and-stretch
+        \item Evaluation of policy performance and generalization
+    \end{enumerate}
+\end{itemize}
+
+\subsection{Section 3.4: Success Criteria (Optional)}
+\begin{itemize}
+    \item Define how success is measured: e.g., cloth spreading coverage in simulation, stability of tendon arm control, comparisons to baseline methods
+    \item Tie the problem statement to the forthcoming methodology
+\end{itemize}
+
+% ------------------------------------------------------------------
+\section{Chapter 4: Methodology and Implementation (~15--18 pages)}
+% ------------------------------------------------------------------
+
+\subsection{Section 4.1: Overview of Approach}
+\begin{itemize}
+    \item Provide a high-level overview of the solution strategy
+    \item Include a diagram of the system architecture or workflow (IsaacLab environment loop: state $\rightarrow$ policy $\rightarrow$ action $\rightarrow$ environment)
+    \item Describe development stages:
+    \begin{enumerate}
+        \item Stage 1: set up a simple simulation with a generic robot and train basic RL tasks
+        \item Stage 2: integrate the tendon-driven robot model
+        \item Stage 3: tackle the cloth manipulation task with the full system
+    \end{enumerate}
+\end{itemize}
+
+\subsection{Section 4.2: Simulation Environment Setup}
+\begin{itemize}
+    \item Detail the Isaac Sim 5.1 environment configuration for training
+    \item Describe the USD scene: table/conveyor, cloth object (size, mesh/primitive, physical properties like mass, friction, stiffness), initial conditions (crumpled/folded/randomized)
+    \item Robot placement and any sensors in simulation
+    \item If ROS 2 is used within Isaac Sim (ROS bridge extension), explain how ROS topics are configured
+    \item Simulation parameters: physics time-step, faster-than-real-time execution for RL training
+    \item Domain randomization strategy: which parameters are randomized (cloth mass, friction, stiffness, initial pose, lighting) and their ranges
+    \item Include a figure of the complete simulation scene with labeled components
+\end{itemize}
+
+\subsection{Section 4.3: Robot Model Integration (Tendon-Driven Arm)}
+\begin{itemize}
+    \item Explain how the 6-DOF tendon-driven robotic arm is modeled and imported
+    \item Describe the 2-DOF articulated base (linear Y--Z stage)
+    \item Describe the 3-DOF tendon-driven arm
+    \item Describe the Robotiq 2F-140 gripper integration
+    \item Explain the modular assembly via Isaac Sim's Robot Assembler
+    \item Describe any verification of the robot model in simulation (open-loop tests, joint motion verification)
+    \item Calibration of tendon tensions, spring constants, joint limits, and stiffness
+    \item Control gain tuning and validation
+    \item Include a figure of the robot model
+\end{itemize}
+
+\subsubsection{Robot Simulation Setup and Validation}
+\begin{itemize}
+    \item Detail the physics simulation configuration for the articulated robot: articulation solver type (TGS), solver iteration counts, physics time step, and their effect on joint stability
+    \item Describe the tendon actuation modelling decision: why PhysX articulation tendons were not used (fidelity and stability concerns per NVIDIA docs) and how direct PD joint drives approximate tendon behaviour instead
+    \item Explain the PD drive parameterisation: stiffness and damping per joint, how initial values were derived from estimated tendon elasticity, and the iterative tuning process using Isaac Sim's Gain Tuner
+    \item Describe collision geometry choices: convex hull generation from CAD meshes, performance vs.\ accuracy trade-off, and verification that no self-interpenetration occurs across the full joint range
+    \item Present the step-response validation methodology: sinusoidal and step position commands applied to each joint independently; metrics recorded (settling time, overshoot, steady-state error); comparison with Klein's (2023) PID controller parameters and Jacobian transpose mapping
+    \item Explain gravity compensation handling for the ceiling-mounted configuration and its effect on the vertical axis tuning
+    \item Include a figure showing the Gain Tuner output: commanded vs.\ actual joint trajectories before and after tuning
+\end{itemize}
+
+\subsubsection{Workspace Analysis Methodology}
+\begin{itemize}
+    \item Describe the Monte Carlo FK sampling procedure: 200\,000 uniform random joint configurations within joint limits, FK computed via the IsaacSim 5.1 physics engine (not analytical FK, to capture the exact simulated kinematics)
+    \item Explain parallelisation: 4096 environments running simultaneously on GPU, each evaluating independent joint configurations per step
+    \item Detail the data collected per sample: end-effector position (Cartesian), geometric Jacobian, Yoshikawa manipulability index, inverse condition number
+    \item Describe voxelisation of the Cartesian workspace for density and quality-metric aggregation
+    \item Explain collision handling: scene objects (conveyors, drums) disabled during sampling so the kinematic envelope is fully explored; robot self-collision retained
+    \item Define the desired workspace region derived from Klein's (2023) task geometry and how it is compared against the sampled reachable workspace
+    \item Describe the visualisation pipeline: 3D scatter plots, 2D cross-section heatmaps through the workspace midpoint, colour-coded by manipulability and reachability density
+    \item Explain how the results inform task-space bounds and action limits for the RL environment configuration
+\end{itemize}
+
+\subsection{Section 4.4: Reinforcement Learning Setup}
+\begin{itemize}
+    \item \textbf{State Space:} what observations the agent receives (joint angles/velocities, gripper status, cloth features/key points, camera images if used)
+    \item \textbf{Action Space:} what actions the agent outputs (continuous joint commands: position increments, velocity, or torque); clarify how tendon coupling affects the action space
+    \item \textbf{Reward Function:} reward design for cloth manipulation (e.g., negative distance from desired flat configuration, increase in covered area); intermediate shaping rewards (grasping, lifting); reward schedule or curriculum
+    \item \textbf{RL Algorithm and Training Parameters:} which algorithm is used (e.g., PPO); library (RL Games or Stable Baselines); key hyperparameters (learning rate, discount factor, policy network architecture, training duration); number of parallel simulation instances for GPU-accelerated training; any pre-training or demonstrations
+    \item \textbf{MDP Workflow in IsaacLab:} how the custom task class is defined, specifying observation and reward functions; IsaacLab wrappers for interfacing with the RL algorithm; role of ROS 2 during training (if any)
+    \item \textbf{Reproducibility:} provide a complete hyperparameter table and specify exact software versions (Isaac Sim, IsaacLab, CUDA, Python, RL library) for full reproducibility per FAPS methodology requirements
+\end{itemize}
+
+\subsection{Section 4.5: Initial Experiments (Basic Task Policies)}
+\begin{itemize}
+    \item Describe initial RL experiments with simpler tasks and robots to validate the RL pipeline
+    \item \textbf{Reach Pose Task:} setup, purpose, and what was learned/adjusted
+    \item \textbf{Simple Pick and Place Task:} a simpler robot model (standard manipulator), dummy object instead of flexible cloth
+    \item Purpose: test the training setup, reward shaping, hyperparameters before introducing tendon robot and deformable cloth
+    \item Note adjustments from these initial trials (missing observations, hyperparameter tuning)
+\end{itemize}
+
+\subsection{Section 4.6: Advanced Task Implementation (Cloth Grasping and Stretching)}
+\begin{itemize}
+    \item Detail the final task scenario: tendon-driven robot grasps cloth from surface and stretches it out
+    \item Break down the complex task into phases: grasp, lift, stretch, place
+    \item Strategies for making learning feasible:
+    \begin{itemize}
+        \item Curriculum learning (start with cloth already grasped, or progressively increase difficulty)
+        \item Auxiliary rewards for sub-goals (reward for grasping, reward for moving upward)
+    \end{itemize}
+    \item Gripper simulation: how grasp detection is handled (contact sensors, constraint on gripper close)
+    \item Safety/stability measures: limiting force on tendons to realistic ranges to prevent simulation instabilities
+\end{itemize}
+
+\subsection{Section 4.7: Software and Hardware Integration (ROS 2)}
+\begin{itemize}
+    \item Describe how ROS 2 is incorporated, especially with an eye towards real-world deployment
+    \item During simulation: ROS 2 as bridge (echoing states, visualization in RViz)
+    \item Outline how the trained policy interfaces with a real robot via ROS 2:
+    \begin{itemize}
+        \item Robot's joint controllers subscribe to commanded positions from the RL policy
+        \item Policy subscribes to sensor feedback (joint states, possibly depth camera for cloth observation)
+    \end{itemize}
+    \item Any preliminary setup for sim-to-real: using ROS 2 control for the tendon robot in sim to mirror what would be done on hardware
+    \item Exporting the trained policy for a ROS 2 node
+\end{itemize}
+
+% ------------------------------------------------------------------
+\section{Chapter 5: Results (~15 pages)}
+% ------------------------------------------------------------------
+
+\subsection{Section 5.1: Preliminary Experiments (Baseline Results)}
+\begin{itemize}
+    \item Report performance of the RL policy on simple pick-and-place or reaching tasks with the simplified robot
+    \item Include learning curves: reward over training iterations for the baseline task
+    \item Number of episodes needed to reach a success criterion
+    \item If multiple algorithms or settings were tried, compare briefly (e.g., PPO vs.\ DDPG in reaching task)
+    \item Purpose: demonstrate that the RL pipeline works on a simpler problem and record insights
+    \item Justify choices for the harder task (confirm hyperparameters or algorithm selection)
+\end{itemize}
+
+\subsection{Section 5.2: Performance of Tendon-Driven Robot on Simple Tasks}
+\begin{itemize}
+    \item Present results if the tendon-driven arm was tested on a simple task to validate its controllability
+    \item Report differences due to the robot's dynamics: whether learning was slower or required dealing with more complex dynamics
+    \item Quantitative metrics: success rate, final accuracy for basic manipulation
+    \item Validation of the simulated model: joint motions correspond to expected behavior, open-loop tests confirm model accuracy
+\end{itemize}
+
+\subsubsection{Robot Simulation Validation Results}
+\begin{itemize}
+    \item Present step-response plots for each joint: commanded vs.\ actual position over time, showing settling time, overshoot, and steady-state tracking
+    \item Report quantitative tuning outcomes per joint: final stiffness and damping values, settling time ($\sim 0.1$--$0.3$\,s), overshoot ($< 5\%$), and steady-state error
+    \item Compare the tuned PD behaviour with Klein's (2023) PID controller results: discuss differences due to the simplified tendon model and their practical implications
+    \item Show that the vertical axis (base Z) required higher damping to counteract gravity-induced oscillations; wrist joints use lower stiffness reflecting tendon compliance
+    \item Validate collision geometry: confirm no interpenetration across the full joint range, including extreme configurations
+    \item Discuss any simulation artefacts observed during tuning (e.g., jitter at joint limits, contact instabilities at high stiffness) and how they were resolved
+\end{itemize}
+
+\subsubsection{Workspace Analysis Results}
+\begin{itemize}
+    \item Present the reachable workspace envelope: 3D scatter plot and volume estimate; compare against the desired workspace region from Klein's (2023) task geometry
+    \item Show 2D cross-section heatmaps (e.g., Y--Z and X--Z slices through workspace midpoint) colour-coded by reachability density and manipulability
+    \item Report Yoshikawa manipulability index distribution: mean, percentiles, and spatial variation; identify high-dexterity and near-singular regions
+    \item Report inverse condition number distribution: highlight regions with isotropic vs.\ anisotropic motion capability
+    \item Discuss coverage: what fraction of the desired task workspace is reachable, and at what quality level (e.g., ``95\% of the target volume is reachable with $w > 0.01$'')
+    \item Identify practical implications: regions where the robot operates well vs.\ zones to avoid in task design; how workspace limits constrain object placement and RL action bounds
+    \item Compare briefly with the workspace reported by Klein (2023) for the original arm design (without the 2-DOF base) to show the benefit of the linear stage
+\end{itemize}
+
+\subsection{Section 5.3: Cloth Manipulation Task Results}
+\begin{itemize}
+    \item \textbf{Learning Curve:} plot of reward vs.\ training steps or success rate vs.\ episodes; discuss how quickly the agent learned and whether it plateaued
+    \item \textbf{Quantitative Performance:} define success metric (e.g., percentage of cloth spread flat above threshold); report final policy performance averaged over many test episodes (e.g., ``85\% cloth coverage on average, with $\geq$90\% coverage in 70\% of trials''); use tables and graphs
+    \item \textbf{Policy Behaviors:} describe what the learned policy actually does (e.g., grasps corner, lifts, shakes, lays down stretched); illustrate with sequential images from simulation showing keyframes
+    \item \textbf{Ablation or Variant Results:} different reward formulations, disabling certain observations; e.g., ``without tactile feedback, success rate dropped by 15\%''
+    \item \textbf{Computational Cost:} report wall-clock training time, GPU memory usage, number of environment steps; quantify speedup from GPU parallelism
+    \item \textbf{Sim-to-Real Considerations:} tests with added noise to gauge robustness; effect of domain randomization on policy performance; preliminary tests on real robot if available
+\end{itemize}
+
+\subsection{Section 5.4: Summary of Key Results (Optional)}
+\begin{itemize}
+    \item Concise bullet-point recap of the most important findings
+    \item Answer the objectives as evidenced by results:
+    \begin{itemize}
+        \item Achieved reliable cloth picking in simulation
+        \item Partial/full stretching accomplished (flatness percentage)
+        \item RL training converged in approximately N million steps
+    \end{itemize}
+\end{itemize}
+
+% ------------------------------------------------------------------
+\section{Chapter 6: Discussion (~5 pages)}
+% ------------------------------------------------------------------
+
+\subsection{Section 6.1: Evaluation of Outcomes}
+\begin{itemize}
+    \item Discuss to what extent the thesis objectives (from Introduction) were achieved
+    \item For each objective: was a robust policy learned? How effective is it?
+    \item Provide reasoning for the performance observed (e.g., learning curve plateau indicates suboptimal but acceptable strategy)
+    \item Connect with theory: high-dimensional cloth state making dense reward difficult, exploration challenges
+\end{itemize}
+
+\subsection{Section 6.2: Comparison with Related Work}
+\begin{itemize}
+    \item Compare approaches and results with literature from Section 2.6
+    \item Discuss how the approach compared: advantages of GPU simulation enabling more training, using tendon-driven robot vs.\ standard robots
+    \item Analyze shortcomings: e.g., pure RL approach vs.\ imitation learning may require additional strategies for real-world deployment
+    \item Situate the contribution: either showing improvement or highlighting differences
+\end{itemize}
+
+\subsection{Section 6.3: Limitations of the Study}
+\begin{itemize}
+    \item Limitations in simulation fidelity: cloth simulation as approximation (PhysX may not capture all fine wrinkles), tendon model may not include cable elasticity perfectly
+    \item Risk of policy overfitting to simulated environment quirks
+    \item Generalization concerns: does the policy only work for a specific cloth size or initial pose? What about varying material properties?
+    \item If ROS 2/hardware integration was not fully realized, state that results are limited to simulation
+    \item Training time considerations and policy sensitivity to parameter changes
+    \item Discuss the validity of chosen evaluation metrics: are they sufficient to judge real-world deployment readiness?
+\end{itemize}
+
+\subsection{Section 6.4: Practical Implications}
+\begin{itemize}
+    \item What the results mean for real-world applications (e.g., automated cloth handling in recycling facilities)
+    \item Discuss the gap to reality: sensor noise, unpredictable cloth variations
+    \item Whether the tendon-driven robot in simulation behaved similarly to expectations for reality; what adjustments might be needed
+    \item Reflect on the decision to use IsaacLab/Isaac Sim: was it effective? Did GPU acceleration meaningfully speed up training?
+\end{itemize}
+
+\subsection{Section 6.5: Recommendations and Lessons Learned}
+\begin{itemize}
+    \item Key lessons from the development process, for example:
+    \begin{itemize}
+        \item Careful reward shaping was essential; purely sparse reward led to no learning
+        \item Introducing incremental rewards at different task stages was crucial
+        \item Calibration of joint limits and stiffness in simulation greatly affects training stability
+        \item An improperly tuned model caused unstable training
+    \end{itemize}
+    \item These reflective points demonstrate critical thinking and provide valuable takeaways
+\end{itemize}
+
+% ------------------------------------------------------------------
+\section{Chapter 7: Conclusion and Outlook (~3 pages)}
+% ------------------------------------------------------------------
+
+\subsection{Section 7.1: Conclusion (Summary of Findings)}
+\begin{itemize}
+    \item Recap the core accomplishments in a few concise paragraphs
+    \item Reiterate the problem addressed and how it was solved
+    \item Example summary: ``developed an RL framework for a tendon-driven robotic arm to manipulate cloth in simulation; built a high-fidelity Isaac Sim environment with cloth physics; integrated a custom tendon-driven robot model; using policy-gradient RL, the robot learned to pick up and stretch cloth''
+    \item Highlight the significance: possibly one of the first demonstrations of RL on a tendon-driven robot for cloth manipulation, or a novel combination of IsaacLab with a custom robot model
+    \item Touch on each objective from the introduction, confirming whether it was met
+\end{itemize}
+
+\subsection{Section 7.2: Outlook (Future Work)}
+\begin{itemize}
+    \item Specific next steps:
+    \begin{enumerate}
+        \item \textbf{Real-world implementation:} deploying the learned policy on the physical tendon-driven robot via ROS 2; evaluating on real cloth; dealing with sim-to-real gaps (domain randomization, fine-tuning with real data)
+        \item \textbf{Improving the policy/generalization:} exploring more advanced RL algorithms; incorporating vision-based observation for handling varying cloth shapes or unknown cloth pieces
+        \item \textbf{Task expansions:} moving beyond stretching to folding, handling multiple pieces, integrating higher-level planning for sequential tasks
+        \item \textbf{Simulation enhancements:} more accurate cloth models, additional sensors (depth camera for cloth state perception)
+    \end{enumerate}
+    \item Open research questions: adaptability of learned policy to different fabrics (varying stiffness); training with a range of material properties for robustness
+    \item Closing remark: reflect on broader impact --- integration of advanced simulation with RL demonstrates a path toward robots that can handle complex, deformable objects autonomously
+\end{itemize}
+
+% ------------------------------------------------------------------
+\section{Appendices (not counted in page total)}
+% ------------------------------------------------------------------
+
+\begin{itemize}
+    \item Supplementary material: extensive tables, hyperparameter lists, additional diagrams, code snippets
+    \item Full URDF/MJCF of the robot
+    \item Detailed network architectures
+    \item Additional results plots
+    \item Complete reward function formulations and their evolution during development
+    \item Domain randomization parameter ranges table
+    \item Software version matrix (Isaac Sim, IsaacLab, PhysX, CUDA, Python packages)
+\end{itemize}

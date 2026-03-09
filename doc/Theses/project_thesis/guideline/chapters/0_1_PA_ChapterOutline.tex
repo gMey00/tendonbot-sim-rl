@@ -1,0 +1,292 @@
+% ==========================================================================
+% Planning reference: what each thesis chapter and section should contain.
+% Heading levels match the actual thesis for easy cross-referencing.
+% ==========================================================================
+
+%--- ~3--5 pages ---%
+\chapter{Introduction}\label{ch:introduction}
+\markboth{Introduction}{}
+
+\section{Motivation and Context}
+\begin{itemize}
+    \item Introduce the industrial relevance of autonomous robotic manipulation for textile recycling and waste sorting on conveyors
+    \item Highlight the challenges of using tendon-driven robots: compliant design, complex actuation, need for simulation-based development
+    \item Emphasize the role of simulation (NVIDIA Isaac Sim) and reinforcement learning as an enabling approach for developing control policies without physical hardware iteration
+    \item Frame the project thesis as the foundational simulation and validation stage of a larger multi-agent textile sorting project
+\end{itemize}
+
+\section{Problem Statement and Objectives}
+\begin{itemize}
+    \item State the thesis problem: constructing, validating, and controlling a tendon-driven robot in simulation for conveyor-based pick-and-place tasks
+    \item List the research objectives:
+    \begin{enumerate}
+        \item High-fidelity simulation environment (conveyor, drum, objects) in Isaac Sim 5.1.0
+        \item Robot model integration and validation (5-DOF tendon-driven arm + base + gripper)
+        \item RL-based reach and cube place tasks with PD and tendon-driven variants
+        \item Tendon wrist transfer experiment on a standard industrial robot arm
+    \end{enumerate}
+    \item Scope delimitation: this thesis does NOT address cloth simulation, sorting (selectivity), multi-agent coordination, or sim-to-real transfer; these are explicitly deferred to the subsequent master thesis
+\end{itemize}
+
+\section{Thesis Outline}
+\begin{itemize}
+    \item Brief summary of chapters 2--7 for reader orientation
+\end{itemize}
+
+%--- ~15--20 pages ---%
+\chapter{Background}\label{ch:background}
+\markboth{Background}{}
+
+\section{Reinforcement Learning for Robotic Manipulation}
+\begin{itemize}
+    \item MDP formalism: states, actions, transitions, rewards, discount factor
+    \item Policy gradient methods relevant to continuous control: PPO (primary), SAC, DDPG (for comparison context)
+    \item On-policy (PPO) vs.\ off-policy approaches: stability, sample efficiency, suitability for GPU-parallel simulation
+    \item Policy network architectures: MLP actor-critic, observation normalization
+    \item The skrl library as the RL framework used in this thesis
+    \item Prior successes of RL in simulation for manipulation (OpenAI Dexterous Hand, QT-Opt, DexMV)
+\end{itemize}
+
+\section{Physics Simulation in Isaac Sim 5.1}
+\begin{itemize}
+    \item NVIDIA PhysX 5 as core solver, GPU-accelerated simulation
+    \item Rigid body dynamics: TGS solver, articulated bodies, joints, contacts, friction
+    \item Simulation parameters: time step, solver iterations, contact offsets
+    \item Collision detection: mesh vs.\ convex decomposition vs.\ primitive shapes
+    \item Brief mention of deformable simulation capabilities (PBD particle cloth, VBD) as context for future work --- not used in this thesis
+\end{itemize}
+
+\section{NVIDIA Isaac Sim and IsaacLab Architecture}
+\begin{itemize}
+    \item Isaac Sim 5.1.0: Omniverse platform, PhysX 5, RTX rendering, ROS 2 support
+    \item IsaacLab: unified robotics learning framework, manager-based environment structure
+    \item MDP workflow: observation managers, action managers, reward managers, event managers
+    \item Comparison with alternative platforms (MuJoCo, PyBullet) to justify choice
+\end{itemize}
+
+\section{Tendon-Driven Robot Kinematics and Modeling}
+\begin{itemize}
+    \item Tendon-driven actuation: cables generate joint torques, advantages for compliant manipulation
+    \item The specific robot: 2-DOF linear base + 3-DOF tendon arm (Klein 2023) + Robotiq 2F-140 gripper
+    \item Jacobian-transpose torque mapping: 5 cable tensions to 3 joint torques
+    \item Challenges of simulating tendon-driven systems in Isaac Sim; decision to use PD drives instead of PhysX tendon features
+    \item Workspace analysis fundamentals: FK-based Monte Carlo sampling, Yoshikawa manipulability index, inverse condition number, reachability density
+\end{itemize}
+
+\section{Policy Learning Pipeline}
+\begin{itemize}
+    \item Observation space design for robot control tasks
+    \item Action space: joint position targets, tendon tension targets
+    \item Reward function design: dense shaping rewards, curriculum learning
+    \item Episode termination and reset strategies
+    \item GPU-parallel vectorized environments for training throughput
+\end{itemize}
+
+\section{Prior Work}
+\begin{itemize}
+    \item TODO: Related work on tendon-driven robot simulation and RL-based pick-and-place
+\end{itemize}
+
+\section{Robot and Scene Description Formats}
+\begin{itemize}
+    \item USD: extensible 3D scene graph for Isaac Sim
+    \item URDF: robot kinematic/dynamic description
+    \item URDF-to-USD import pipeline and modifications for the tendon arm
+    \item Isaac Sim Robot Assembler for modular multi-component robots
+\end{itemize}
+
+%--- ~3 pages ---%
+\chapter{Research Gap}\label{ch:research_gap}
+\markboth{Research Gap}{}
+
+\section{Critical Analysis of State of the Art}
+\begin{itemize}
+    \item Tendon-driven robots are studied in control theory but rarely integrated with modern RL simulation frameworks
+    \item Most RL manipulation work uses standard rigid-joint robots (UR, Franka); tendon-driven arms are underrepresented
+    \item No existing work combines a tendon-driven arm with IsaacLab's GPU-parallel RL training pipeline
+    \item The transferability of tendon wrist mechanisms to standard arms is unexplored
+\end{itemize}
+
+\section{Research Gap and Justification}
+\begin{itemize}
+    \item Gap: validated simulation of a tendon-driven robot in Isaac Sim with RL-based control for manipulation tasks does not exist in the literature
+    \item Scientific contribution: methodology for integrating tendon-driven actuation in a modern GPU-parallel RL framework; comparative validation against Klein (2023)
+    \item Practical contribution: a modular, reusable simulation environment for tendon-robot research; wrist transferability results
+\end{itemize}
+
+\section{Refined Problem Definition}
+\begin{itemize}
+    \item Research question: How can a custom tendon-driven manipulator be faithfully modeled, validated, and controlled via RL in Isaac Sim for conveyor-based pick-and-place tasks, and does the tendon wrist mechanism transfer beneficially to a standard robot arm?
+    \item Scope: simulation only; no physical hardware; no cloth; no sorting selectivity
+    \item Expected contributions: validated robot model, RL pipeline, wrist transfer comparison
+\end{itemize}
+
+%--- ~15--18 pages ---%
+\chapter{Methodology}\label{ch:methodology}
+\markboth{Methodology}{}
+
+\section{Overview of Approach}
+\begin{itemize}
+    \item High-level system diagram: Isaac Sim scene $\rightarrow$ IsaacLab environment $\rightarrow$ skrl PPO $\rightarrow$ learned policy
+    \item Development stages: (1) environment and robot setup, (2) validation, (3) RL tasks, (4) wrist transfer experiment
+\end{itemize}
+
+\section{Simulation Environment Setup}
+\begin{itemize}
+    \item USD scene: ground plane, conveyor belt, plastic drum, dome lighting
+    \item Object placement and randomization (initial positions, colours for curriculum)
+    \item Physics parameters: time step, solver iterations
+    \item Parallel environment configuration for GPU training
+    \item Figure: annotated simulation scene
+\end{itemize}
+
+\section{Robot Model Integration}
+\begin{itemize}
+    \item 2-DOF articulated base: USD construction, prismatic joints, travel ranges
+    \item 3-DOF tendon-driven arm: URDF import from Klein (2023), modifications, revolute joints with PD drives
+    \item Tendon actuation modeling decision: why PhysX tendon features were not used; PD drive approximation
+    \item Robotiq 2F-140 gripper: asset library integration, specifications
+    \item Modular assembly via Robot Assembler: two-step procedure (base+arm, then arm+gripper)
+    \item Collision geometry: convex hull generation, self-collision verification
+    \item Joint limits table (Table~X)
+    \item Figure: exploded view of assembled robot
+\end{itemize}
+
+\section{Control Gain Tuning and Validation}
+\begin{itemize}
+    \item Isaac Sim Gain Tuner: methodology for automated stiffness/damping tuning
+    \item Step-response testing: sinusoidal and step commands, metrics (settling time, overshoot, steady-state error)
+    \item Comparison with Klein (2023) PID controller parameters
+    \item Gravity compensation for ceiling-mounted configuration
+    \item Figure: Gain Tuner output (commanded vs.\ actual trajectories)
+\end{itemize}
+
+\section{Workspace Analysis}
+\begin{itemize}
+    \item Monte Carlo FK sampling: 200,000 samples, 4096 parallel environments
+    \item Data collected: end-effector position, Jacobian, Yoshikawa manipulability, inverse condition number
+    \item Voxelization and density aggregation
+    \item Comparison with Klein (2023) task geometry
+    \item Visualization: 3D scatter plots, 2D heatmap cross-sections
+\end{itemize}
+
+\section{Reinforcement Learning Setup}
+\begin{itemize}
+    \item \textbf{Reach Task:} observation space (joint states, target pose), action space (joint position targets), reward (pose distance + orientation), PD-driven and tendon-driven variants
+    \item \textbf{Cube Place Task:} observation space (joint states, cube pose, drum pose, grasp status), action space, reward (approach + grasp + lift + place), curriculum (green-only $\rightarrow$ green+red)
+    \item PPO hyperparameters (learning rate, discount, network architecture, number of environments)
+    \item Reproducibility table: software versions, hardware
+\end{itemize}
+
+\section{Tendon Wrist Transfer Experiment}
+\begin{itemize}
+    \item Experimental design: UR10 with native rigid wrist vs.\ UR10 with tendon-driven wrist replacement
+    \item Control variable: wrist type; all other parameters (RL config, task, scene) identical
+    \item Tasks: reach accuracy, place success rate
+    \item Metrics: final pose error, success rate, learning speed
+    \item Integration procedure: wrist USD asset swapped via Robot Assembler
+\end{itemize}
+
+%--- ~12--15 pages ---%
+\chapter{Results}\label{ch:results}
+\markboth{Results}{}
+
+\section{Robot Simulation Validation Results}
+\begin{itemize}
+    \item Step-response plots per joint: commanded vs.\ actual position
+    \item Quantitative metrics: final stiffness/damping, settling time, overshoot, steady-state error
+    \item Comparison with Klein (2023) PID results; discussion of differences
+    \item Collision geometry validation across full joint range
+\end{itemize}
+
+\section{Workspace Analysis Results}
+\begin{itemize}
+    \item 3D reachable workspace envelope and volume estimate
+    \item 2D cross-section heatmaps by reachability density and manipulability
+    \item Yoshikawa manipulability and inverse condition number distributions
+    \item Coverage of desired task workspace; practical implications for object placement
+    \item Comparison with Klein (2023) workspace (without 2-DOF base)
+\end{itemize}
+
+\section{Reach Task Results}
+\begin{itemize}
+    \item Learning curves (reward vs.\ training steps) for PD and tendon-driven variants
+    \item Final pose accuracy: position error, orientation error
+    \item PD vs.\ tendon comparison: learning speed, final accuracy
+    \item Computational cost: wall-clock time, GPU memory, environment steps
+\end{itemize}
+
+\section{Cube Place Task Results}
+\begin{itemize}
+    \item Learning curves with curriculum progression
+    \item Success rate: cube in drum, colour selectivity (green placed, red ignored)
+    \item PD vs.\ tendon comparison
+    \item Qualitative policy behavior description with keyframe figures
+\end{itemize}
+
+\section{Tendon Wrist Transfer Results}
+\begin{itemize}
+    \item UR10 native wrist vs.\ UR10 + tendon wrist: reach accuracy comparison
+    \item Place success rate comparison
+    \item Learning curves comparison
+    \item Statistical significance of observed differences
+\end{itemize}
+
+%--- ~5 pages ---%
+\chapter{Discussion}\label{ch:discussion}
+\markboth{Discussion}{}
+
+\section{Evaluation of Outcomes}
+\begin{itemize}
+    \item To what extent were the thesis objectives achieved?
+    \item Robot model validated against Klein (2023); deviations explained by simplified tendon model
+    \item RL pipeline functional for both reach and place; tendon-driven variant achievable but with different convergence characteristics
+\end{itemize}
+
+\section{Tendon Wrist Transferability}
+\begin{itemize}
+    \item Interpretation of wrist transfer results
+    \item Under what conditions does the tendon wrist improve or degrade performance?
+    \item Implications for robot design: when is a compliant wrist advantageous?
+\end{itemize}
+
+\section{Limitations}
+\begin{itemize}
+    \item Simplified tendon model (PD drives, no cable stretch or backlash)
+    \item Rigid objects only; no deformable cloth tested
+    \item Simulation-only results; no sim-to-real validation
+    \item Wrist experiment limited to one standard arm type
+\end{itemize}
+
+\section{Practical Implications}
+\begin{itemize}
+    \item Modular simulation pipeline reusable for future tasks
+    \item Workspace analysis informs physical task design
+    \item Wrist results guide hardware decisions for the master thesis
+\end{itemize}
+
+%--- ~3 pages ---%
+\chapter{Conclusion}\label{ch:conclusion}
+\markboth{Conclusion}{}
+
+\section{Conclusion}
+\begin{itemize}
+    \item Recap accomplishments: validated simulation, RL-controlled tendon robot, wrist transferability assessment
+    \item Answer the research question concisely
+    \item Highlight key quantitative results
+\end{itemize}
+
+\section{Outlook}
+\begin{itemize}
+    \item Direct next steps (master thesis scope):
+    \begin{enumerate}
+        \item Conveyor-based sorting with selectivity (T-shirt vs.\ non-target)
+        \item Deformable cloth simulation integration
+        \item Second robot arm for stretching and inspection
+        \item Camera-based damage classification
+        \item Multi-agent coordination
+        \item ROS 2 integration for sim-to-real transfer
+    \end{enumerate}
+    \item More realistic tendon model (cable dynamics, backlash)
+    \item Domain randomization for transfer robustness
+\end{itemize}

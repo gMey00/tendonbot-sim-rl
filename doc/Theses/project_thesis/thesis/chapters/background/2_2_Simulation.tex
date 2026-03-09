@@ -1,0 +1,752 @@
+% NEW ACRONYM — add to formatting/Acronyms.tex:
+% \DeclareAcronym{CPU}{short=CPU, long=Central Processing Unit, tag=abbrev, sort=CPU}
+% \DeclareAcronym{PGS}{short=PGS, long=Projected Gauss--Seidel, tag=abbrev, sort=PGS}
+% \DeclareAcronym{TGS}{short=TGS, long=Temporal Gauss--Seidel, tag=abbrev, sort=TGS}
+% \DeclareAcronym{SDF}{short=SDF, long=Signed Distance Field, tag=abbrev, sort=SDF}
+
+%===================================================================%
+\section{Physics Simulation in Isaac Sim 5.1}
+\label{sec:physics_sim}
+%===================================================================%
+
+Physics-based simulation in Isaac~Sim~5.1 is implemented as a layered stack that separates
+(i) scene and asset description, (ii) binding of these descriptions to a concrete backend, and
+(iii) numerical solvers that evolve the physical state over time.
+In the Omniverse ecosystem, physics properties are authored in \ac{USD} through the
+\texttt{UsdPhysics} schema (engine-agnostic physics description) and \texttt{PhysXSchema}
+(backend-specific extensions), allowing assets and environments to be defined declaratively in
+the scene graph~\cite{openusd_usdphysics_schema,omni_physx_overview}.
+During simulation, the \texttt{omni.physx} runtime parses the \ac{USD} stage, constructs the
+corresponding physics scene, advances the simulation, and writes back poses and state to
+\ac{USD}~\cite{omni_physx_overview}.
+Isaac~Sim~5.1 uses NVIDIA PhysX~5 as its primary physics backend, providing rigid-body
+dynamics, articulations, contacts, and particle-based phenomena, with optional
+\ac{GPU}-accelerated pipelines for throughput-critical workloads such as robot learning
+experiments with many parallel environments~\cite{isaac_sim_simulation_fundamentals_510,physx_welcome_513,physx_gpu_rigid_bodies_510}.
+
+A detailed understanding of the underlying physics models and numerical methods is
+required for two reasons.
+First, sim-to-real transfer is fundamentally limited by discrepancies between simulated and
+real dynamics (the \emph{reality gap}), where unmodelled effects, incorrect parameters (e.g.,
+friction and damping), and solver artefacts can lead to policies that exploit simulator-specific
+regularities~\cite{Jakobi1995RealityGap,Salvato2021RealityGapSurvey}.
+Second, in \ac{RL}, the simulator acts as a data-generating process; thus, modelling and solver
+choices directly shape the transition distribution used for learning, influencing both policy
+quality and generalization~\cite{Salvato2021RealityGapSurvey,Peng2018DynamicsRandomization}.
+In practice, this implies that solver selection, time-step choice, contact modelling, and
+collision geometry approximations must be treated as part of the learning system design, not
+as interchangeable implementation details~\cite{Peng2018DynamicsRandomization,physx_best_practices_541}.
+
+\begin{figure}[ht!]
+\centering
+\fbox{\parbox{0.8\textwidth}{\centering \vspace{0.1in}Placeholder for \textit{Isaac Sim physics stack (USD Physics / PhysXSchema $\rightarrow$ omni.physx $\rightarrow$ PhysX 5 CPU/GPU solvers)} image\vspace{0.1in}}}
+\caption[Isaac Sim physics stack]{Conceptual physics simulation stack in Isaac~Sim~5.1: physics is authored in \ac{USD} via \texttt{UsdPhysics} and \texttt{PhysXSchema}, interpreted by \texttt{omni.physx}, and simulated using PhysX~5 with optional \ac{GPU}-accelerated pipelines.}\label{fig:isaac_sim_physics_stack}
+\end{figure}
+
+\subsection{Rigid Body Dynamics}
+
+Rigid-body simulation assumes that each object moves as a rigid transform, i.e., deformation
+is neglected and the state is represented by position/orientation and linear/angular velocity.
+PhysX represents the simulated world as a set of actors (static, kinematic, dynamic) with
+attached collision shapes and material properties; dynamics are advanced under external
+loads (e.g., gravity), contact constraints, and joint constraints~\cite{physx_welcome_513,physx_rigid_body_dynamics_511}.
+In Isaac~Sim, these concepts are exposed through \ac{USD} physics schemas and their PhysX
+extensions, enabling rigid bodies, colliders, and constraints to be authored on scene
+primitives~\cite{isaac_sim_simulation_fundamentals_510,openusd_usdphysics_schema}.
+
+\paragraph{Articulated bodies, joints, and robot mechanisms.}
+Robotic manipulators are modelled as articulated mechanisms, i.e., rigid links connected by
+joints that constrain relative motion and optionally apply actuation (drives).
+PhysX provides an \emph{articulation} abstraction that is simulated in reduced coordinates,
+where the configuration is parameterized by the root pose and joint coordinates rather than
+the world pose of each link~\cite{physx_articulations_513}.
+This formulation is designed to improve numerical fidelity for mechanisms (e.g., reduced
+joint error and improved behavior under large mass ratios) compared to independently
+simulating rigid bodies connected by generic constraints~\cite{physx_articulations_513}.
+In this thesis context, the tendon-driven arm and the attached gripper are simulated as
+chains of rigid links with joint constraints and joint drives, such that control inputs act on
+joint coordinates while the solver enforces inter-link constraints and contacts~\cite{physx_articulations_513,isaac_sim_simulation_fundamentals_510}.
+PhysX also exposes explicit \emph{articulation tendons} as additional constraint structures
+within an articulation, including fixed tendons (coupling joint coordinates) and spatial
+tendons (spring-damper and limit constraints defined over attachment trees across links),
+which are relevant when cable-like actuation or joint coupling must be represented at the
+physics level~\cite{physx_articulations_513,omni_physics_tendon_authoring}.
+
+\paragraph{Contacts and friction models.}
+Rigid-body collision response is formulated as a constrained dynamics problem in which
+contacts prevent interpenetration and can transfer or dissipate energy through restitution and
+friction~\cite{physx_rigid_body_collision_510,isaac_sim_simulation_fundamentals_510}.
+In PhysX, friction and restitution are specified via materials attached to shapes; friction is
+parameterized by static and dynamic coefficients and can be combined for contacting pairs
+using configurable combine modes~\cite{physx_rigid_body_dynamics_511,physx_material_api_510}.
+Because contact-rich manipulation is common in robotic assembly, grasping, and textile
+handling, parameter choices for friction and restitution are directly coupled to learning
+outcomes and to sim-to-real robustness~\cite{Salvato2021RealityGapSurvey,Peng2018DynamicsRandomization}.
+
+\paragraph{\acs{TGS} constraint solving in PhysX.}
+Rigid-body dynamics with contacts and joints is solved in PhysX using iterative constraint
+solvers. PhysX supports a classic \acs{PGS}-style solver and the newer \acs{TGS} solver, with
+\acs{TGS} introduced in PhysX~5.1 and recommended for improved convergence and joint
+drive accuracy in many scenarios~\cite{physx_rigid_body_dynamics_511}.
+Both solvers operate iteratively over constraint manifolds (contacts, joints, friction), and
+accuracy is traded for performance by limiting iteration counts.
+A key motivation for temporal formulations is the observation that, for stiff constraint
+systems, replacing multiple solver iterations at a long time step by multiple smaller substeps
+can yield superior stability and accuracy at comparable computational cost~\cite{Macklin2019SmallSteps,physx_best_practices_541}.
+This perspective is consistent with PhysX guidance to consider smaller time steps (or
+substepping) when joint stability and contact behavior are insufficient under a fixed number
+of iterations, rather than indefinitely increasing iteration counts~\cite{physx_best_practices_541}.
+
+\paragraph{Simulation parameters and numerical tradeoffs.}
+For robotics and \ac{RL}, the most consequential rigid-body parameters are those controlling
+temporal discretization, solver convergence, and contact generation.
+The simulation time step $h$ determines how frequently dynamics are integrated and how
+often the policy interacts with the environment; overly large $h$ can lead to missed
+collisions, unstable joint behavior, and biased contact impulses, whereas smaller $h$
+improves accuracy at increased compute cost~\cite{physx_simulation_541,physx_best_practices_541}.
+Solver iteration counts control how many passes are made over constraints; PhysX allows
+per-actor iteration counts (position and velocity iterations), and the effective iterations for a
+connected island are determined by the maximum requested within that island~\cite{physx_simulation_541,physx_rigid_body_dynamics_511}.
+Contact generation is influenced by the pair \texttt{contactOffset} and \texttt{restOffset}: contact
+points are generated once shapes are within the combined contact distance, while the rest
+offset defines the target separation distance at rest, enabling predictive enforcement and
+reducing jitter at the cost of introducing a small separation bias~\cite{physx_advanced_collision_detection_512}.
+Finally, friction coefficients (static/dynamic) and restitution parameters are specified in
+materials and substantially affect sliding, sticking, and impact behavior~\cite{physx_material_api_510,physx_rigid_body_dynamics_511}.
+
+\begin{table}[htb]
+    \centering
+    \caption{Selected rigid-body simulation parameters relevant to robot learning in Isaac~Sim / PhysX.}\label{tab:physx_rigid_body_parameters}
+    \begin{tabular}{l c c}
+    \hline
+    \textbf{Parameter} & \textbf{Location} & \textbf{Primary effect} \\
+    \hline
+    Time step $h$ & Physics scene & Accuracy vs.\ throughput; contact/joint stability~\cite{physx_simulation_541} \\
+    Solver iterations & Actor / island & Constraint convergence; joint error; contact quality~\cite{physx_rigid_body_dynamics_511} \\
+    \texttt{contactOffset}/\texttt{restOffset} & Shape & Contact prediction and resting separation~\cite{physx_advanced_collision_detection_512} \\
+    Friction coefficients & Material & Sliding/sticking behavior; grasp stability~\cite{physx_material_api_510} \\
+    \hline
+    \end{tabular}
+\end{table}
+
+\paragraph{\ac{GPU}-accelerated rigid bodies for parallel \ac{RL} environments.}
+PhysX provides a \ac{GPU} rigid-body pipeline that accelerates broad-phase, narrow-phase,
+contact generation, and constraint solving on CUDA-capable hardware, while exposing the
+same API concepts as the \ac{CPU} pipeline~\cite{physx_gpu_rigid_bodies_510}.
+Large performance gains are expected when many rigid bodies are active, which aligns with
+robot learning workloads where hundreds to thousands of environment replicas are simulated
+in parallel to increase sample throughput~\cite{physx_gpu_rigid_bodies_510,Makoviychuk2021IsaacGym}.
+In IsaacLab, PhysX \ac{GPU} simulation is enabled by default and can be configured
+explicitly; however, \ac{GPU} simulation requires preallocation of internal buffers and may
+fail when insufficient capacities are specified, which makes sizing and profiling part of
+simulation configuration for large-scale training~\cite{isaaclab_sim_doc}.
+The broader motivation for \ac{GPU}-resident simulation in \ac{RL} is that physics stepping
+and policy learning can share device memory, avoiding \ac{CPU}--\ac{GPU} transfer
+bottlenecks; this design has been demonstrated to yield substantial throughput improvements
+in GPU-based robot learning platforms~\cite{Makoviychuk2021IsaacGym}.
+
+\paragraph{Collision detection and geometry approximations.}
+Collision detection cost is highly sensitive to the chosen collider representation.
+Primitive shapes (e.g., spheres, boxes, capsules) provide the strongest performance and
+numerical robustness because intersection tests and contact generation are simple and
+well-conditioned~\cite{physx_rigid_body_collision_510}.
+Convex meshes provide a practical middle ground for complex objects by enabling efficient
+collision queries while approximating concave geometry; PhysX requires \emph{convex mesh
+cooking} to transform input geometry into an optimized representation for collision
+detection~\cite{physx_geometry_541}.
+In Isaac~Sim, mesh colliders are often approximated by convex hulls by default for
+performance, with more expensive approximations available when needed~\cite{isaac_sim_simulation_fundamentals_510}.
+When concavity is important for dynamic objects, convex decomposition (a set of convex
+parts) is typically preferred over a single triangle mesh collider because triangle-mesh
+contact generation is expensive and, depending on pipeline and version, may require
+additional structures.
+In PhysX~5.3+, dynamic triangle meshes in the \ac{GPU} collision pipeline require an
+associated \ac{SDF} to accelerate collision detection, increasing memory use but improving
+query performance~\cite{physx_geometry_530}.
+Therefore, collider selection becomes a modelling choice that trades geometric fidelity
+against computational cost and solver stability, and this tradeoff must be balanced against
+the throughput requirements of \ac{RL} training.
+
+\subsection{Cloth and Deformable Object Simulation}
+
+Deformable object simulation relaxes the rigid-body assumption by allowing the object’s
+shape to change under load. This introduces two coupled complexities: the state dimension
+increases dramatically (many vertices/particles instead of a single rigid transform), and
+contacts become configuration-dependent because deformation continuously alters the set of
+potential contact points and normals~\cite{Nealen2006DeformableModels,Longhini2025ReviewClothManipulation}.
+For textiles, this coupling is particularly pronounced: applied forces not only translate the
+object but also create folds, wrinkles, and contact-rich self-interactions that alter future
+dynamics. These properties are repeatedly identified as key contributors to the reality gap in
+robotic cloth manipulation~\cite{Longhini2025ReviewClothManipulation}.
+
+\paragraph{Common modelling approaches.}
+Three modelling families are most relevant in robotics simulation.
+First, mass--spring(-damper) models discretize cloth as a mesh whose vertices are connected
+by springs encoding stretch and (optionally) bending penalties; such models can be made
+stable with implicit integration techniques but require careful parameterization and can be
+numerically stiff~\cite{BaraffWitkin1998}.
+Second, particle-based constraint methods represent cloth by particles and enforce desired
+behavior via geometric (holonomic) constraints, which can be solved iteratively with high
+robustness under collisions; \ac{PBD} and its variants are canonical examples~\cite{muller2007pbd,macklin2016xpbd}.
+Third, continuum formulations discretize elastic energy and constitutive laws (e.g., in
+\ac{FEM}) or use hybrid particle--grid methods (e.g., \ac{MPM}), providing a pathway to
+parameters with clearer physical interpretation at increased computational cost~\cite{SifakisBarbic2012FEM,Jiang2016MPM}.
+
+\paragraph{Challenges specific to cloth dynamics.}
+Cloth exhibits high effective \ac{DoF}, frequent self-collision, and strong sensitivity to
+material parameters such as bending stiffness, friction, and damping. Robust self-contact
+and friction handling is widely recognized as a hard requirement for stable cloth simulation,
+particularly under large deformations and repeated collisions~\cite{Bridson2002ClothCollisions,Longhini2025ReviewClothManipulation}.
+From a learning perspective, this sensitivity implies that small modelling errors (e.g., in
+friction or damping) can change grasp success rates, sliding behavior, and fold formation,
+which in turn can qualitatively alter the learned policy’s strategy and its transferability to
+hardware~\cite{Salvato2021RealityGapSurvey,Longhini2025ReviewClothManipulation}.
+
+\subsubsection{\acs{PBD} --- PhysX Particle Cloth}
+
+PhysX provides particle-based simulation through \texttt{PxPBDParticleSystem}, whose solver
+is explicitly described as using \ac{PBD} for particle--particle dynamics and as supporting
+phenomena including cloth, inflatables, and other deformable behaviors~\cite{physx_particle_system_513,physx_pbd_particlesystem_api}.
+In Omniverse, particle simulation is \ac{GPU}-accelerated and is documented as supporting
+fluids, granular media, and cloth, including interaction with rigid bodies and
+articulations~\cite{omni_physics_particles}.
+At the feature level, particle cloth is treated as a particle-based \ac{PBD} mass--spring-style
+system and is marked as deprecated in favor of newer deformable-body features, which
+highlights that ``cloth'' in Isaac~Sim can refer to multiple, evolving solver families rather
+than a single canonical model~\cite{omni_physics_particles,isaac_sim_physics_resources_510}.
+
+\paragraph{Time-step structure and iterative projection.}
+In standard \ac{PBD}, the deformable is represented by particle positions
+$\mathbf{x}_i \in \mathbb{R}^3$ with masses $m_i$; desired behavior is enforced by a set of
+constraints $C_j(\mathbf{x})$ (equalities or inequalities), typically solved by iterative
+projection in a Gauss--Seidel fashion~\cite{muller2007pbd}.
+A schematic time step consists of: (i) updating velocities under external forces,
+(ii) predicting positions by an explicit step, (iii) iteratively projecting predicted positions
+to reduce constraint violations, and (iv) updating velocities from the corrected positions
+(and applying damping if configured)~\cite{muller2007pbd}.
+For a constraint $C_j(\mathbf{x}) = 0$, linearization yields a correction direction based on the
+constraint gradient. Using the inverse mass matrix $\mathbf{M}^{-1}$ (diagonal in the particle
+basis), one common update can be written as~\cite{muller2007pbd,macklin2016xpbd}:
+\begin{equation}
+\Delta \mathbf{x} = k_j \cdot s_j \cdot \mathbf{M}^{-1}\nabla C_j(\mathbf{x}), \qquad
+s_j = \frac{-C_j(\mathbf{x})}{\nabla C_j(\mathbf{x})^\top \mathbf{M}^{-1} \nabla C_j(\mathbf{x})},
+\label{eq:pbd_correction}
+\end{equation}
+where $k_j \in [0,1]$ is a user-defined stiffness-like scaling applied per constraint.
+
+\paragraph{Effective stiffness and dependence on $h$ and iteration count.}
+A central practical implication of the iterative projection view is that the \emph{effective}
+stiffness of constraints depends on numerical settings. Increasing the number of projection
+iterations typically yields stiffer constraint satisfaction at fixed $h$, while increasing $h$
+tends to reduce stability and can require either more iterations or smaller substeps to
+maintain comparable behavior~\cite{muller2007pbd,macklin2016xpbd,Macklin2019SmallSteps}.
+This is beneficial for robustness and controllability, but it complicates mapping simulator
+parameters to physically measured material properties (e.g., bending stiffness in SI units),
+which is a recurring issue when calibrating cloth simulation for sim-to-real
+transfer~\cite{macklin2016xpbd,Salvato2021RealityGapSurvey}.
+
+\paragraph{\acs{XPBD} compliance formulation.}
+\ac{XPBD} extends \ac{PBD} by introducing a compliance parameter and an explicit Lagrange
+multiplier state to reduce time-step dependence and recover meaningful constraint force
+estimates~\cite{macklin2016xpbd}.
+For compliance $\alpha \ge 0$ and time step $h$, the incremental multiplier update for a
+constraint can be expressed as~\cite{macklin2016xpbd}:
+\begin{equation}
+\Delta \lambda =
+\frac{-C(\mathbf{x}) - \frac{\alpha}{h^2}\lambda}{\sum_i w_i \|\nabla_{\mathbf{x}_i} C(\mathbf{x})\|^2 + \frac{\alpha}{h^2}},
+\qquad
+\Delta \mathbf{x}_i = w_i \nabla_{\mathbf{x}_i} C(\mathbf{x}) \Delta \lambda,
+\label{eq:xpbd_update}
+\end{equation}
+with inverse masses $w_i = 1/m_i$.
+This formulation decouples the user parameter $\alpha$ from the iteration count in a way
+that improves interpretability of stiffness-like behavior across different $h$ and solver
+settings~\cite{macklin2016xpbd}.
+
+\paragraph{Why \ac{PBD} is used in PhysX for particle cloth.}
+\ac{PBD} is well-aligned with \ac{GPU} execution because constraints can be partitioned into
+independent sets and processed in parallel; graph coloring is a common strategy to schedule
+constraint batches without write conflicts on shared particles~\cite{FratarcangeliPellacini2013GPUPBD}.
+Omniverse documentation explicitly emphasizes \ac{GPU}-accelerated \ac{PBD} particles and
+their interaction with rigid bodies and articulations, which is essential for cloth manipulation
+scenes in robotics~\cite{omni_physics_particles}.
+In addition, the PhysX particle system API is designed around a dedicated \ac{PBD} solver
+type (\texttt{PxPBDParticleSystem}), reinforcing that particle cloth is treated as a specific,
+robust, high-throughput model family within the PhysX multiphysics portfolio~\cite{physx_particle_system_513,physx_pbd_particlesystem_api}.
+
+\subsubsection{\acs{VBD} --- Newton Thin Deformables}
+
+While PhysX particle cloth is based on explicit prediction and iterative position projection,
+implicit methods aim to improve stability under stiffness and large time steps by solving a
+time-discrete optimization problem. \ac{VBD} is introduced as a block coordinate descent
+solver for the variational form of implicit Euler time integration, targeting convergence to
+the implicit Euler solution while maintaining unconditional stability under limited iteration
+budgets~\cite{Chen2024VBD}.
+
+\paragraph{Variational implicit Euler and global energy minimization.}
+Let $\mathbf{x}_t$ denote positions, $\mathbf{v}_t$ velocities, $h$ the time step, and
+$\mathbf{M}$ the mass matrix. In the variational formulation, the next positions are obtained
+by minimizing a global energy that combines inertia and potential energy~\cite{Chen2024VBD}:
+\begin{equation}
+\mathbf{x}_{t+1} = \arg\min_{\mathbf{x}}\, G(\mathbf{x}), \qquad
+G(\mathbf{x}) = \frac{1}{2h^2}\|\mathbf{x}-\mathbf{y}\|_{\mathbf{M}}^2 + E(\mathbf{x}),
+\label{eq:vbd_global_energy}
+\end{equation}
+where $\mathbf{y}=\mathbf{x}_t+h\mathbf{v}_t+h^2\mathbf{a}_\mathrm{ext}$ and
+$E(\mathbf{x})$ is the total potential energy.
+Velocities follow from the implicit Euler relationship
+$\mathbf{v}_{t+1}=(\mathbf{x}_{t+1}-\mathbf{x}_t)/h$~\cite{Chen2024VBD}.
+
+\paragraph{Vertex-level block coordinate descent and local Newton step.}
+\ac{VBD} solves the global problem by iterating over vertices and updating one vertex at a
+time while temporarily holding the others fixed, yielding a vertex-level Gauss--Seidel
+pattern with favorable parallelization via vertex coloring~\cite{Chen2024VBD}.
+For vertex $i$, a local energy is minimized:
+\begin{equation}
+\mathbf{x}_i \leftarrow \arg\min_{\mathbf{x}_i} G_i(\mathbf{x}), \qquad
+G_i(\mathbf{x})=\frac{m_i}{2h^2}\|\mathbf{x}_i-\mathbf{y}_i\|^2+\sum_{j\in F_i}E_j(\mathbf{x}),
+\label{eq:vbd_local_energy}
+\end{equation}
+where $F_i$ is the set of force/energy elements incident to vertex $i$.
+Because $G_i$ has only three degrees of freedom, a local Newton step is formed by solving
+a $3\times 3$ linear system per vertex~\cite{Chen2024VBD}:
+\begin{equation}
+\mathbf{H}_i \Delta \mathbf{x}_i = \mathbf{f}_i,
+\label{eq:vbd_newton_step}
+\end{equation}
+with $\mathbf{H}_i$ the local Hessian and $\mathbf{f}_i$ the local gradient/force term.
+
+\paragraph{Advantages for stiff, contact-rich thin deformables.}
+The primary advantages highlighted for \ac{VBD} are: (i) unconditional stability inherited
+from the energy descent property, (ii) convergence toward the implicit Euler solution as
+iterations increase, and (iii) \ac{GPU}-oriented parallelization via vertex coloring with small,
+localized linear solves~\cite{Chen2024VBD}.
+These properties are attractive for cloth-like thin deformables, which often exhibit
+near-inextensible stretch (high stiffness) combined with softer bending and frequent
+contact events; implicit/variational formulations can tolerate such stiffness ratios at larger
+time steps than explicit solvers with comparable iteration budgets~\cite{Chen2024VBD}.
+
+\paragraph{Newton in the robotics simulation ecosystem.}
+Newton is presented as an open-source, \ac{GPU}-accelerated physics engine designed for
+robotics simulation and robot learning, built on NVIDIA Warp and intended to integrate with
+robot learning frameworks such as IsaacLab~\cite{newton_physics_doc,nvidia_newton_announcement_2025}.
+In NVIDIA’s robotics communication, Newton is explicitly associated with thin-deformable
+simulation via a \ac{VBD} solver and with multiphysics capabilities that include implicit
+\ac{MPM} and other solver components, motivated by stability and performance for learning
+workflows~\cite{nvidia_isaaclab_newton_blog_2025,nvidia_newton_announcement_2025}.
+Accordingly, \ac{VBD} is positioned as a solver choice when increased stability under stiff
+materials and larger time steps is required, complementing the high-throughput
+\ac{PBD}-based particle cloth pathway in PhysX-centric stacks~\cite{nvidia_isaaclab_newton_blog_2025,Chen2024VBD}.
+
+\subsubsection{Comparison: \acs{PBD} vs.\ \acs{VBD} for Cloth in \ac{RL} Workflows}
+
+\paragraph{Mathematical targets and implications.}
+The core distinction is the optimization target.
+\ac{PBD} advances dynamics by predicting positions and then \emph{projecting} them to reduce
+constraint violations, where the resulting behavior depends on solver scheduling and
+iteration count, and where constraint ``stiffness'' is typically not time-step invariant without
+extensions~\cite{muller2007pbd,macklin2016xpbd}.
+\ac{VBD}, in contrast, directly minimizes the variational implicit Euler energy and therefore
+targets a principled implicit integration objective; stability is maintained by construction via
+energy descent, and increased iteration budgets refine the approximation toward the implicit
+solution~\cite{Chen2024VBD}.
+
+\paragraph{Practical tradeoffs for learning-centric simulation.}
+For \ac{RL}, \ac{PBD}-based particle cloth is attractive because it is simple, robust under
+frequent contacts, and aligned with \ac{GPU}-parallel execution through constraint batching
+and coloring strategies; this supports the high environment throughput required for policy
+optimization~\cite{omni_physics_particles,FratarcangeliPellacini2013GPUPBD,Makoviychuk2021IsaacGym}.
+However, because effective stiffness depends on $h$ and iteration count, parameter tuning
+can be difficult to interpret physically and can amplify sim-to-real sensitivity if policies rely
+on artefacts (e.g., overly damped folds or under-resolved frictional sticking)~\cite{macklin2016xpbd,Salvato2021RealityGapSurvey}.
+\ac{VBD} is attractive when stability under stiffness, large time steps, and mixed constraint
+types is prioritized, particularly for systems that combine near-inextensible stretch with
+softer bending; such regimes are common in cloth manipulation and can be challenging for
+explicit projection methods at fixed compute budgets~\cite{Chen2024VBD,nvidia_isaaclab_newton_blog_2025}.
+
+\paragraph{Relation to the Omniverse ecosystem and thesis choice.}
+In Omniverse/Isaac~Sim, particle cloth is documented as deprecated in favor of newer
+deformable-body features, indicating an ongoing transition toward more general deformable
+schemas and alternative solver families~\cite{omni_physics_particles,isaac_sim_physics_resources_510}.
+For the experiments in this thesis, the PhysX/\ac{PBD} particle cloth pathway is motivated
+by \ac{GPU} throughput and robustness for large-scale training in Isaac~Sim~5.1, whereas
+Newton/\ac{VBD} is conceptually aligned with scenarios where greater stability under stiff
+cloth behavior and larger time steps is required (e.g., when cloth parameters or contact
+conditions become numerically challenging for projection-based solvers)~\cite{omni_physics_particles,Chen2024VBD,nvidia_isaaclab_newton_blog_2025}.
+% TODO: verify which cloth/deformable features are enabled in the exact Isaac~Sim~5.1.0 installation used, and document the final solver selection in the Methodology chapter.
+
+% ---------------------------------------------------------------------------
+% BibTeX keys used in this section:
+%  - omni_physx_overview                    (Omni PhysX overview: USD $\leftrightarrow$ PhysX binding)
+%  - openusd_usdphysics_schema              (OpenUSD UsdPhysics schema overview)
+%  - isaac_sim_simulation_fundamentals_510  (Isaac Sim 5.1 physics fundamentals)
+%  - physx_welcome_513                      (PhysX 5.1.3 introduction)
+%  - physx_rigid_body_dynamics_511          (PhysX rigid body dynamics, TGS vs PGS, iterations)
+%  - physx_rigid_body_collision_510         (PhysX rigid body collision overview)
+%  - physx_material_api_510                 (PhysX material friction/restitution API)
+%  - physx_simulation_541                   (PhysX simulation loop and iteration/island behavior)
+%  - physx_best_practices_541               (PhysX best practices: time step vs iterations)
+%  - physx_advanced_collision_detection_512 (PhysX contactOffset/restOffset semantics)
+%  - physx_gpu_rigid_bodies_510             (PhysX GPU rigid bodies)
+%  - physx_geometry_541                     (PhysX geometry/collision support overview)
+%  - physx_geometry_530                     (PhysX 5.3 geometry: dynamic triangle meshes and SDFs on GPU)
+%  - physx_articulations_513                (PhysX articulations and tendons)
+%  - omni_physics_tendon_authoring          (Omni Physics tendon authoring guide)
+%  - isaaclab_sim_doc                       (IsaacLab simulation configuration: GPU sim, buffers)
+%  - physx_particle_system_513              (PhysX particle system: PBD solver, cloth support)
+%  - physx_pbd_particlesystem_api           (PhysX PxPBDParticleSystem API reference)
+%  - omni_physics_particles                 (Omni Physics particles: GPU PBD particles, cloth, deprecation)
+%  - isaac_sim_physics_resources_510        (Isaac Sim physics limitations: particle cloth deprecation)
+%  - Makoviychuk2021IsaacGym                (NeurIPS 2021 Isaac Gym: GPU simulation for RL)
+%  - Jakobi1995RealityGap                   (Noise and the reality gap in simulation)
+%  - Salvato2021RealityGapSurvey            (IEEE Access survey on sim-to-real in RL)
+%  - Peng2018DynamicsRandomization          (ICRA: dynamics randomization for sim-to-real)
+%  - Longhini2025ReviewClothManipulation    (Annual Review of robotic cloth manipulation)
+%  - Nealen2006DeformableModels             (STAR: deformable model families and tradeoffs)
+%  - BaraffWitkin1998LargeStepsCloth        (SIGGRAPH: stable cloth simulation with larger steps)
+%  - Bridson2002ClothCollisions             (SIGGRAPH: robust cloth collision/contact/friction)
+%  - SifakisBarbic2012FEM                   (SIGGRAPH course: FEM simulation fundamentals)
+%  - Jiang2016MPM                           (SIGGRAPH/TOG: MPM for continuum materials)
+%  - muller2007pbd                          (JVCIR: Position Based Dynamics)
+%  - macklin2016xpbd                        (MIG: XPBD compliance and Lagrange multipliers)
+%  - FratarcangeliPellacini2013GPUPBD       (JGT: GPU PBD with graph coloring)
+%  - Macklin2019SmallSteps                  (Small Steps in Physics Simulation: substepping insight)
+%  - Chen2024VBD                            (TOG: Vertex Block Descent)
+%  - newton_physics_doc                     (Newton Physics documentation)
+%  - nvidia_newton_announcement_2025        (NVIDIA blog: announcing Newton)
+%  - nvidia_isaaclab_newton_blog_2025       (NVIDIA blog: Isaac Lab + Newton cloth manipulation)
+% ---------------------------------------------------------------------------
+
+% ---------------------------------------------------------------------------
+% BibTeX entries — add to bibliography/literature.bib:
+%
+% @online{omni_physx_overview,
+%   author  = {{NVIDIA}},
+%   title   = {Omni PhysX --- Overview},
+%   year    = {2026},
+%   url     = {https://docs.omniverse.nvidia.com/kit/docs/omni_physics/latest/extensions/runtime/source/omni.physx/docs/index.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{openusd_usdphysics_schema,
+%   author  = {{Pixar Animation Studios}},
+%   title   = {UsdPhysics: {USD} Physics Schema},
+%   year    = {2021},
+%   url     = {https://openusd.org/docs/api/usd_physics_page_front.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{isaac_sim_simulation_fundamentals_510,
+%   author  = {{NVIDIA}},
+%   title   = {Physics Simulation Fundamentals --- Isaac Sim 5.1.0 Documentation},
+%   year    = {2026},
+%   url     = {https://docs.isaacsim.omniverse.nvidia.com/5.1.0/physics/simulation_fundamentals.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{isaac_sim_physics_resources_510,
+%   author  = {{NVIDIA}},
+%   title   = {Omniverse Physics and PhysX SDK Limitations --- Isaac Sim 5.1.0 Documentation},
+%   year    = {2026},
+%   url     = {https://docs.isaacsim.omniverse.nvidia.com/5.1.0/physics/physics_resources.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{physx_welcome_513,
+%   author  = {{NVIDIA}},
+%   title   = {Welcome to PhysX --- PhysX 5.1.3 Documentation},
+%   year    = {2023},
+%   url     = {https://nvidia-omniverse.github.io/PhysX/physx/5.1.3/index.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{physx_rigid_body_dynamics_511,
+%   author  = {{NVIDIA}},
+%   title   = {Rigid Body Dynamics --- PhysX 5.1.1 Documentation},
+%   year    = {2022},
+%   url     = {https://nvidia-omniverse.github.io/PhysX/physx/5.1.1/docs/RigidBodyDynamics.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{physx_rigid_body_collision_510,
+%   author  = {{NVIDIA}},
+%   title   = {Rigid Body Collision --- PhysX 5.1.0 Documentation},
+%   year    = {2022},
+%   url     = {https://nvidia-omniverse.github.io/PhysX/physx/5.1.0/docs/RigidBodyCollision.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{physx_material_api_510,
+%   author  = {{NVIDIA}},
+%   title   = {{PxMaterial} --- PhysX 5.1.0 API Reference},
+%   year    = {2022},
+%   url     = {https://nvidia-omniverse.github.io/PhysX/physx/5.1.0/_build/physx/latest/class_px_material.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{physx_simulation_541,
+%   author  = {{NVIDIA}},
+%   title   = {Simulation --- PhysX 5.4.1 Documentation},
+%   year    = {2024},
+%   url     = {https://nvidia-omniverse.github.io/PhysX/physx/5.4.1/docs/Simulation.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{physx_best_practices_541,
+%   author  = {{NVIDIA}},
+%   title   = {Best Practices Guide --- PhysX 5.4.1 Documentation},
+%   year    = {2024},
+%   url     = {https://nvidia-omniverse.github.io/PhysX/physx/5.4.1/docs/BestPractices.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{physx_advanced_collision_detection_512,
+%   author  = {{NVIDIA}},
+%   title   = {Advanced Collision Detection --- PhysX 5.1.2 Documentation},
+%   year    = {2022},
+%   url     = {https://nvidia-omniverse.github.io/PhysX/physx/5.1.2/docs/AdvancedCollisionDetection.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{physx_gpu_rigid_bodies_510,
+%   author  = {{NVIDIA}},
+%   title   = {Using GPU Rigid Bodies --- PhysX 5.1.0 Documentation},
+%   year    = {2022},
+%   url     = {https://nvidia-omniverse.github.io/PhysX/physx/5.1.0/docs/GPURigidBodies.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{physx_geometry_541,
+%   author  = {{NVIDIA}},
+%   title   = {Geometry --- PhysX 5.4.1 Documentation},
+%   year    = {2024},
+%   url     = {https://nvidia-omniverse.github.io/PhysX/physx/5.4.1/docs/Geometry.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{physx_geometry_530,
+%   author  = {{NVIDIA}},
+%   title   = {Geometry --- PhysX 5.3.0 Documentation},
+%   year    = {2023},
+%   url     = {https://nvidia-omniverse.github.io/PhysX/physx/5.3.0/docs/Geometry.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{physx_articulations_513,
+%   author  = {{NVIDIA}},
+%   title   = {Articulations --- PhysX 5.1.3 Documentation},
+%   year    = {2023},
+%   url     = {https://nvidia-omniverse.github.io/PhysX/physx/5.1.3/docs/Articulations.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{omni_physics_tendon_authoring,
+%   author  = {{NVIDIA}},
+%   title   = {Tendon Visual Authoring --- Omni Physics Documentation},
+%   year    = {2025},
+%   url     = {https://docs.omniverse.nvidia.com/kit/docs/omni_physics/latest/extensions/ux/source/omni.usdphysics.ui/docs/dev_guide/tendon_authoring.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{isaaclab_sim_doc,
+%   author  = {{NVIDIA}},
+%   title   = {isaaclab.sim --- IsaacLab Documentation (Simulation Configuration and GPU Physics)},
+%   year    = {2025},
+%   url     = {https://isaac-sim.github.io/IsaacLab/main/source/api/lab/isaaclab.sim.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{physx_particle_system_513,
+%   author  = {{NVIDIA}},
+%   title   = {Particle System --- PhysX 5.1.3 Documentation},
+%   year    = {2023},
+%   url     = {https://nvidia-omniverse.github.io/PhysX/physx/5.1.3/docs/ParticleSystem.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{physx_pbd_particlesystem_api,
+%   author  = {{NVIDIA}},
+%   title   = {{PxPBDParticleSystem} --- PhysX API Reference},
+%   year    = {2023},
+%   url     = {https://nvidia-omniverse.github.io/PhysX/physx/5.3.1/_api_build/class_px_p_b_d_particle_system.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{omni_physics_particles,
+%   author  = {{NVIDIA}},
+%   title   = {Particles --- Omni Physics Documentation},
+%   year    = {2025},
+%   url     = {https://docs.omniverse.nvidia.com/kit/docs/omni_physics/latest/dev_guide/particles/particles.html},
+%   urldate = {2026-03-03},
+% }
+%
+% @inproceedings{Makoviychuk2021IsaacGym,
+%   author    = {Makoviychuk, Viktor and Wawrzyniak, Lukasz and Guo, Yunrong and Lu, Michelle and Storey, Kier and Macklin, Miles and Hoeller, David and Rudin, Nikita and Allshire, Arthur and Handa, Ankur and State, Gavriel},
+%   title     = {Isaac Gym: High Performance GPU-Based Physics Simulation for Robot Learning},
+%   booktitle = {Proceedings of the Neural Information Processing Systems Track on Datasets and Benchmarks},
+%   year      = {2021},
+%   url       = {https://datasets-benchmarks-proceedings.neurips.cc/paper/2021/file/28dd2c7955ce926456240b2ff0100bde-Paper-round2.pdf},
+% }
+%
+% @inproceedings{Jakobi1995RealityGap,
+%   author    = {Jakobi, Nick and Husbands, Phil and Harvey, Inman},
+%   title     = {Noise and the Reality Gap: The Use of Simulation in Evolutionary Robotics},
+%   booktitle = {Advances in Artificial Life (ECAL 1995)},
+%   series    = {Lecture Notes in Computer Science},
+%   volume    = {929},
+%   pages     = {704--720},
+%   year      = {1995},
+%   publisher = {Springer},
+%   doi       = {10.1007/3-540-59496-5_337},
+% }
+%
+% @article{Salvato2021RealityGapSurvey,
+%   author  = {Salvato, Erica and Fenu, Gianfranco and Medvet, Eric and Pellegrino, Felice Andrea},
+%   title   = {Crossing the Reality Gap: A Survey on Sim-to-Real Transferability of Robot Controllers in Reinforcement Learning},
+%   journal = {IEEE Access},
+%   volume  = {9},
+%   pages   = {153171--153187},
+%   year    = {2021},
+%   doi     = {10.1109/ACCESS.2021.3126658},
+% }
+%
+% @inproceedings{Peng2018DynamicsRandomization,
+%   author    = {Peng, Xue Bin and Andrychowicz, Marcin and Zaremba, Wojciech and Abbeel, Pieter},
+%   title     = {Sim-to-Real Transfer of Robotic Control with Dynamics Randomization},
+%   booktitle = {2018 IEEE International Conference on Robotics and Automation (ICRA)},
+%   year      = {2018},
+%   pages     = {3803--3810},
+%   doi       = {10.1109/ICRA.2018.8460528},
+% }
+%
+% @article{Longhini2025ReviewClothManipulation,
+%   author  = {Longhini, Alberta and Wang, Yufei and Garcia-Camacho, Irene and Blanco-Mulero, David and Moletta, Marco and Welle, Michael and Aleny{\`a}, Guillem and Yin, Hang and Erickson, Zackory and Held, David and Borr{\`a}s, J{\'u}lia and Kragic, Danica},
+%   title   = {A Review of Robotic Cloth Manipulation},
+%   journal = {Annual Review of Control, Robotics, and Autonomous Systems},
+%   year    = {2025},
+%   doi     = {10.1146/annurev-control-022723-033252},
+% }
+%
+% @article{Nealen2006DeformableModels,
+%   author  = {Nealen, Andrew and M{\"u}ller, Matthias and Keiser, Richard and Boxerman, Eddy and Carlson, Mark},
+%   title   = {Physically Based Deformable Models in Computer Graphics},
+%   journal = {Computer Graphics Forum},
+%   volume  = {25},
+%   number  = {4},
+%   pages   = {809--836},
+%   year    = {2006},
+%   doi     = {10.1111/j.1467-8659.2006.01000.x},
+% }
+%
+% @inproceedings{BaraffWitkin1998LargeStepsCloth,
+%   author    = {Baraff, David and Witkin, Andrew},
+%   title     = {Large Steps in Cloth Simulation},
+%   booktitle = {Proceedings of the 25th Annual Conference on Computer Graphics and Interactive Techniques (SIGGRAPH '98)},
+%   year      = {1998},
+%   pages     = {43--54},
+%   doi       = {10.1145/280814.280821},
+% }
+%
+% @inproceedings{Bridson2002ClothCollisions,
+%   author    = {Bridson, Robert and Fedkiw, Ronald and Anderson, John},
+%   title     = {Robust Treatment of Collisions, Contact and Friction for Cloth Animation},
+%   booktitle = {Proceedings of the 29th Annual Conference on Computer Graphics and Interactive Techniques (SIGGRAPH '02)},
+%   year      = {2002},
+%   pages     = {594--603},
+%   doi       = {10.1145/566570.566623},
+% }
+%
+% @inproceedings{SifakisBarbic2012FEM,
+%   author    = {Sifakis, Eftychios and Barbi{\v{c}}, Jernej},
+%   title     = {{FEM} Simulation of 3D Deformable Solids: A Practitioner's Guide to Theory, Discretization and Model Reduction},
+%   booktitle = {ACM SIGGRAPH 2012 Courses},
+%   year      = {2012},
+%   doi       = {10.1145/2343483.2343501},
+% }
+%
+% @article{Jiang2016MPM,
+%   author  = {Jiang, Chenfanfu and Schroeder, Craig and Teran, Joseph and Stomakhin, Alexey and Selle, Andrew},
+%   title   = {The Material Point Method for Simulating Continuum Materials},
+%   journal = {ACM Transactions on Graphics},
+%   volume  = {35},
+%   number  = {4},
+%   year    = {2016},
+%   doi     = {10.1145/2897826.2927348},
+%   url     = {https://alexey.stomakhin.com/research/siggraph2016_mpm.pdf},
+% }
+%
+% @article{muller2007pbd,
+%   author  = {M{\"u}ller, Matthias and Heidelberger, Bruno and Hennix, Marcus and Ratcliff, John},
+%   title   = {Position Based Dynamics},
+%   journal = {Journal of Visual Communication and Image Representation},
+%   volume  = {18},
+%   number  = {2},
+%   pages   = {109--118},
+%   year    = {2007},
+%   doi     = {10.1016/j.jvcir.2007.01.005},
+% }
+%
+% @inproceedings{macklin2016xpbd,
+%   author    = {Macklin, Miles and M{\"u}ller, Matthias and Chentanez, Nuttapong},
+%   title     = {XPBD: Position-Based Simulation of Compliant Constrained Dynamics},
+%   booktitle = {Proceedings of the 9th International Conference on Motion in Games (MIG '16)},
+%   year      = {2016},
+%   pages     = {49--54},
+%   doi       = {10.1145/2994258.2994272},
+% }
+%
+% @article{FratarcangeliPellacini2013GPUPBD,
+%   author  = {Fratarcangeli, Marco and Pellacini, Fabio},
+%   title   = {A GPU-Based Implementation of Position Based Dynamics for Interactive Deformable Bodies},
+%   journal = {Journal of Graphics Tools},
+%   volume  = {17},
+%   number  = {3},
+%   pages   = {59--66},
+%   year    = {2013},
+%   doi     = {10.1080/2165347X.2015.1030525},
+% }
+%
+% @online{Macklin2019SmallSteps,
+%   author  = {Macklin, Miles and Storey, Kier and Lu, Michelle and Terdiman, Pierre and Chentanez, Nuttapong and Jeschke, Stefan and M{\"u}ller, Matthias},
+%   title   = {Small Steps in Physics Simulation},
+%   year    = {2019},
+%   url     = {https://mmacklin.com/smallsteps.pdf},
+%   urldate = {2026-03-03},
+% }
+%
+% @article{Chen2024VBD,
+%   author  = {Chen, Anka He and Liu, Ziheng and Yang, Yin and Yuksel, Cem},
+%   title   = {Vertex Block Descent},
+%   journal = {ACM Transactions on Graphics},
+%   volume  = {43},
+%   number  = {4},
+%   pages   = {1--16},
+%   year    = {2024},
+%   doi     = {10.1145/3658179},
+%   url     = {https://arxiv.org/abs/2403.06321},
+% }
+%
+% @online{newton_physics_doc,
+%   author  = {{Newton Physics Contributors}},
+%   title   = {Newton Physics Documentation},
+%   year    = {2025},
+%   url     = {https://newton-physics.github.io/newton/},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{nvidia_newton_announcement_2025,
+%   author  = {{NVIDIA}},
+%   title   = {Announcing Newton, an Open-Source Physics Engine for Robotics Simulation},
+%   year    = {2025},
+%   url     = {https://developer.nvidia.com/blog/announcing-newton-an-open-source-physics-engine-for-robotics-simulation/},
+%   urldate = {2026-03-03},
+% }
+%
+% @online{nvidia_isaaclab_newton_blog_2025,
+%   author  = {{NVIDIA}},
+%   title   = {Train a Quadruped Locomotion Policy and Simulate Cloth Manipulation with NVIDIA Isaac Lab and Newton},
+%   year    = {2025},
+%   url     = {https://developer.nvidia.com/blog/train-a-quadruped-locomotion-policy-and-simulate-cloth-manipulation-with-nvidia-isaac-lab-and-newton/},
+%   urldate = {2026-03-03},
+% }
+% ---------------------------------------------------------------------------

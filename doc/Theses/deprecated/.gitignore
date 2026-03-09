@@ -1,0 +1,52 @@
+## LaTeX intermediate files
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.log
+*.lot
+*.out
+*.toc
+*.synctex.gz
+*.synctex(busy)
+
+## LaTeX index and glossary files
+*.idx
+*.ilg
+*.ind
+*.glo
+*.gls
+*.glg
+*.ist
+*.acn
+*.acr
+*.alg
+
+## biblatex
+*.bcf
+*.run.xml
+
+## Beamer
+*.nav
+*.snm
+*.vrb
+
+## Nomenclature
+*.nlo
+*.nls
+
+## Misc LaTeX
+*.brf
+*.xdy
+*.fot
+*.cb
+*.cb2
+*.spl
+*.dpth
+*.md5
+*.auxlock
+
+## macOS
+.DS_Store

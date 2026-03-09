@@ -27,3 +27,33 @@ __pycache__/
 # Misc
 *.tmp
 *.log
+
+# LaTeX temporary / build files
+*.aux
+*.lof
+*.lot
+*.toc
+*.out
+*.bbl
+*.blg
+*.bcf
+*.run.xml
+*.glo
+*.gls
+*.glg
+*.acn
+*.acr
+*.alg
+*.idx
+*.ind
+*.ilg
+*.nlo
+*.nls
+*.nav
+*.snm
+*.vrb
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+*.synctex.gz(busy)
+*.ist

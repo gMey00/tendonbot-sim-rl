@@ -1,0 +1,366 @@
+% NEW ACRONYM — add to formatting/Acronyms.tex:
+% \DeclareAcronym{RGBD}{short=RGB-D, long=Red-Green-Blue plus Depth, tag=abbrev, sort=RGBD}
+% \DeclareAcronym{DR}{short=DR, long=Domain Randomization, tag=abbrev, sort=DR}
+% \DeclareAcronym{MPC}{short=MPC, long=Model Predictive Control, tag=abbrev, sort=MPC}
+% \DeclareAcronym{IL}{short=IL, long=Imitation Learning, tag=abbrev, sort=IL}
+% \DeclareAcronym{DVRK}{short=dVRK, long=da Vinci Research Kit, tag=abbrev, sort=DVRK}
+
+%===================================================================%
+\section{Prior Work in Robotic Cloth Manipulation}
+\label{sec:prior_work}
+%===================================================================%
+
+Robotic manipulation of cloth and garments is studied under the broader umbrella of deformable object manipulation, where the object configuration evolves in a high-dimensional space and is only partially observable through sensors. Compared to rigid-body manipulation, task execution is strongly affected by self-occlusion, frictional contacts, and uncertainty of material parameters such as bending stiffness, stretching stiffness, and surface friction, which collectively induce large variability across rollouts even when the same action primitives are executed~\cite{Sanchez2018DeformableSurvey,Gu2023DeformableSurvey,Longhini2025ClothReview}. In prior work, a wide range of strategies is reported, spanning analytical pipelines based on geometric reasoning and perception-driven state machines, as well as learning-based methods (including deep \ac{IL} and deep \ac{RL}) trained in simulation or with limited real-world interactions~\cite{Longhini2025ClothReview}.
+
+\subsection{Task taxonomy and recurring technical challenges}
+
+Cloth manipulation tasks are commonly grouped into (i) \emph{state acquisition} tasks that expose informative configurations (e.g., lifting, unfolding, and spreading), (ii) \emph{surface conditioning} tasks (e.g., smoothing and flattening to reduce wrinkles), and (iii) \emph{goal-shape} tasks such as folding or dressing, which require steering the cloth toward a specified topological and geometric configuration~\cite{GarciaCamacho2020ClothBenchmark,Longhini2025ClothReview}. In benchmark suites, these tasks are frequently decomposed into multi-step sequences (e.g., unfold $\rightarrow$ smooth $\rightarrow$ fold), because reliable folding performance is typically conditioned on having reached a canonical, low-occlusion intermediate state~\cite{Longhini2025ClothReview,Ha2021FlingBot,Canberk2022ClothFunnels}.
+
+Three technical difficulties recur across the literature. First, state estimation is challenged by self-occlusion and the lack of a compact, task-invariant representation; as a result, many approaches either rely on low-dimensional proxies (e.g., corner locations, wrinkle features, or coverage metrics) or learn representations that are designed to transfer across cloth instances~\cite{Sanchez2018DeformableSurvey,Gu2023DeformableSurvey}. Second, long-horizon credit assignment is required for folding and for multi-phase pipelines, since success or failure may only be determined after several intermediate actions have been executed~\cite{Longhini2025ClothReview,Lu2024GarmentLab}. Third, generalization is impeded by variability in garment categories, material properties, textures, and initial configurations; this issue is explicitly highlighted in modern benchmark analyses, where algorithm performance is shown to be sensitive to the initial garment state and to the task horizon~\cite{Lu2024GarmentLab,Gu2023DeformableSurvey}.
+
+\subsection{Model-based and analytical approaches}
+
+Early systems for cloth manipulation were predominantly designed as perception-driven state machines whose transitions were defined by geometric cues and task-specific heuristics. A representative example is the towel-folding pipeline of Maitin-Shepard \emph{et al.}~\cite{MaitinShepard2010ClothGrasp}, where grasp points were inferred from multiple-view geometric cues, and a sequence of re-grasps and table-assisted manipulations was executed to fold and stack towels; quantitative success was reported on previously unseen towels, including trials with a single towel and with a pile of towels~\cite{MaitinShepard2010ClothGrasp}. Such pipelines demonstrate that reliable cloth handling can be achieved when perception primitives (e.g., corner detection and cloth boundary inference) are sufficiently robust and when the task can be decomposed into controllable sub-skills under partial observability~\cite{MaitinShepard2010ClothGrasp,Longhini2025ClothReview}.
+
+A second line of analytical work models cloth folding as a geometric or physics-informed planning problem. The folding planner of Miller \emph{et al.}~\cite{Miller2012LaundryFolding} formalized laundry folding by reasoning about fold sequences and cloth geometry, thereby enabling folding plans to be generated for polygonal cloth shapes and then executed by a robot. Complementary to purely geometric planners, predictive simulation has been integrated into trajectory optimization: Li \emph{et al.}~\cite{Li2015PredictiveFolding} optimized end-effector trajectories in an off-line simulator by minimizing the discrepancy between a simulated folded shape and a target, and then transferred the resulting trajectories to a physical dual-arm system. These approaches illustrate the central trade-off in model-based methods: explicit models and optimization reduce trial-and-error interaction, but require simulation fidelity and parameterization accuracy that are difficult to guarantee for cloth contacts and material behavior~\cite{Li2015PredictiveFolding,Longhini2025ClothReview}.
+
+A third family of methods employs closed-loop vision feedback with hand-crafted state features, thereby bridging analytical design and learning. Petr{\'\i}k and Kyrki~\cite{Petrik2019FabricStripFolding} proposed feedback-based folding of fabric strips in which a low-dimensional state was extracted from camera images and controller parameters were trained in simulation after calibrating the simulation to better match real fabric behavior; performance was then compared experimentally to alternative folding strategies on real hardware~\cite{Petrik2019FabricStripFolding}. This design pattern is recurring: model structure and feedback variables are specified analytically, while learning is used to tune parameters or to account for dynamics that are difficult to model precisely~\cite{Longhini2025ClothReview,Petrik2019FabricStripFolding}.
+
+\subsection{Learning-based approaches}
+
+Learning-based cloth manipulation is often categorized by whether an explicit dynamics model is used during decision making. In \emph{model-free} methods, a policy (or value function) is optimized directly from interaction data without explicitly learning a forward transition model for planning; in \emph{model-based} methods, a predictive model is learned and then used by a planner (e.g., trajectory optimization or \ac{MPC})~\cite{Gu2023DeformableSurvey,Longhini2025ClothReview}.
+
+\subsubsection{Learning policies for smoothing and flattening}
+
+Fabric smoothing (also described as flattening) is frequently used as an intermediate objective because it reduces self-occlusion and yields configurations that are easier to perceive and fold~\cite{Longhini2025ClothReview}. Seita \emph{et al.}~\cite{Seita2020FabricSmoothing} learned sequential pick-and-pull smoothing policies from image observations by using an algorithmic supervisor in simulation that had access to full state information, while \ac{DR} was applied on image appearance and sensing modalities to improve transfer. Policies were evaluated both in simulation and in physical experiments on the \ac{DVRK}, and improvements in coverage were demonstrated for multi-action smoothing episodes~\cite{Seita2020FabricSmoothing}. The reported design illustrates a frequent motif in cloth learning systems: privileged state information is used during data generation or supervision in simulation, while the deployed policy is conditioned on realistic observations such as \ac{RGBD} images~\cite{Seita2020FabricSmoothing,Gu2023DeformableSurvey}.
+
+Complementary to imitation-based smoothing, model-based visual dynamics has been used to generalize across tasks by replanning toward goal images. Hoque \emph{et al.}~\cite{Hoque2020VisuoSpatialForesight} introduced VisuoSpatial Foresight, where a visual dynamics model was learned from domain-randomized simulated \ac{RGBD} data and then used for planning to accomplish multi-step fabric smoothing and folding. The approach was evaluated in simulation and on the \ac{DVRK} without requiring task demonstrations at training or test time, and the contribution of depth sensing to performance was empirically analyzed~\cite{Hoque2020VisuoSpatialForesight}. Such results motivate the use of model-based policies when multi-step reasoning is required, but they also underline the computational cost and sensitivity associated with learning predictive models of deformable dynamics from images~\cite{Hoque2020VisuoSpatialForesight,Gu2023DeformableSurvey}.
+
+\subsubsection{Unfolding and spreading via quasi-static and dynamic primitives}
+
+Unfolding and spreading tasks are often evaluated via coverage-based metrics, because exposing the garment surface is viewed as a prerequisite for subsequent perception and folding modules~\cite{GarciaCamacho2020ClothBenchmark,Longhini2025ClothReview}. In contrast to purely quasi-static pick-and-place strategies, dynamic manipulation has been shown to improve efficiency and effective workspace. Ha and Song~\cite{Ha2021FlingBot} proposed FlingBot, a self-supervised learning framework for cloth unfolding using a dual-arm pick--stretch--fling primitive, and high coverage was reported within a small number of actions on novel cloths; the approach was also fine-tuned on a real dual-arm system and compared against quasi-static baselines~\cite{Ha2021FlingBot}. A related perspective is provided by Cloth Funnels, where canonicalized-alignment was formulated as a funneling task that maps diverse crumpled configurations into a compact set of structured, visible states using a mixture of dynamic flings and quasi-static pick-and-place actions, and downstream ironing and folding were demonstrated using this standardized intermediate representation~\cite{Canberk2022ClothFunnels}.
+
+Model-free \ac{RL} has also been investigated in purely simulated benchmarks, often achieving strong in-simulator performance but requiring extensive interaction data. SoftGym was introduced as a suite of simulated deformable object manipulation benchmarks (including cloth), providing standardized environments and an \texttt{OpenAI Gym}--style interface to compare learning algorithms under different observability settings~\cite{Lin2021SoftGym}. In such benchmarks, policies can be trained with large-scale sampling in simulation; however, it is repeatedly observed that learned policies can be brittle under distribution shifts in initial states, materials, and observation noise, thus motivating research into generalizable representations and robust transfer pipelines~\cite{Lin2021SoftGym,Gu2023DeformableSurvey,Lu2024GarmentLab}.
+
+\subsubsection{Real-world learning with limited interaction}
+
+While simulation is often used to address data requirements, learning directly in the real world has also been explored when action spaces are discretized and when self-supervised data collection is feasible. Lee \emph{et al.}~\cite{Lee2021ArbitraryGoalFolding} demonstrated goal-conditioned fabric folding with one hour of autonomous real-robot experience, without requiring simulation or manually engineered rewards beyond sparse success signals. The approach highlights that, for certain task formulations (e.g., discrete pick-and-place folding actions with image goals), sample-efficient real-world learning can be achieved, albeit typically at the cost of restricting action parameterizations and relying on extensive on-robot data collection~\cite{Lee2021ArbitraryGoalFolding,Longhini2025ClothReview}.
+
+\subsection{Benchmarks, datasets, and evaluation protocols}
+
+The need for reproducible evaluation is a persistent theme in cloth manipulation, because systems are often validated on custom garments, private benchmarks, or task-specific metrics. Garcia-Camacho \emph{et al.}~\cite{GarciaCamacho2020ClothBenchmark} addressed this issue by proposing benchmarks for three core tasks (spreading a tablecloth, folding a towel, and dressing), along with standardized objects, multiple difficulty levels, and quantitative quality measures, enabling comparison across bimanual platforms. In simulated learning, SoftGym provides a set of open benchmarks for deformable objects (including cloth) and is often used to quantify algorithmic progress under controlled simulator settings~\cite{Lin2021SoftGym}.
+
+Recent work has shifted toward garment-centric benchmarks that incorporate multiple garment categories and that explicitly address sim-to-real evaluation. GarmentLab was proposed as a unified simulation and benchmark for garment manipulation, featuring diverse garments, tasks, and robotic systems, and it incorporates multiple simulation methods (including \ac{FEM} and \ac{PBD}) as well as a reproducible real-world benchmark; empirical evaluation in GarmentLab indicates that vision-based methods can be sensitive to initial garment states and that \ac{RL}-based algorithms can struggle with long-horizon tasks requiring multi-step reasoning~\cite{Lu2024GarmentLab}. In parallel, Real Garment Benchmark (RGBench) was presented to benchmark garments and simulators with a large asset collection and a protocol intended to quantify simulator accuracy against measured real garment dynamics, thereby framing the sim-to-real gap itself as an evaluation target~\cite{Hu2025RGBench}. Competition-style evaluation has also emerged: De Gusseme \emph{et al.}~\cite{DeGusseme2026ClothCompetition} reported a dataset and benchmark for grasp pose selection in in-air cloth unfolding, derived from the ICRA 2024 Cloth Competition and designed to support head-to-head comparison across perception strategies under a standardized setup.
+
+Benchmarks referred to as ``GarmentBench'' have been mentioned in informal discussions of garment manipulation; however, an unambiguous peer-reviewed robotics benchmark under this exact name could not be identified from authoritative sources at the time of writing. % TODO: find citation to a robotics-specific GarmentBench benchmark if it exists
+
+\begin{figure}[ht!]
+\centering
+\fbox{\parbox{0.8\textwidth}{\centering \vspace{0.1in}Placeholder for \textit{taxonomy of cloth tasks and benchmark mapping} image\vspace{0.1in}}}
+\caption[Taxonomy of cloth manipulation tasks]{Illustration of common cloth manipulation tasks (unfolding, smoothing, folding, dressing) and representative benchmarks/datasets used to evaluate them. The figure is intended to visualize where simulation-only benchmarks, sim-to-real benchmarks, and real-only protocols are typically positioned.}\label{fig:cloth_task_taxonomy_benchmarks}
+\end{figure}
+
+\subsection{Sim-to-real transfer strategies for deformable objects}
+
+Robust sim-to-real transfer is widely recognized as more difficult for deformable objects than for rigid objects, because small modeling errors in contacts, friction, or material parameters can accumulate into large state deviations over multi-step horizons~\cite{Gu2023DeformableSurvey,Longhini2025ClothReview}. This issue is exacerbated for dynamic cloth actions, where inertial effects and high-acceleration motions amplify simulator inaccuracies. Blanco-Mulero \emph{et al.}~\cite{BlancoMulero2024Sim2RealGap} quantified this challenge by benchmarking the sim-to-real gap for both quasi-static and dynamic cloth manipulation using a real-world dataset and multiple simulation engines, thereby demonstrating that simulator choice, stability, and observation alignment can materially affect transfer conclusions~\cite{BlancoMulero2024Sim2RealGap}.
+
+Several complementary strategies for sim-to-real are reported, and they are commonly combined in successful systems. First, \emph{parameter randomization} is frequently applied to cloth properties (e.g., stiffness and friction) and to observation generation (e.g., textures and lighting) so that the real world is covered as a plausible variation of the simulated training distribution. This principle is commonly referred to as \ac{DR} and has been established as a practical transfer mechanism in robotics~\cite{Tobin2017DomainRandomization}. In cloth-specific settings, \ac{DR} has been applied to train image-conditioned policies in simulation that are subsequently executed on physical cloth, including sequential fabric smoothing with a surgical robot~\cite{Seita2020FabricSmoothing} and visuomotor fabric manipulation with a learned dynamics model~\cite{Hoque2020VisuoSpatialForesight}.
+
+Second, \emph{visual domain adaptation} has been used to reduce the appearance gap between simulated and real observations when policies are conditioned on images. While prominent demonstrations are reported in rigid grasping (where synthetic imagery is adapted to real images without requiring labeled real data)~\cite{Bousmalis2018SimDomainAdaptGrasp}, closely related ideas in cloth manipulation frequently take the form of learned visual descriptors or correspondences trained in simulation and then deployed on real cloth. Ganapathi \emph{et al.}~\cite{Ganapathi2021DenseCorrespondence} learned dense visual correspondences in simulation and used them to support smoothing and folding behaviors on real fabrics, effectively transferring perception primitives learned with privileged simulation signals to real sensory inputs.
+
+Third, \emph{teacher--student distillation} has been employed to combine policies, compress models, or transfer from privileged training signals to deployable observation spaces. Policy distillation, in which a student policy is trained to imitate one or multiple teacher policies, provides a mechanism to consolidate specialized behaviors into a single policy~\cite{Rusu2015PolicyDistillation}. In deformable object manipulation, this mechanism has been used explicitly to increase generalization across diverse configurations: Wang \emph{et al.}~\cite{Wang2023OnePolicyDress} learned robot-assisted dressing policies in simulation from partial point clouds and used policy distillation to merge policies trained on different pose ranges into a single policy. In the same system, guided domain randomization was introduced by training a domain-randomized policy to imitate policies trained without randomization, and extensive real-world evaluations on human participants were reported~\cite{Wang2023OnePolicyDress}. Although dressing differs from tabletop folding and smoothing, the underlying transfer challenge (complex cloth--environment contacts with partial observability) is shared, and the reported methodology provides an existence proof that distillation-based transfer can be viable in deformable settings~\cite{Wang2023OnePolicyDress}.
+
+\subsection{Open problems and positioning of the thesis}
+
+Survey and review literature consistently identifies three open problems that remain central despite progress in individual tasks. \emph{Generalization across fabrics and garments} is limited, because policies trained on a narrow distribution of cloth properties, sizes, and topologies can fail when material stiffness ratios or garment categories change substantially~\cite{Sanchez2018DeformableSurvey,Gu2023DeformableSurvey,Lu2024GarmentLab}. \emph{Robustness to perception noise and partial observability} remains a bottleneck, especially when cloth state is inferred from depth or point cloud observations under self-occlusion; this affects both analytical pipelines (which rely on corner or wrinkle detection) and learned policies (which may overfit to simulator rendering artifacts)~\cite{Gu2023DeformableSurvey,BlancoMulero2024Sim2RealGap}. \emph{Long-horizon, multi-step reasoning} is still challenging, as benchmark analyses report performance degradation as task horizons increase and as manipulation requires sequential subgoals with intermediate regrasping and state acquisition~\cite{Longhini2025ClothReview,Lu2024GarmentLab}.
+
+In the present thesis, these observations motivate an approach in which cloth manipulation skills are learned in simulation with a focus on (i) policy representations that remain effective under partial observability, (ii) explicit treatment of sim-to-real gaps through systematic randomization and calibration of cloth interaction parameters, and (iii) task decomposition and curriculum design to make long-horizon cloth objectives learnable. A further distinguishing aspect is the targeted manipulation platform: whereas much prior work is demonstrated on conventional rigid-link manipulators and dual-arm systems, the investigated tendon-driven arm introduces additional actuation dynamics and compliance properties that are directly relevant to safe textile handling but are underrepresented in cloth manipulation benchmarks and learning studies. % TODO: find citation for tendon-driven cloth manipulation prior art if any closely related work is discovered
+
+\begin{table}[htb]
+    \centering
+    \caption{Structured comparison of representative prior work in robotic cloth and garment manipulation, covering analytical/model-based pipelines, learning-based approaches, and benchmarks.}\label{tab:cloth_related_work_comparison}
+    \begin{tabular}{p{0.20\textwidth} p{0.18\textwidth} p{0.18\textwidth} p{0.22\textwidth} p{0.16\textwidth}}
+    \hline
+    \textbf{Work} & \textbf{Method class} & \textbf{Robot type} & \textbf{Task focus} & \textbf{Simulation and sim-to-real} \\
+    \hline
+    Maitin-Shepard \emph{et al.}~\cite{MaitinShepard2010ClothGrasp} & Vision-based analytical pipeline (multi-view grasp inference, state machine) & Dual-arm mobile manipulator & Towel unfolding and folding & Real-only evaluation \\
+    Miller \emph{et al.}~\cite{Miller2012LaundryFolding} & Geometric planning (fold sequence reasoning) & Dual-arm manipulator & Laundry folding plans for cloth shapes & Planning model; real execution reported \\
+    Li \emph{et al.}~\cite{Li2015PredictiveFolding} & Model-based (predictive simulation + trajectory optimization) & Dual-arm manipulator & Garment folding trajectories & Off-line simulation; sim-to-real execution \\
+    Doumanoglou \emph{et al.}~\cite{Doumanoglou2016FoldingPipeline} & Perception + planning pipeline (multi-stage) & Dual-arm manipulator & Folding clothes from cluttered configurations & Real-world pipeline; limited reliance on simulation \\
+    Petr{\'\i}k and Kyrki~\cite{Petrik2019FabricStripFolding} & Feedback controller with learned parameters & Single-arm manipulator & Fabric strip folding & Calibrated simulation for training; real evaluation \\
+    Seita \emph{et al.}~\cite{Seita2020FabricSmoothing} & Learning-based (\ac{IL} with algorithmic supervision) & \ac{DVRK} surgical robot & Sequential fabric smoothing/flattening & Simulation + \ac{DR}; sim-to-real execution \\
+    Hoque \emph{et al.}~\cite{Hoque2020VisuoSpatialForesight} & Model-based (learned visual dynamics + \ac{MPC}) & \ac{DVRK} surgical robot & Multi-step smoothing and folding & Simulation training with \ac{DR}; real execution \\
+    Ha and Song~\cite{Ha2021FlingBot} & Learning-based (self-supervised policy for dynamic primitive) & Dual-arm manipulator & Cloth unfolding via flinging & Learned strategy; real fine-tuning reported \\
+    Canberk \emph{et al.}~\cite{Canberk2022ClothFunnels} & Learning-based (multi-primitive canonicalization) & Multi-arm system & Canonicalized-alignment for downstream tasks & Simulation (PyFlex-family) + real demonstrations \\
+    Lin \emph{et al.}~\cite{Lin2021SoftGym} & Benchmark suite (simulation environments) & N/A (simulated) & Cloth/rope/fluid manipulation benchmarks & Simulation-only (NVIDIA FleX/PyFlex) \\
+    Garcia-Camacho \emph{et al.}~\cite{GarciaCamacho2020ClothBenchmark} & Benchmark protocol (tasks, metrics, baselines) & Any bimanual platform & Spreading, towel folding, dressing & Real-world protocol; cross-platform \\
+    Lu \emph{et al.}~\cite{Lu2024GarmentLab} & Unified simulation benchmark + real protocol & Multiple robot types & Unfolding, folding, hanging, multi-domain tasks & Multi-simulator (\ac{FEM}, \ac{PBD}) + real benchmark \\
+    Blanco-Mulero \emph{et al.}~\cite{BlancoMulero2024Sim2RealGap} & Simulator evaluation benchmark & (Pinch-grasp proxy in sim) & Quantifying sim-to-real gap (quasi-static + dynamic) & MuJoCo/Bullet/FleX/SOFA vs. real dataset \\
+    De Gusseme \emph{et al.}~\cite{DeGusseme2026ClothCompetition} & Dataset + benchmark competition protocol & Dual-arm setup (standardized) & In-air unfolding grasp selection & Real-world dataset; benchmark protocol \\
+    Hu \emph{et al.}~\cite{Hu2025RGBench} & Benchmark + scalable garment simulator & Multiple (benchmark-oriented) & Garment manipulation benchmarking and sim quality & New simulator + sim-to-real evaluation protocol \\
+    \hline
+    \end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------------------
+% BibTeX keys used in this section:
+%  - Sanchez2018DeformableSurvey        (survey on robotic manipulation and sensing of deformable objects, IJRR)
+%  - Gu2023DeformableSurvey             (survey on robotic manipulation of deformable objects, arXiv)
+%  - Longhini2025ClothReview            (review of robotic cloth manipulation, Annual Reviews)
+%  - GarciaCamacho2020ClothBenchmark    (benchmarks for bimanual cloth manipulation, IEEE RA-L)
+%  - MaitinShepard2010ClothGrasp        (multi-view grasp point detection for towel folding, ICRA)
+%  - Miller2012LaundryFolding           (geometric approach to robotic laundry folding, IJRR)
+%  - Li2015PredictiveFolding            (predictive simulation + trajectory optimization for folding, IROS)
+%  - Doumanoglou2016FoldingPipeline     (complete pipeline for folding clothes autonomously, IEEE T-RO)
+%  - Petrik2019FabricStripFolding       (feedback-based fabric strip folding, IROS)
+%  - Seita2020FabricSmoothing           (deep imitation learning for sequential fabric smoothing, IROS)
+%  - Hoque2020VisuoSpatialForesight     (goal-conditioned fabric manipulation with visuospatial foresight, RSS)
+%  - Ha2021FlingBot                     (dynamic cloth unfolding via flinging, CoRL)
+%  - Canberk2022ClothFunnels            (canonicalized-alignment cloth funnels for garment manipulation, arXiv)
+%  - Lin2021SoftGym                     (SoftGym deformable manipulation benchmark, CoRL/PMLR)
+%  - Lu2024GarmentLab                   (GarmentLab unified simulation + benchmark, NeurIPS)
+%  - Hu2025RGBench                      (Real Garment Benchmark RGBench, arXiv)
+%  - DeGusseme2026ClothCompetition      (ICRA 2024 Cloth Competition dataset/benchmark, IJRR)
+%  - BlancoMulero2024Sim2RealGap        (benchmarking sim-to-real gap in cloth manipulation, IEEE RA-L)
+%  - Tobin2017DomainRandomization       (domain randomization for sim-to-real transfer, IROS)
+%  - Bousmalis2018SimDomainAdaptGrasp   (simulation + domain adaptation for grasping, ICRA)
+%  - Rusu2015PolicyDistillation         (policy distillation framework, arXiv)
+%  - Wang2023OnePolicyDress             (policy distillation + guided domain randomization for dressing, RSS)
+% ---------------------------------------------------------------------------
+
+% ---------------------------------------------------------------------------
+% BibTeX entries — add to bibliography/literature.bib:
+%
+% @article{Sanchez2018DeformableSurvey,
+%   author  = {Sanchez, Jose and Corrales, Juan-Antonio and Bouzgarrou, Belhassen-Chedli and Mezouar, Youcef},
+%   title   = {Robotic Manipulation and Sensing of Deformable Objects in Domestic and Industrial Applications: A Survey},
+%   journal = {The International Journal of Robotics Research},
+%   year    = {2018},
+%   doi     = {10.1177/0278364918779698},
+% }
+%
+% @article{Gu2023DeformableSurvey,
+%   author       = {Gu, Feida and Zhou, Yanmin and Wang, Zhipeng and Jiang, Shuo and He, Bin},
+%   title        = {A Survey on Robotic Manipulation of Deformable Objects: Recent Advances, Open Challenges and New Frontiers},
+%   journal      = {arXiv preprint},
+%   year         = {2023},
+%   eprint       = {2312.10419},
+%   archivePrefix= {arXiv},
+%   primaryClass = {cs.RO},
+%   url          = {https://arxiv.org/abs/2312.10419},
+%   urldate      = {2026-03-03},
+% }
+%
+% @article{Longhini2025ClothReview,
+%   author  = {Longhini, Andrea and Welle, Michael C. and Erickson, Zackory and Kragic, Danica},
+%   title   = {A Review of Robotic Cloth Manipulation},
+%   journal = {Annual Review of Control, Robotics, and Autonomous Systems},
+%   year    = {2025},
+%   doi     = {10.1146/annurev-control-022723-033252},
+%   url     = {https://www.annualreviews.org/content/journals/10.1146/annurev-control-022723-033252},
+%   urldate = {2026-03-03},
+% }
+%
+% @article{GarciaCamacho2020ClothBenchmark,
+%   author  = {Garcia-Camacho, Irene and Lippi, Martina and Welle, Michael C. and Yin, Hang and Antonova, Rika and Varava, Anastasiia and Borr{\`a}s, Julia and Marino, Alessandro and Aleny{\`a}, Guillem and Kragic, Danica},
+%   title   = {Benchmarking Bimanual Cloth Manipulation},
+%   journal = {IEEE Robotics and Automation Letters},
+%   year    = {2020},
+%   url     = {https://ral-si.github.io/cloth-benchmark/Benchmark_for_cloth_manipulation.pdf},
+%   urldate = {2026-03-03},
+% }
+%
+% @inproceedings{MaitinShepard2010ClothGrasp,
+%   author    = {Maitin-Shepard, Jeremy and Cusumano-Towner, Marco and Lei, Jiayuan and Abbeel, Pieter},
+%   title     = {Cloth Grasp Point Detection based on Multiple-View Geometric Cues with Application to Robotic Towel Folding},
+%   booktitle = {Proceedings of the IEEE International Conference on Robotics and Automation (ICRA)},
+%   year      = {2010},
+%   url       = {https://people.eecs.berkeley.edu/~pabbeel/papers/Maitin-ShepardCusumano-TownerLeiAbbeel_ICRA2010.pdf},
+%   urldate   = {2026-03-03},
+% }
+%
+% @article{Miller2012LaundryFolding,
+%   author  = {Miller, Stephen and van den Berg, Jur and Fritz, Mario and Darrell, Trevor and Goldberg, Ken and Abbeel, Pieter},
+%   title   = {A Geometric Approach to Robotic Laundry Folding},
+%   journal = {The International Journal of Robotics Research},
+%   volume  = {31},
+%   number  = {2},
+%   pages   = {249--267},
+%   year    = {2012},
+%   doi     = {10.1177/0278364911430417},
+% }
+%
+% @inproceedings{Li2015PredictiveFolding,
+%   author    = {Li, Yinxiao and Yue, Yonghao and Xu, Danfei and Grinspun, Eitan and Allen, Peter K.},
+%   title     = {Folding Deformable Objects using Predictive Simulation and Trajectory Optimization},
+%   booktitle = {Proceedings of the IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
+%   year      = {2015},
+%   url       = {https://www.cs.columbia.edu/~yonghao/iros15/li-folding-deformable-objects.pdf},
+%   urldate   = {2026-03-03},
+% }
+%
+% @article{Doumanoglou2016FoldingPipeline,
+%   author  = {Doumanoglou, Andreas and Stria, Jan and Peleka, Georgia and Mariolis, Ioannis and Petr{\'\i}k, Vladim{\'\i}r and Kargakos, Andreas and Wagner, Libor and Hlav{\'a}{\v c}, V{\'a}clav and Kim, Tae-Kyun and Malassiotis, Sotiris},
+%   title   = {Folding Clothes Autonomously: A Complete Pipeline},
+%   journal = {IEEE Transactions on Robotics},
+%   year    = {2016},
+%   url     = {https://labicvl.github.io/docs/pubs/Andreas_TR_2016.pdf},
+%   urldate = {2026-03-03},
+% }
+%
+% @inproceedings{Petrik2019FabricStripFolding,
+%   author    = {Petr{\'\i}k, Vladim{\'\i}r and Kyrki, Ville},
+%   title     = {Feedback-based Fabric Strip Folding},
+%   booktitle = {Proceedings of the IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
+%   year      = {2019},
+%   doi       = {10.1109/IROS40897.2019.8967657},
+%   url       = {https://arxiv.org/abs/1904.01298},
+%   urldate   = {2026-03-03},
+% }
+%
+% @inproceedings{Seita2020FabricSmoothing,
+%   author    = {Seita, Daniel and Ganapathi, Aditya and Hoque, Ryan and Hwang, Minho and Cen, Edward and Tanwani, Ajay Kumar and Balakrishna, Ashwin and Thananjeyan, Brijen and Ichnowski, Jeffrey and Jamali, Nawid and Yamane, Katsu and Iba, Soshi and Canny, John and Goldberg, Ken},
+%   title     = {Deep Imitation Learning of Sequential Fabric Smoothing from an Algorithmic Supervisor},
+%   booktitle = {Proceedings of the IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
+%   year      = {2020},
+%   url       = {https://ajaytanwani.com/docs/Seita_IROS_CR_2020.pdf},
+%   urldate   = {2026-03-03},
+% }
+%
+% @inproceedings{Hoque2020VisuoSpatialForesight,
+%   author    = {Hoque, Ryan and Seita, Daniel and Tanwani, Ajay Kumar and Jamali, Nawid and Iba, Soshi and Canny, John and Goldberg, Ken},
+%   title     = {VisuoSpatial Foresight for Multi-Step, Multi-Task Fabric Manipulation},
+%   booktitle = {Proceedings of Robotics: Science and Systems (RSS)},
+%   year      = {2020},
+%   url       = {https://www.roboticsproceedings.org/rss16/p034.pdf},
+%   urldate   = {2026-03-03},
+% }
+%
+% @inproceedings{Ha2021FlingBot,
+%   author    = {Ha, Huy and Song, Shuran},
+%   title     = {FlingBot: The Unreasonable Effectiveness of Dynamic Manipulation for Cloth Unfolding},
+%   booktitle = {Proceedings of the Conference on Robot Learning (CoRL)},
+%   year      = {2021},
+%   url       = {https://openreview.net/pdf?id=0QJeE5hkyFZ},
+%   urldate   = {2026-03-03},
+% }
+%
+% @article{Canberk2022ClothFunnels,
+%   author       = {Canberk, Alper and Chi, Cheng and Ha, Huy and Burchfiel, Benjamin and Cousineau, Eric and Feng, Siyuan and Song, Shuran},
+%   title        = {Cloth Funnels: Canonicalized-Alignment for Multi-Purpose Garment Manipulation},
+%   journal      = {arXiv preprint},
+%   year         = {2022},
+%   eprint       = {2210.09347},
+%   archivePrefix= {arXiv},
+%   primaryClass = {cs.RO},
+%   url          = {https://arxiv.org/abs/2210.09347},
+%   urldate      = {2026-03-03},
+% }
+%
+% @inproceedings{Lin2021SoftGym,
+%   author    = {Lin, Xingyu and Wang, Yufei and Olkin, Jake and Held, David},
+%   title     = {SoftGym: Benchmarking Deep Reinforcement Learning for Deformable Object Manipulation},
+%   booktitle = {Proceedings of the Conference on Robot Learning (CoRL)},
+%   year      = {2021},
+%   url       = {https://proceedings.mlr.press/v155/lin21a/lin21a.pdf},
+%   urldate   = {2026-03-03},
+% }
+%
+% @inproceedings{Lu2024GarmentLab,
+%   author    = {Lu, Haoran and Wu, Ruihai and Li, Yitong and Li, Sijie and Zhu, Ziyu and Ning, Chuanruo and Shen, Yan and Luo, Longzan and Chen, Yuanpei and Dong, Hao},
+%   title     = {GarmentLab: A Unified Simulation and Benchmark for Garment Manipulation},
+%   booktitle = {Advances in Neural Information Processing Systems},
+%   year      = {2024},
+%   doi       = {10.52202/079017-0379},
+%   url       = {https://proceedings.neurips.cc/paper_files/paper/2024/file/15f80ec0fed53885d2ca6272edb96ede-Paper-Conference.pdf},
+%   urldate   = {2026-03-03},
+% }
+%
+% @article{Hu2025RGBench,
+%   author       = {Hu, Wenkang and Tang, Xincheng and E, Yanzhi and Li, Yitong and Shu, Zhengjie and Li, Wei and Wang, Huamin and Yang, Ruigang},
+%   title        = {Real Garment Benchmark (RGBench): A Comprehensive Benchmark for Robotic Garment Manipulation featuring a High-Fidelity Scalable Simulator},
+%   journal      = {arXiv preprint},
+%   year         = {2025},
+%   eprint       = {2511.06434},
+%   archivePrefix= {arXiv},
+%   primaryClass = {cs.RO},
+%   url          = {https://arxiv.org/abs/2511.06434},
+%   urldate      = {2026-03-03},
+% }
+%
+% @article{DeGusseme2026ClothCompetition,
+%   author  = {De Gusseme, Victor-Louis and Lips, Thomas and Proesmans, Remko and Hietala, Julius and Lee, Giwan and Choi, Jiyoung and others},
+%   title   = {A Dataset and Benchmark for Robotic Cloth Unfolding Grasp Selection: The ICRA 2024 Cloth Competition},
+%   journal = {The International Journal of Robotics Research},
+%   year    = {2026},
+%   doi     = {10.1177/02783649251414885},
+%   url     = {http://hdl.handle.net/1854/LU-01KGSAGXT8WFJZJQZVE64P5DZB},
+%   urldate = {2026-03-03},
+% }
+%
+% @article{BlancoMulero2024Sim2RealGap,
+%   author  = {Blanco-Mulero, David and others},
+%   title   = {Benchmarking the Sim-to-Real Gap in Cloth Manipulation},
+%   journal = {IEEE Robotics and Automation Letters},
+%   year    = {2024},
+%   url     = {https://upcommons.upc.edu/server/api/core/bitstreams/ee091e2a-883e-4240-9a18-bf2945e56c38/content},
+%   urldate = {2026-03-03},
+% }
+%
+% @inproceedings{Tobin2017DomainRandomization,
+%   author    = {Tobin, Josh and Fong, Rachel and Ray, Alex and Schneider, Jonas and Zaremba, Wojciech and Abbeel, Pieter},
+%   title     = {Domain Randomization for Transferring Deep Neural Networks from Simulation to the Real World},
+%   booktitle = {Proceedings of the IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
+%   year      = {2017},
+%   doi       = {10.1109/IROS.2017.8202133},
+%   url       = {https://arxiv.org/abs/1703.06907},
+%   urldate   = {2026-03-03},
+% }
+%
+% @inproceedings{Bousmalis2018SimDomainAdaptGrasp,
+%   author    = {Bousmalis, Konstantinos and Irpan, Alex and Wohlhart, Paul and Bai, Yunfei and Kelcey, Matthew and Kalakrishnan, Mrinal and Downs, Laura and Ibarz, Julian and Pastor, Peter and Konolige, Kurt and Levine, Sergey and Vanhoucke, Vincent},
+%   title     = {Using Simulation and Domain Adaptation to Improve Efficiency of Deep Robotic Grasping},
+%   booktitle = {Proceedings of the IEEE International Conference on Robotics and Automation (ICRA)},
+%   year      = {2018},
+%   doi       = {10.1109/ICRA.2018.8460875},
+% }
+%
+% @article{Rusu2015PolicyDistillation,
+%   author       = {Rusu, Andrei A. and Colmenarejo, Sergio Gomez and G{\"u}l{\c c}ehre, {\c C}a{\u g}lar and Desjardins, Guillaume and Kirkpatrick, James and Pascanu, Razvan and Mnih, Volodymyr and Kavukcuoglu, Koray and Hadsell, Raia},
+%   title        = {Policy Distillation},
+%   journal      = {arXiv preprint},
+%   year         = {2015},
+%   eprint       = {1511.06295},
+%   archivePrefix= {arXiv},
+%   primaryClass = {cs.LG},
+%   url          = {https://arxiv.org/abs/1511.06295},
+%   urldate      = {2026-03-03},
+% }
+%
+% @inproceedings{Wang2023OnePolicyDress,
+%   author    = {Wang, Yufei and Sun, Zhanyi and Erickson, Zackory and Held, David},
+%   title     = {One Policy to Dress Them All: Learning to Dress People with Diverse Poses and Garments},
+%   booktitle = {Proceedings of Robotics: Science and Systems (RSS)},
+%   year      = {2023},
+%   url       = {https://www.roboticsproceedings.org/rss19/p008.pdf},
+%   urldate   = {2026-03-03},
+% }
+%
+% @inproceedings{Lee2021ArbitraryGoalFolding,
+%   author    = {Lee, Robert and Ward, Daniel and Cosgun, Akansel and Dasagi, Vibhavari and Leitner, Jurgen and Corke, Peter},
+%   title     = {Learning Arbitrary-Goal Fabric Folding with One Hour of Real Robot Experience},
+%   booktitle = {Proceedings of the Conference on Robot Learning (CoRL)},
+%   year      = {2021},
+%   url       = {https://proceedings.mlr.press/v155/lee21a/lee21a.pdf},
+%   urldate   = {2026-03-03},
+% }
+%
+% @inproceedings{Ganapathi2021DenseCorrespondence,
+%   author    = {Ganapathi, Aditya and Sundaresan, Pranav and Thananjeyan, Brijen and Balakrishna, Ashwin and Seita, Daniel and Ichnowski, Jeffrey and Canny, John and Goldberg, Ken},
+%   title     = {Learning Dense Visual Correspondences in Simulation to Smooth and Fold Real Fabrics},
+%   booktitle = {Proceedings of the IEEE International Conference on Robotics and Automation (ICRA)},
+%   year      = {2021},
+%   url       = {https://autolab.berkeley.edu/assets/publications/media/2021-ICRA-Ganapathi-Fabric-Descriptors-Camera-Ready.pdf},
+%   urldate   = {2026-03-03},
+% }
+% ---------------------------------------------------------------------------
