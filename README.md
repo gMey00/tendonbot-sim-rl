@@ -26,6 +26,7 @@
     - [Evaluation](#evaluation)
     - [Step Response Validation](#step-response-validation)
   - [📚 Documentation](#-documentation)
+    - [Theses](#theses)
   - [🗓️ Organisational](#️-organisational)
 
 ---
@@ -163,6 +164,13 @@ cd /home/robot/Isaac/IsaacLab
 | [`res/Tensegrity/README.md`](res/Tensegrity/README.md) | Robot specification: kinematic chain, joint limits, tendon geometry |
 | [`src/tensegrity_pick/README.md`](src/tensegrity_pick/README.md) | Isaac Lab extension: tasks, scripts, project structure |
 | [`test/README.md`](test/README.md) | Test suite: actuator math, config validation, environment smoke tests |
+
+### Theses
+
+| Thesis | Status | Overview | Guideline | Document |
+|--------|--------|----------|-----------|----------|
+| Project Thesis (PA) | 🔄 WIP | [project_thesis.md](doc/Theses/project_thesis.md) | [Guideline](doc/Theses/project_thesis/guideline/PA-Guideline.pdf) | [Thesis](doc/Theses/project_thesis/thesis/PA-Thesis.pdf) |
+| Master Thesis (MA) | 🔄 WIP | [master_thesis.md](doc/Theses/master_thesis.md) | [Guideline](doc/Theses/master_thesis/guideline/MA-Guideline.pdf) | [Thesis](doc/Theses/master_thesis/thesis/MA-Thesis.pdf) |
 
 ---
 
