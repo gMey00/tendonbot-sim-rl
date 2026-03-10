@@ -160,6 +160,7 @@ cd /home/robot/Isaac/IsaacLab
 | [`doc/tendon_simulation.md`](doc/tendon_simulation.md) | Tendon simulation: physics, architecture, validation |
 | [`doc/remote_desktop_setup.md`](doc/remote_desktop_setup.md) | Remote desktop setup (Tailscale + RustDesk) |
 | [`doc/reinforcement_learning.md`](doc/reinforcement_learning.md) | Reinforcement learning notes |
+| [`doc/robot_gripper_comparison.md`](doc/robot_gripper_comparison.md) | Robot and gripper comparison datasheet (UR10e, UR10, Kinova Gen3, tensegrity) |
 | [`doc/literatur/`](doc/literatur/) | Annotated bibliographies (control, learning, simulation, tendons) |
 | [`res/Tensegrity/README.md`](res/Tensegrity/README.md) | Robot specification: kinematic chain, joint limits, tendon geometry |
 | [`src/tensegrity_pick/README.md`](src/tensegrity_pick/README.md) | Isaac Lab extension: tasks, scripts, project structure |
