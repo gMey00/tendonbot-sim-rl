@@ -7,10 +7,16 @@ publication-quality figures saved into the task's ``figures/`` directory.
 Usage
 -----
     cd src/tensegrity_pick
-    python scripts/plot_place_training_results.py [--run DIR_NAME]
+    python scripts/plot_place_training_results.py --variant tensegrity [--run DIR_NAME]
 
 If ``--run`` is omitted the script auto-selects the latest ``*_ppo_torch``
-directory under ``logs/skrl/cube_place/``.
+directory under the variant's log directory.
+
+Variants and their log directories:
+  tensegrity        logs/skrl/cube_place/         (default, backward-compat)
+  tensegrity_tendon logs/skrl/cube_place/tensegrity_tendon/
+  ur10e             logs/skrl/cube_place/ur10e/
+  kinova            logs/skrl/cube_place/kinova/
 """
 
 from __future__ import annotations
@@ -33,11 +39,24 @@ from tensorboard.backend.event_processing.event_accumulator import (
 # Constants
 # ---------------------------------------------------------------------------
 
-LOGS_ROOT: Final = Path("logs/skrl/cube_place")
-FIGURES_DIR: Final = Path(
+VARIANT_LOG_DIRS: Final[dict[str, Path]] = {
+    # tensegrity uses the original cube_place/ root for backward compatibility
+    # with existing training runs logged before the config restructuring.
+    "tensegrity": Path("logs/skrl/cube_place"),
+    "tensegrity_tendon": Path("logs/skrl/cube_place/tensegrity_tendon"),
+    "ur10e": Path("logs/skrl/cube_place/ur10e"),
+    "kinova": Path("logs/skrl/cube_place/kinova"),
+}
+FIGURES_BASE: Final = Path(
     "source/tensegrity_pick/tensegrity_pick/tasks/"
     "manager_based/cube_place/figures"
 )
+VARIANT_LABELS: Final[dict[str, str]] = {
+    "tensegrity": "Tensegrity 5-DOF (PD)",
+    "tensegrity_tendon": "Tensegrity 5-DOF (Tendon)",
+    "ur10e": "UR10e 6-DOF (PD)",
+    "kinova": "Kinova Gen3 7-DOF (PD)",
+}
 
 CURRICULUM_RED_CUBE_STEP: Final = 100_000
 CURRICULUM_REGULARISATION_STEP: Final = 200_000
@@ -520,12 +539,20 @@ def main() -> None:
         default=None,
         help="Specific run directory name (e.g. 2026-03-06_21-05-45_ppo_torch)",
     )
+    parser.add_argument(
+        "--variant",
+        type=str,
+        default="tensegrity",
+        choices=list(VARIANT_LABELS.keys()),
+        help="Robot variant to plot (default: tensegrity)",
+    )
     args = parser.parse_args()
 
+    logs_root = VARIANT_LOG_DIRS[args.variant]
     if args.run:
-        run_dir = LOGS_ROOT / args.run
+        run_dir = logs_root / args.run
     else:
-        run_dir = resolve_latest_run(LOGS_ROOT)
+        run_dir = resolve_latest_run(logs_root)
 
     event_files = sorted(run_dir.glob("events.out.tfevents.*"))
     if not event_files:
@@ -542,17 +569,18 @@ def main() -> None:
     )
     print(f"  {total_tags} metrics, {total_events:,} data points")
 
-    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"Saving figures to: {FIGURES_DIR}/")
+    figures_dir = FIGURES_BASE / args.variant
+    figures_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Saving figures to: {figures_dir}/")
 
-    plot_total_reward(accumulator, FIGURES_DIR / "01_total_reward.png")
-    plot_task_success(accumulator, FIGURES_DIR / "02_task_success.png")
-    plot_reward_decomposition(accumulator, FIGURES_DIR / "03_reward_decomposition.png")
-    plot_penalties(accumulator, FIGURES_DIR / "04_penalties.png")
-    plot_policy_diagnostics(accumulator, FIGURES_DIR / "05_policy_diagnostics.png")
-    plot_converged_summary(accumulator, FIGURES_DIR / "06_converged_breakdown.png")
+    plot_total_reward(accumulator, figures_dir / "01_total_reward.png")
+    plot_task_success(accumulator, figures_dir / "02_task_success.png")
+    plot_reward_decomposition(accumulator, figures_dir / "03_reward_decomposition.png")
+    plot_penalties(accumulator, figures_dir / "04_penalties.png")
+    plot_policy_diagnostics(accumulator, figures_dir / "05_policy_diagnostics.png")
+    plot_converged_summary(accumulator, figures_dir / "06_converged_breakdown.png")
 
-    print("Done — 6 figures generated.")
+    print(f"Done — 6 figures generated for variant '{args.variant}'.")
 
 
 if __name__ == "__main__":

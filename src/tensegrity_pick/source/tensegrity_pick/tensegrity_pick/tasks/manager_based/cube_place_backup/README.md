@@ -46,46 +46,15 @@ drum volume (radius = 0.2735 m, height = 0.30 m).  Episodes run the full
 
 ## Variants
 
-| Environment ID | Robot | Actuation | Config | Log directory |
-|---|---|---|---|---|
-| `Template-Tensegrity-Cube-Place-v0` | Tensegrity 5-DOF | PD (joint pos) | `config/tensegrity/` | `logs/skrl/cube_place/` |
-| `Template-Tensegrity-Cube-Place-Play-v0` | Tensegrity 5-DOF | PD (joint pos) | `config/tensegrity/` | — |
-| `Template-Tensegrity-Cube-Place-Tendon-v0` | Tensegrity 5-DOF | Tendon tensions | `config/tensegrity_tendon/` | `logs/skrl/cube_place/tensegrity_tendon/` |
-| `Template-Tensegrity-Cube-Place-Tendon-Play-v0` | Tensegrity 5-DOF | Tendon tensions | `config/tensegrity_tendon/` | — |
-| `Template-UR10e-Cube-Place-v0` | UR10e 6-DOF | PD (joint pos) | `config/ur10e/` | `logs/skrl/cube_place/ur10e/` |
-| `Template-UR10e-Cube-Place-Play-v0` | UR10e 6-DOF | PD (joint pos) | `config/ur10e/` | — |
-| `Template-Kinova-Cube-Place-v0` | Kinova Gen3 7-DOF | PD (joint pos) | `config/kinova/` | `logs/skrl/cube_place/kinova/` |
-| `Template-Kinova-Cube-Place-Play-v0` | Kinova Gen3 7-DOF | PD (joint pos) | `config/kinova/` | — |
+| Environment ID | Actuation | Description |
+|---|---|---|
+| `Template-Tensegrity-Cube-Place-v0` | PD (joint position) | Standard training (8 192 envs) |
+| `Template-Tensegrity-Cube-Place-Play-v0` | PD (joint position) | Evaluation (50 envs, red always active) |
+| `Template-Tensegrity-Cube-Place-Tendon-v0` | Tendon tensions | Tendon-driven training (4 096 envs) |
+| `Template-Tensegrity-Cube-Place-Tendon-Play-v0` | Tendon tensions | Tendon-driven evaluation (50 envs) |
 
 All variants use `TensegrityPlaceEnv` as the gymnasium entry point
 (custom `ManagerBasedRLEnv` subclass with physics-based grasp latch).
-
-Robot-specific configurations live under `config/<robot>/`:
-
-```
-cube_place/
-├── place_env_cfg.py          # Base MDP + Tensegrity PD env configs
-├── place_scene_cfg.py        # Scene with cubes and drum
-├── place_env.py              # TensegrityPlaceEnv (was_grasped latch)
-├── mdp/                      # Rewards, observations, events
-└── config/
-    ├── tensegrity/           # Tensegrity PD variant
-    │   ├── __init__.py       # gym.register() calls
-    │   ├── joint_pos_env_cfg.py
-    │   └── agents/skrl_ppo_cfg.yaml
-    ├── tensegrity_tendon/    # Tensegrity tendon variant
-    │   ├── __init__.py
-    │   ├── joint_pos_env_cfg.py
-    │   └── agents/skrl_ppo_cfg.yaml
-    ├── ur10e/                # UR10e 6-DOF variant
-    │   ├── __init__.py
-    │   ├── joint_pos_env_cfg.py
-    │   └── agents/skrl_ppo_cfg.yaml
-    └── kinova/               # Kinova Gen3 7-DOF variant
-        ├── __init__.py
-        ├── joint_pos_env_cfg.py
-        └── agents/skrl_ppo_cfg.yaml
-```
 
 ## Scene
 
@@ -343,31 +312,23 @@ reset states (where spawn geometry can satisfy the grasp detector).
 ```bash
 cd src/tensegrity_pick
 
-# Tensegrity PD training
+# PD-driven training
 conda run --no-capture-output -n env_isaaclab python3 scripts/skrl/train.py \
     --task Template-Tensegrity-Cube-Place-v0 --headless
 
-# Tensegrity tendon-driven training
-conda run --no-capture-output -n env_isaaclab python3 scripts/skrl/train.py \
-    --task Template-Tensegrity-Cube-Place-Tendon-v0 --headless
-
-# UR10e training
-conda run --no-capture-output -n env_isaaclab python3 scripts/skrl/train.py \
-    --task Template-UR10e-Cube-Place-v0 --headless
-
-# Kinova Gen3 training
-conda run --no-capture-output -n env_isaaclab python3 scripts/skrl/train.py \
-    --task Template-Kinova-Cube-Place-v0 --headless
-
-# Play latest checkpoint (replace task ID for other variants)
+# Play latest checkpoint
 conda run --no-capture-output -n env_isaaclab python3 scripts/skrl/play.py \
     --task Template-Tensegrity-Cube-Place-Play-v0 --num_envs 10
+
+# Tendon-driven training
+conda run --no-capture-output -n env_isaaclab python3 scripts/skrl/train.py \
+    --task Template-Tensegrity-Cube-Place-Tendon-v0 --headless
 ```
 
 ## Training Results
 
-Results from training run `2026-03-06_21-05-45` (PPO, 8 192 envs, 293k steps), Tensegrity PD variant.
-Plots generated with `scripts/plot_place_training_results.py --variant tensegrity`.
+Results from training run `2026-03-06_21-05-45` (PPO, 8 192 envs, 293k steps).
+Plots generated with `scripts/plot_training_results.py`.
 
 ### Total Episode Reward
 
@@ -377,7 +338,7 @@ events are marked: the red distractor cube introduction at 100k steps causes a
 brief reward crash (~365 → ~55), and the regularisation ramp begins at 200k
 steps.
 
-![Total Reward](figures/tensegrity/01_total_reward.png)
+![Total Reward](figures/01_total_reward.png)
 
 ### Task Success
 
@@ -387,7 +348,7 @@ achieves consistent placement around 150k steps.  The red cube introduction at
 100k causes a temporary dip in both metrics as the agent adapts to the
 distractor.
 
-![Task Success](figures/tensegrity/02_task_success.png)
+![Task Success](figures/02_task_success.png)
 
 ### Sequential Skill Acquisition
 
@@ -397,7 +358,7 @@ reach → grasp → lift → transport → release → success.  The transport r
 lateral progress dominates holding.  The success reward (green in target)
 rises steeply once the agent masters the full pipeline.
 
-![Reward Decomposition](figures/tensegrity/03_reward_decomposition.png)
+![Reward Decomposition](figures/03_reward_decomposition.png)
 
 ### Penalties & Regularisation
 
@@ -407,7 +368,7 @@ distractor).  Base velocity and belt contact penalties remain stable.  The
 action rate and joint velocity penalties ramp up over the regularisation
 curriculum from 200k steps onward, smoothing the policy's motor commands.
 
-![Penalties](figures/tensegrity/04_penalties.png)
+![Penalties](figures/04_penalties.png)
 
 ### Policy Diagnostics
 
@@ -418,7 +379,7 @@ cube curriculum activates (new dynamics to model) then settles.  The adaptive
 learning rate responds to KL-divergence, dropping when the policy changes too
 rapidly.
 
-![Policy Diagnostics](figures/tensegrity/05_policy_diagnostics.png)
+![Policy Diagnostics](figures/05_policy_diagnostics.png)
 
 ### Converged Reward Breakdown
 
@@ -427,29 +388,17 @@ Final performance averaged over the last 10% of training.  The success reward
 is the optimal strategy.  The cube-off-conveyor penalty is the largest negative
 component — a known consequence of manipulating cubes near the belt edge.
 
-![Converged Breakdown](figures/tensegrity/06_converged_breakdown.png)
+![Converged Breakdown](figures/06_converged_breakdown.png)
 
 ### Regenerating Plots
 
 ```bash
 cd src/tensegrity_pick
-# Tensegrity PD variant (default)
-conda run --no-capture-output -n env_isaaclab python3 scripts/plot_place_training_results.py \
-    --variant tensegrity
+conda run --no-capture-output -n env_isaaclab python3 scripts/plot_place_training_results.py
 # Or specify a run:
 conda run --no-capture-output -n env_isaaclab python3 scripts/plot_place_training_results.py \
-    --variant tensegrity --run 2026-03-06_21-05-45_ppo_torch
-
-# Other variants
-conda run --no-capture-output -n env_isaaclab python3 scripts/plot_place_training_results.py \
-    --variant tensegrity_tendon
-conda run --no-capture-output -n env_isaaclab python3 scripts/plot_place_training_results.py \
-    --variant ur10e
-conda run --no-capture-output -n env_isaaclab python3 scripts/plot_place_training_results.py \
-    --variant kinova
+    --run 2026-03-06_21-05-45_ppo_torch
 ```
-
-Figures are saved to `figures/<variant>/` (e.g., `figures/tensegrity/01_total_reward.png`).
 
 ## Related
 
