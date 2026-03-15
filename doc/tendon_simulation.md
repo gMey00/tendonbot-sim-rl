@@ -82,13 +82,13 @@ tensegrity_pick/
 │   └── tendon_robot_cfg.py              #   TENS_3DOF_TENDON_CFG, TENS_5DOF_GRIPPER_TENDON_CFG
 ├── tasks/
 │   └── manager_based/
-│       ├── tensegrity_reach/
-│       │   ├── tensegrity_reach_env_cfg.py         # PD-driven reach
-│       │   └── tensegrity_reach_tendon_env_cfg.py  # Tendon-driven reach
+│       ├── reach/
+│       │   ├── reach_env_cfg.py                     # Shared reach task config
+│       │   └── config/tensegrity_tendon/            # Tendon-driven reach variant
 │       ├── shared/                      # Shared configs across tasks
 │       └── cube_place/
-│           ├── cube_place_env_cfg.py                # PD-driven place
-│           └── cube_place_tendon_env_cfg.py         # Tendon-driven place
+│           ├── place_env_cfg.py                     # Base MDP + Tensegrity PD env configs
+│           └── config/tensegrity_tendon/            # Tendon-driven place variant
 ```
 
 ### 2.2  Key Classes
