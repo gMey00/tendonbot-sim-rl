@@ -48,8 +48,8 @@ class CommandsCfg:
         asset_name="robot",
         body_name=MISSING,
         joint_names=MISSING,
-        resampling_time_range=(2.0, 2.0),
-        success_threshold=0.02,
+        resampling_time_range=(4.0, 4.0),
+        success_threshold=0.05,
         debug_vis=True,
     )
 
@@ -72,12 +72,12 @@ class ObservationsCfg:
 
         joint_pos = ObsTerm(
             func=mdp.joint_pos_rel,
-            noise=Unoise(n_min=-0.002, n_max=0.002),
+            noise=Unoise(n_min=-0.01, n_max=0.01),
             # params={"asset_cfg": SceneEntityCfg("robot", joint_names=CONTROLLED_JOINT_NAMES)},
         )
         joint_vel = ObsTerm(
             func=mdp.joint_vel_rel,
-            noise=Unoise(n_min=-0.002, n_max=0.002),
+            noise=Unoise(n_min=-0.01, n_max=0.01),
             # params={"asset_cfg": SceneEntityCfg("robot", joint_names=CONTROLLED_JOINT_NAMES)},
         )
         # current_ee_pose = ObsTerm(
@@ -107,7 +107,7 @@ class EventCfg:
         func=mdp.reset_joints_by_scale,
         mode="reset",
         params={
-            "position_range": (0.5, 1.5),
+            "position_range": (0.75, 1.25),
             "velocity_range": (0.0, 0.0),
             "asset_cfg": SceneEntityCfg("robot", joint_names=MISSING),
         },
@@ -118,6 +118,7 @@ class EventCfg:
 class RewardsCfg:
     """Reward terms for the MDP."""
 
+    # -- task terms --
     end_effector_position_tracking = RewTerm(
         func=mdp.position_command_error,
         weight=-0.2,
@@ -128,32 +129,32 @@ class RewardsCfg:
         weight=0.1,
         params={"asset_cfg": SceneEntityCfg("robot", body_names=MISSING), "std": 0.1, "command_name": "ee_pose"},
     )
+    end_effector_position_tracking_proximity = RewTerm(
+        func=mdp.position_command_error_tanh,
+        weight=0.2,
+        params={"asset_cfg": SceneEntityCfg("robot", body_names=MISSING), "std": 0.03, "command_name": "ee_pose"},
+    )
     end_effector_orientation_tracking = RewTerm(
         func=mdp.orientation_command_error,
         weight=-0.1,
         params={"asset_cfg": SceneEntityCfg("robot", body_names=MISSING), "command_name": "ee_pose"},
     )
-    end_effector_orientation_tracking_fine_grained = RewTerm(
-        func=mdp.orientation_command_error_tanh,
-        weight=0.0, # 0.1
-        params={"asset_cfg": SceneEntityCfg("robot", body_names=MISSING), "std": 0.2, "command_name": "ee_pose"},
-    )
-    pose_goal_reached = RewTerm(
-        func=mdp.pose_goal_reached,
-        weight= 0.0, # 1.0,
+    goal_reached = RewTerm(
+        func=mdp.goal_reached,
+        weight=0.5,
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=MISSING),
-            "position_threshold": 0.03,
-            "orientation_threshold": 0.20,
+            "threshold": 0.05,
             "command_name": "ee_pose",
         },
     )
 
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.0001)
+    # -- regularisation terms --
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.001)
     joint_vel = RewTerm(
-        func=mdp.joint_vel_l2,
-        weight=-0.0001,
-        params={"asset_cfg": SceneEntityCfg("robot")},
+        func=mdp.joint_vel_l2_clamped,
+        weight=-0.0005,
+        params={"max_velocity": 10.0, "asset_cfg": SceneEntityCfg("robot")},
     )
 
 
@@ -162,18 +163,24 @@ class TerminationsCfg:
     """Termination terms for the MDP."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
+    joint_vel_diverged = DoneTerm(
+        func=mdp.joint_vel_out_of_manual_limit,
+        time_out=True,
+        params={"max_velocity": 100.0, "asset_cfg": SceneEntityCfg("robot")},
+    )
 
 
 @configclass
 class CurriculumCfg:
-    """Curriculum terms for the MDP."""
+    """Curriculum terms that ramp up regularisation over training."""
 
     action_rate = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "action_rate", "weight": -0.005, "num_steps": 4500}
+        func=mdp.modify_reward_weight,
+        params={"term_name": "action_rate", "weight": -0.01, "num_steps": 12000},
     )
-
     joint_vel = CurrTerm(
-        func=mdp.modify_reward_weight, params={"term_name": "joint_vel", "weight": -0.001, "num_steps": 4500}
+        func=mdp.modify_reward_weight,
+        params={"term_name": "joint_vel", "weight": -0.005, "num_steps": 12000},
     )
 
 
@@ -208,7 +215,7 @@ class ReachEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.dt = 1.0 / 60.0
         # self.scene.clone_in_fabric = True
         # self.sim.create_stage_in_memory = True
-        # self.sim.physx.enable_stabilization = True
+        self.sim.physx.enable_stabilization = True
 
         self.teleop_devices = DevicesCfg(
             devices={

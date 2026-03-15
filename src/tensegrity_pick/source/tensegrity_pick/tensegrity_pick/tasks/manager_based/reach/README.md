@@ -162,8 +162,8 @@ All observation terms are concatenated into a single vector.
 
 | Term | Dim | Description |
 |---|---|---|
-| `joint_pos` | N | Relative joint positions (±0.002 uniform noise) |
-| `joint_vel` | N | Relative joint velocities (±0.002 uniform noise) |
+| `joint_pos` | N | Relative joint positions (±0.01 uniform noise) |
+| `joint_vel` | N | Relative joint velocities (±0.01 uniform noise) |
 | `pose_command` | 7 | FK-sampled target pose (x, y, z, qw, qx, qy, qz) in root frame |
 | `actions` | M | Previous actions |
 
@@ -182,8 +182,8 @@ Where N = DOF count and M = action dimension for that variant.
 
 | Parameter | Value |
 |---|---|
-| Resampling interval | 2.0 s (fixed) |
-| Success threshold | 0.02 m (position error) |
+| Resampling interval | 4.0 s (fixed) |
+| Success threshold | 0.05 m (position error) |
 | Sampling method | Uniform random in `[joint_lower, joint_upper]` → FK |
 | Debug visualisation | Frame markers for goal + current EE pose |
 
@@ -193,37 +193,42 @@ Where N = DOF count and M = action dimension for that variant.
 
 | Term | Weight | Function |
 |---|---|---|
-| `end_effector_position_tracking` | −0.2 | L2 position error |
-| `end_effector_position_tracking_fine_grained` | +0.1 | `1 − tanh(d / 0.1)` |
+| `end_effector_position_tracking` | −0.2 | L2 position error (unbounded penalty) |
+| `end_effector_position_tracking_fine_grained` | +0.1 | `1 − tanh(d / 0.1)` — medium-range dense reward |
+| `end_effector_position_tracking_proximity` | +0.2 | `1 − tanh(d / 0.03)` — tight proximity reward |
 | `end_effector_orientation_tracking` | −0.1 | Quaternion error magnitude |
-| `end_effector_orientation_tracking_fine_grained` | 0.0 *(disabled)* | `1 − tanh(e / 0.2)` |
-| `pose_goal_reached` | 0.0 *(disabled)* | Binary: 1.0 when `d < 0.03` m |
+| `goal_reached` | +0.5 | Binary: 1.0 when `d < 0.05` m (position only) |
 
 ### Regularisation
 
 | Term | Initial Weight | Final Weight | Notes |
 |---|---|---|---|
-| `action_rate` | −0.0001 | −0.005 | L2 action delta (curriculum ramp) |
-| `joint_vel` | −0.0001 | −0.001 | L2 joint velocity (curriculum ramp) |
+| `action_rate` | −0.001 | −0.01 | L2 action delta (curriculum ramp over 12 000 steps) |
+| `joint_vel` | −0.0005 | −0.005 | Clamped L2 joint velocity (curriculum ramp over 12 000 steps) |
+
+`joint_vel` uses `joint_vel_l2_clamped(max_velocity=10.0)` which clamps each joint to
+`[−10, 10] rad/s` before squaring, preventing physics divergence spikes from dominating
+the loss signal.
 
 ## Terminations
 
 | Term | Type | Condition |
 |---|---|---|
 | `time_out` | Truncation | Episode length exceeded (12.0 s / 360 steps) |
+| `joint_vel_diverged` | Truncation | Any joint velocity exceeds 100 rad/s (physics divergence guard) |
 
 ## Curriculum
 
 | Step Threshold | Change |
 |---|---|
-| 0 → 4 500 | `action_rate` weight ramps from −0.0001 to −0.005 |
-| 0 → 4 500 | `joint_vel` weight ramps from −0.0001 to −0.001 |
+| 0 → 12 000 | `action_rate` weight ramps from −0.001 to −0.01 |
+| 0 → 12 000 | `joint_vel` weight ramps from −0.0005 to −0.005 |
 
 ## Reset Events
 
 | Event | Details |
 |---|---|
-| `reset_robot_joints` | Controlled joints scaled to 50 %–150 % of defaults; velocities zeroed |
+| `reset_robot_joints` | Controlled joints scaled to 75 %–125 % of defaults; velocities zeroed |
 
 ## Simulation Parameters
 
@@ -234,9 +239,25 @@ Where N = DOF count and M = action dimension for that variant.
 | Episode length | 12.0 s (360 control steps) |
 | Default num_envs | 4 096 (train) / 50 (play) |
 
+## PPO Hyperparameters
+
+All variants share the same PPO configuration (see `config/<variant>/agents/skrl_ppo_cfg.yaml`):
+
+| Parameter | Value | Notes |
+|---|---|---|
+| `models.separate` | `True` | Separate policy / value networks |
+| `policy.min_log_std` | `−5.0` | Prevents policy collapse (floor std ≈ 0.007) |
+| `policy.layers` | `[256, 128]` | Larger capacity for compliant dynamics |
+| `value.layers` | `[256, 128]` | Matches policy network size |
+| `rollouts` | `32` | Rollout horizon per update |
+| `learning_epochs` | `8` | Gradient steps per rollout |
+| `learning_rate` | `5.0e-04` | Conservative LR |
+| `write_interval` | `auto` | Eliminates TensorBoard I/O bottleneck |
+| `timesteps` | `36 000` | Matches working reference budget |
+
 ## Training
 
-Training is configured for 24 000 timesteps (PPO via SKRL, 4 096 parallel
+Training is configured for 36 000 timesteps (PPO via SKRL, 4 096 parallel
 environments).  See `config/<variant>/agents/skrl_ppo_cfg.yaml` for the full
 hyperparameter set.
 
@@ -288,10 +309,10 @@ conda run --no-capture-output -n env_isaaclab \
 
 | Variant | Latest Report | Date |
 |---|---|---|
-| Tensegrity PD | [Report](reports/tensegrity/reach_results_tensegrity_2026-03-14_23-42-14_ppo_torch.md) | 2026-03-15 |
-| Tensegrity Tendon | [Report](reports/tensegrity_tendon/reach_results_tensegrity_tendon_2026-03-15_00-14-43_ppo_torch.md) | 2026-03-15 |
-| UR10e | [Report](reports/ur10e/reach_results_ur10e_2026-03-13_23-47-59_ppo_torch.md) | 2026-03-15 |
-| Kinova | [Report](reports/kinova/reach_results_kinova_2026-03-14_00-26-45_ppo_torch.md) | 2026-03-15 |
+| Tensegrity PD | [Report](reports/tensegrity/reach_results_tensegrity_2026-03-15_12-07-19_ppo_torch.md) | 2026-03-15 |
+| Tensegrity Tendon | [Report](reports/tensegrity_tendon/reach_results_tensegrity_tendon_2026-03-15_12-36-11_ppo_torch.md) | 2026-03-15 |
+| UR10e | [Report](reports/ur10e/reach_results_ur10e_2026-03-15_13-02-21_ppo_torch.md) | 2026-03-15 |
+| Kinova | [Report](reports/kinova/reach_results_kinova_2026-03-15_13-42-01_ppo_torch.md) | 2026-03-15 |
 
 ### Training Figures
 

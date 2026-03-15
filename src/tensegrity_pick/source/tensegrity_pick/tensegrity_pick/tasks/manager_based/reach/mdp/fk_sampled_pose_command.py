@@ -134,11 +134,19 @@ class FKSampledPoseCommand(CommandTerm):
         lower = torch.where(invalid_limit_mask, default_joint_pos - fallback_half_range, lower)
         upper = torch.where(invalid_limit_mask, default_joint_pos + fallback_half_range, upper)
 
+        # Sample from the inner 80 % of each joint range to avoid extreme configurations
+        # that may produce degenerate cable/constraint geometry in the tensegrity model.
+        margin = (upper - lower) * 0.10
+        lower = lower + margin
+        upper = upper - margin
+
         random_joint_positions = lower + (upper - lower) * torch.rand(
             len(env_ids), len(self.joint_ids), device=self.device
         )
 
         saved_joint_positions = self.robot.data.joint_pos[env_ids, :][:, self.joint_ids].clone()
+        # Save all-joint velocities so we can flush PhysX's internal state after the restore.
+        saved_joint_velocities = self.robot.data.joint_vel[env_ids].clone()
 
         self.robot.write_joint_position_to_sim(random_joint_positions, joint_ids=self.joint_ids, env_ids=env_ids)
 
@@ -154,6 +162,9 @@ class FKSampledPoseCommand(CommandTerm):
         self.pose_command_b[env_ids, 3:] = quat_unique(quat_b) if self.cfg.make_quat_unique else quat_b
 
         self.robot.write_joint_position_to_sim(saved_joint_positions, joint_ids=self.joint_ids, env_ids=env_ids)
+        # Explicitly re-write velocities to flush any residual PhysX constraint state that
+        # the intermediate random-position teleport may have left in the solver buffers.
+        self.robot.write_joint_velocity_to_sim(saved_joint_velocities, env_ids=env_ids)
 
     def _update_command(self) -> None:
         pass

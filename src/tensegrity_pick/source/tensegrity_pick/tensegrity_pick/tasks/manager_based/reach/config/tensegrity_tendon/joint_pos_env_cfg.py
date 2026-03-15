@@ -90,9 +90,9 @@ class TensegrityReachTendonEnvCfg(ReachEnvCfg):
         # override rewards
         self.rewards.end_effector_position_tracking.params["asset_cfg"].body_names = [TARGET_LINK_NAME]
         self.rewards.end_effector_position_tracking_fine_grained.params["asset_cfg"].body_names = [TARGET_LINK_NAME]
+        self.rewards.end_effector_position_tracking_proximity.params["asset_cfg"].body_names = [TARGET_LINK_NAME]
         self.rewards.end_effector_orientation_tracking.params["asset_cfg"].body_names = [TARGET_LINK_NAME]
-        self.rewards.end_effector_orientation_tracking_fine_grained.params["asset_cfg"].body_names = [TARGET_LINK_NAME]
-        self.rewards.pose_goal_reached.params["asset_cfg"].body_names = [TARGET_LINK_NAME]
+        self.rewards.goal_reached.params["asset_cfg"].body_names = [TARGET_LINK_NAME]
         # override events
         self.events.reset_robot_joints.params["asset_cfg"].joint_names = CONTROLLED_JOINT_NAMES
 

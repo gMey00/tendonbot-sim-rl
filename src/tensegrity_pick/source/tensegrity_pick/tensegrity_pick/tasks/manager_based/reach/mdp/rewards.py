@@ -154,8 +154,36 @@ def pose_goal_reached(
     return reached.float()
 
 
-# def joint_vel_l2_clamped(env: ManagerBasedRLEnv, max_velocity: float, asset_cfg: SceneEntityCfg) -> torch.Tensor:
-#     """L2 norm of joint velocities with per-joint clipping."""
-#     asset = env.scene[asset_cfg.name]
-#     clamped = torch.clamp(asset.data.joint_vel[:, asset_cfg.joint_ids], -max_velocity, max_velocity)
-#     return torch.sum(clamped**2, dim=1)
+def goal_reached(
+    env: ManagerBasedRLEnv, threshold: float, command_name: str, asset_cfg: SceneEntityCfg
+) -> torch.Tensor:
+    """Binary reward: 1.0 when the end-effector is within *threshold* metres of the target.
+
+    Useful for tracking success rate in TensorBoard via the episodic reward sum.
+    Position-only check (no orientation constraint) so it fires early in training.
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    command = env.command_manager.get_command(command_name)
+
+    des_pos_b = command[:, :3]
+    des_pos_w, _ = combine_frame_transforms(
+        asset.data.root_state_w[:, :3], asset.data.root_state_w[:, 3:7], des_pos_b
+    )
+
+    curr_pos_w = asset.data.body_state_w[:, asset_cfg.body_ids[0], :3]
+    distance = torch.norm(curr_pos_w - des_pos_w, dim=1)
+    return (distance < threshold).float()
+
+
+def joint_vel_l2_clamped(
+    env: ManagerBasedRLEnv, max_velocity: float, asset_cfg: SceneEntityCfg
+) -> torch.Tensor:
+    """L2 norm of joint velocities, clamped per-joint to prevent outlier divergence.
+
+    Unlike the standard ``joint_vel_l2``, individual joint velocities are clamped
+    to ``[-max_velocity, max_velocity]`` before squaring.  This bounds the per-step
+    contribution so that a single unstable environment cannot dominate the batch.
+    """
+    asset = env.scene[asset_cfg.name]
+    clamped = torch.clamp(asset.data.joint_vel[:, asset_cfg.joint_ids], -max_velocity, max_velocity)
+    return torch.sum(clamped**2, dim=1)

@@ -30,7 +30,7 @@ REPORTS_BASE: Final = Path(
     "source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/reports"
 )
 
-DEFAULT_CURRICULUM_STEP: Final = 4500
+DEFAULT_CURRICULUM_STEP: Final = 12000
 SMOOTHING_WEIGHT: Final = 0.85
 DPI: Final = 180
 FIGSIZE_WIDE: Final = (11, 4.5)
@@ -89,8 +89,8 @@ def write_report(variant: str, run_name: str, stats: dict, report_path: Path) ->
 | Position tracking reward | {metric('Info / Episode_Reward/end_effector_position_tracking'):.4f} |
 | Orientation tracking reward | {metric('Info / Episode_Reward/end_effector_orientation_tracking'):.4f} |
 | Position fine-grained reward | {metric('Info / Episode_Reward/end_effector_position_tracking_fine_grained'):.6f} |
-| Orientation fine-grained reward | {metric('Info / Episode_Reward/end_effector_orientation_tracking_fine_grained'):.6f} |
-| Pose goal reached reward | {metric(success_tag):.6f} |
+| Position proximity reward | {metric('Info / Episode_Reward/end_effector_position_tracking_proximity'):.6f} |
+| Goal reached reward | {metric(success_tag):.6f} |
 | Action rate penalty | {metric('Info / Episode_Reward/action_rate'):.6f} |
 | Joint velocity penalty | {metric('Info / Episode_Reward/joint_vel'):.6f} |
 | Policy std deviation | {metric('Policy / Standard deviation'):.4f} |
@@ -351,8 +351,16 @@ def plot_task_success(
         if "Info / Episode_Reward/pose_goal_reached" in accumulator.Tags().get("scalars", [])
         else "Goal Reached (pos only)"
     )
-    steps_prox, values_prox = load_scalars(
-        accumulator, "Info / Episode_Reward/end_effector_position_tracking_fine_grained"
+    steps_prox, values_prox = resolve_tag(
+        accumulator,
+        "Info / Episode_Reward/end_effector_position_tracking_proximity",
+        "Info / Episode_Reward/end_effector_position_tracking_fine_grained",
+    )
+    prox_label = (
+        "Pos. Proximity"
+        if "Info / Episode_Reward/end_effector_position_tracking_proximity"
+        in accumulator.Tags().get("scalars", [])
+        else "Pos. Fine-Grained"
     )
 
     fig, ax_left = plt.subplots(figsize=FIGSIZE_WIDE)
@@ -373,12 +381,12 @@ def plot_task_success(
         ax_right.plot(
             steps_to_k(steps_prox),
             smooth(values_prox),
-            color=PALETTE.blue,
+            color=PALETTE.cyan,
             linewidth=1.8,
-            label="Position Fine-Grained",
+            label=prox_label,
         )
-    ax_right.set_ylabel("Fine-Grained Position Reward", fontsize=10, color=PALETTE.blue)
-    ax_right.tick_params(axis="y", labelcolor=PALETTE.blue)
+    ax_right.set_ylabel(f"{prox_label} Reward", fontsize=10, color=PALETTE.cyan)
+    ax_right.tick_params(axis="y", labelcolor=PALETTE.cyan)
 
     add_curriculum_marker(ax_left, curriculum_step)
     annotate_curriculum(ax_left, curriculum_step)
@@ -416,8 +424,8 @@ def plot_reward_decomposition(
     candidate_terms: list[tuple[str, str, str]] = [
         ("Info / Episode_Reward/end_effector_position_tracking", "Pos. Error", PALETTE.red),
         ("Info / Episode_Reward/end_effector_position_tracking_fine_grained", "Pos. Fine", PALETTE.cyan),
+        ("Info / Episode_Reward/end_effector_position_tracking_proximity", "Pos. Proximity", PALETTE.yellow),
         ("Info / Episode_Reward/end_effector_orientation_tracking", "Orient. Error", PALETTE.orange),
-        ("Info / Episode_Reward/end_effector_orientation_tracking_fine_grained", "Orient. Fine", PALETTE.yellow),
         (success_tag, success_label, PALETTE.green),
         ("Info / Episode_Reward/action_rate", "Action Rate", PALETTE.grey),
         ("Info / Episode_Reward/joint_vel", "Joint Velocity", PALETTE.purple),
@@ -534,6 +542,16 @@ def compute_stats(accumulator: EventAccumulator) -> dict:
     return stats
 
 
+def _fmt(val: float) -> str:
+    """Format a scalar for bar-chart annotations, using SI-like concise form."""
+    if val == 0.0:
+        return "0"
+    abs_v = abs(val)
+    if abs_v >= 0.1:
+        return f"{val:.3f}"
+    return f"{val:.3e}"
+
+
 def plot_converged_summary(accumulator: EventAccumulator, output: Path, variant_label: str) -> None:
     available = set(accumulator.Tags().get("scalars", []))
 
@@ -546,17 +564,18 @@ def plot_converged_summary(accumulator: EventAccumulator, output: Path, variant_
 
     candidate_reward_tags: list[tuple[str, str]] = [
         (success_tag, success_label),
+        ("Info / Episode_Reward/end_effector_position_tracking_proximity", "Pos. Proximity"),
         ("Info / Episode_Reward/end_effector_position_tracking_fine_grained", "Pos. Fine"),
-        ("Info / Episode_Reward/end_effector_orientation_tracking_fine_grained", "Orient. Fine"),
     ]
     reward_tags = [(tag, label) for tag, label in candidate_reward_tags if tag in available]
 
-    penalty_tags: list[tuple[str, str]] = [
+    candidate_penalty_tags: list[tuple[str, str]] = [
         ("Info / Episode_Reward/end_effector_position_tracking", "Pos. Error"),
         ("Info / Episode_Reward/end_effector_orientation_tracking", "Orient. Error"),
         ("Info / Episode_Reward/action_rate", "Action Rate"),
         ("Info / Episode_Reward/joint_vel", "Joint Velocity"),
     ]
+    penalty_tags = [(tag, label) for tag, label in candidate_penalty_tags if tag in available]
 
     def final_mean(tag: str) -> float:
         _, values = load_scalars(accumulator, tag)
@@ -579,6 +598,7 @@ def plot_converged_summary(accumulator: EventAccumulator, output: Path, variant_
         gridspec_kw={"width_ratios": [1.0, 1.3]},
     )
 
+    # --- Reward panel ---
     y_pos = np.arange(len(reward_labels))
     bars_r = ax_r.barh(y_pos, reward_values, color=PALETTE.green, alpha=0.8, height=0.55)
     ax_r.set_yticks(y_pos)
@@ -588,16 +608,22 @@ def plot_converged_summary(accumulator: EventAccumulator, output: Path, variant_
     ax_r.grid(True, alpha=0.3, axis="x")
     ax_r.invert_yaxis()
 
-    for bar, val in zip(bars_r, reward_values):
-        ax_r.text(
-            bar.get_width() + max(max(reward_values, default=0.01), 0.01) * 0.02,
-            bar.get_y() + bar.get_height() / 2,
-            f"{val:.3f}",
-            va="center",
-            fontsize=8,
-            color=PALETTE.dark,
-        )
+    if reward_values:
+        max_r = max(reward_values) if max(reward_values) > 0 else 1.0
+        ax_r.set_xlim(0, max_r * 1.35)
+        text_offset_r = max_r * 0.03
+        for bar, val in zip(bars_r, reward_values):
+            ax_r.text(
+                bar.get_width() + text_offset_r,
+                bar.get_y() + bar.get_height() / 2,
+                _fmt(val),
+                va="center",
+                ha="left",
+                fontsize=8,
+                color=PALETTE.dark,
+            )
 
+    # --- Penalty panel ---
     y_neg = np.arange(len(penalty_labels))
     bars_p = ax_p.barh(y_neg, penalty_values, color=PALETTE.red, alpha=0.8, height=0.55)
     ax_p.set_yticks(y_neg)
@@ -607,17 +633,20 @@ def plot_converged_summary(accumulator: EventAccumulator, output: Path, variant_
     ax_p.grid(True, alpha=0.3, axis="x")
     ax_p.invert_yaxis()
 
-    for bar, val in zip(bars_p, penalty_values):
-        offset = min(min(penalty_values, default=-0.01), -0.01) * 0.02
-        ax_p.text(
-            bar.get_width() + offset if val >= 0 else bar.get_width() - abs(offset),
-            bar.get_y() + bar.get_height() / 2,
-            f"{val:.3f}",
-            va="center",
-            ha="left" if val >= 0 else "right",
-            fontsize=8,
-            color=PALETTE.dark,
-        )
+    if penalty_values:
+        min_p = min(penalty_values) if min(penalty_values) < 0 else -1.0
+        ax_p.set_xlim(min_p * 1.35, 0)
+        text_offset_p = abs(min_p) * 0.03
+        for bar, val in zip(bars_p, penalty_values):
+            ax_p.text(
+                bar.get_width() - text_offset_p,
+                bar.get_y() + bar.get_height() / 2,
+                _fmt(val),
+                va="center",
+                ha="right",
+                fontsize=8,
+                color=PALETTE.dark,
+            )
 
     fig.suptitle(
         f"Converged Reward Breakdown — {variant_label}",
@@ -627,7 +656,7 @@ def plot_converged_summary(accumulator: EventAccumulator, output: Path, variant_
 
     fig.subplots_adjust(left=0.17, right=0.97, bottom=0.14, top=0.84, wspace=0.42)
 
-    finalise(fig, output)
+    finalise(fig, output, tight=False)
 
 
 def main() -> None:
