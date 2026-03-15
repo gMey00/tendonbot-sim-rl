@@ -41,15 +41,22 @@ if TYPE_CHECKING:
 PARKING_X_THRESHOLD = 50.0
 
 
+def zero_obs_3d(env: "ManagerBasedRLEnv") -> torch.Tensor:
+    """Placeholder (N, 3) zeros — used to mask out observations during ablation."""
+    return torch.zeros(env.num_envs, 3, device=env.device)
+
+
 # ---------------------------------------------------------------------------
 # Collection helpers (label-aware, GPU-vectorised)
 # ---------------------------------------------------------------------------
 
 def _active_mask(env: "ManagerBasedRLEnv", collection_name: str) -> torch.Tensor:
-    """(N, M) bool — cubes that are not parked."""
+    """(N, M) bool — cubes that are not parked and not already placed."""
     pos = env.scene[collection_name].data.object_pos_w
     local_x = pos[..., 0] - env.scene.env_origins[:, None, 0]
-    return local_x < PARKING_X_THRESHOLD
+    not_parked = local_x < PARKING_X_THRESHOLD
+    not_placed = ~env._is_placed if hasattr(env, "_is_placed") else True
+    return not_parked & not_placed
 
 
 def _label_mask(env: "ManagerBasedRLEnv", label: int) -> torch.Tensor:
@@ -70,7 +77,16 @@ def _nearest_active_by_label(
     collection_name: str,
     label: int,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Find the nearest active cube of *label* per env.
+    """Find the nearest active cube of *label* per env, with sticky tracking.
+
+    When the env provides ``_tracked_idx`` (shape ``(N, num_labels)``), the
+    function keeps returning the same cube index for each environment until
+    that cube becomes invalid (placed, parked, etc.).  Only then does it
+    fall back to the geometrically nearest active cube and update the
+    tracked index.
+
+    This prevents observation/reward instability caused by the "nearest"
+    target flipping between two close cubes every step.
 
     Returns ``(pos, idx, has_any)`` where
       pos:     (N, 3) world position
@@ -81,13 +97,36 @@ def _nearest_active_by_label(
     pos = coll.data.object_pos_w  # (N, M, 3)
     valid = _active_label_mask(env, collection_name, label)
 
-    d2 = torch.sum((pos - reference_pos[:, None, :]) ** 2, dim=-1)
-    d2 = torch.where(valid, d2, torch.full_like(d2, float("inf")))
-    idx = torch.argmin(d2, dim=1)
-    has_any = torch.isfinite(d2.min(dim=1).values)
+    N = pos.shape[0]
+    arange = torch.arange(N, device=pos.device)
 
-    arange = torch.arange(pos.shape[0], device=pos.device)
-    return pos[arange, idx], idx, has_any
+    # Compute squared distances for nearest fallback
+    d2 = torch.sum((pos - reference_pos[:, None, :]) ** 2, dim=-1)
+    d2_masked = torch.where(valid, d2, torch.full_like(d2, float("inf")))
+    nearest_idx = torch.argmin(d2_masked, dim=1)
+    has_any = torch.isfinite(d2_masked.min(dim=1).values)
+
+    tracked = getattr(env, "_tracked_idx", None)
+    if tracked is not None and tracked.shape[1] > label:
+        current = tracked[:, label]
+        has_tracked = current >= 0
+        still_valid = torch.zeros(N, dtype=torch.bool, device=pos.device)
+        valid_mask = has_tracked & (current < valid.shape[1])
+        still_valid[valid_mask] = valid[arange[valid_mask], current[valid_mask]]
+
+        idx = current.clone()
+        needs_update = ~still_valid
+        idx[needs_update & has_any] = nearest_idx[needs_update & has_any]
+        idx[needs_update & ~has_any] = -1
+        env._tracked_idx[:, label] = idx
+
+        safe_idx = idx.clamp(min=0)
+        result_has = idx >= 0
+    else:
+        safe_idx = nearest_idx
+        result_has = has_any
+
+    return pos[arange, safe_idx], safe_idx, result_has
 
 
 # ---------------------------------------------------------------------------
@@ -444,6 +483,41 @@ def cubes_in_target(
     return (inside & valid).to(torch.float32).sum(dim=1)
 
 
+def target_in_drum_reward(
+    env: "ManagerBasedRLEnv",
+    collection_name: str,
+    label: int,
+    target_bin_name: str,
+    bin_geom: BinCylinder,
+) -> torch.Tensor:
+    """Per-step reward while target cubes rest in the drum.
+
+    Mirrors cube_place's ``green_in_target`` — the dominant reward that makes
+    releasing clearly more valuable than holding near the drum.  Gated on
+    ``was_grasped`` to prevent credit from accidentally bumped cubes.
+
+    Normalised by the number of active cubes of this label so that placing
+    1/6 cubes gives 1/6 of the max per-step reward, incentivising the
+    robot to go back and pick more cubes rather than coasting after placing
+    only the first one.
+
+    Uses the label mask directly (not _active_mask) because placed cubes
+    are intentionally excluded from the active set for reaching/grasping
+    but must still generate reward while resting in the drum.
+    """
+    coll = env.scene[collection_name]
+    pos = coll.data.object_pos_w
+    pos_t = get_world_pos(env.scene[target_bin_name], env=env)
+    label_mask = _label_mask(env, label)[None, :]
+    inside = in_upright_cylinder(pos, pos_t, bin_geom)
+    count = (inside & label_mask).to(torch.float32).sum(dim=1)
+    if hasattr(env, "was_grasped"):
+        count = count * env.was_grasped.to(torch.float32)
+    # Normalise by number of active cubes so max reward = 1.0
+    num_active = getattr(env, "_num_active_green", 1)
+    return count / max(num_active, 1)
+
+
 def cubes_missed(
     env: "ManagerBasedRLEnv",
     collection_name: str,
@@ -470,7 +544,13 @@ def cubes_off_conveyor(
     collection_name: str,
     bounds: ConveyorBounds,
 ) -> torch.Tensor:
-    """Penalty count for ALL active cubes (any label) knocked off the conveyor."""
+    """Penalty for active cubes knocked off the conveyor, normalised by count.
+
+    Returns the *fraction* of active cubes that are off-belt so the penalty
+    magnitude stays approximately constant regardless of how many cubes are
+    on the conveyor (prevents the penalty from dominating the grasping signal
+    as the curriculum adds more cubes).
+    """
     coll = env.scene[collection_name]
     pos = coll.data.object_pos_w
     active = _active_mask(env, collection_name)
@@ -478,4 +558,6 @@ def cubes_off_conveyor(
     out_y = (local[..., 1] < bounds.y_min) | (local[..., 1] > bounds.y_max)
     out_z = local[..., 2] < bounds.z_min
     off = active & (out_y | out_z)
-    return off.to(torch.float32).sum(dim=1)
+    num_off = off.to(torch.float32).sum(dim=1)
+    num_active = active.to(torch.float32).sum(dim=1).clamp(min=1.0)
+    return num_off / num_active

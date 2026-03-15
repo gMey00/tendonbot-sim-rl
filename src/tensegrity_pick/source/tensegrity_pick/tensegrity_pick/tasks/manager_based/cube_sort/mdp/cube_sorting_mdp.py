@@ -99,6 +99,32 @@ class SpawnBox:
     y_range: Tuple[float, float]
     z_range: Tuple[float, float]
     yaw_range: Tuple[float, float] = (-3.14159, 3.14159)
+    min_x_spacing: float = 0.0
+
+
+def _sample_spaced_x(
+    num_envs: int,
+    num_cubes: int,
+    x_range: Tuple[float, float],
+    min_spacing: float,
+    device: torch.device,
+) -> torch.Tensor:
+    """Sample x positions with guaranteed minimum spacing between cubes.
+
+    Uses sorted uniform sampling with forced gaps.  Falls back to uniform
+    sampling when spacing constraints cannot be satisfied.
+    """
+    x_lo, x_hi = x_range
+    needed = (num_cubes - 1) * min_spacing
+    available = x_hi - x_lo - needed
+
+    if available <= 0 or num_cubes <= 1 or min_spacing <= 0:
+        return torch.empty((num_envs, num_cubes), device=device).uniform_(x_lo, x_hi)
+
+    raw = torch.empty((num_envs, num_cubes), device=device).uniform_(0.0, available)
+    sorted_raw, _ = raw.sort(dim=1)
+    offsets = torch.arange(num_cubes, device=device).float() * min_spacing
+    return sorted_raw + offsets + x_lo
 
 
 def reset_cubes(
@@ -130,8 +156,14 @@ def reset_cubes(
     active_indices = cube_active.nonzero(as_tuple=True)[0]
     num_parked = M - num_active
 
-    # Sample poses for active cubes
-    x = torch.empty((N, num_active), device=device).uniform_(*spawn_box.x_range)
+    # Sample poses for active cubes (with minimum x-spacing to prevent clustering)
+    x = _sample_spaced_x(N, num_active, spawn_box.x_range, spawn_box.min_x_spacing, device)
+
+    # Shuffle position assignment across active cubes so no label
+    # is systematically assigned the nearest/farthest spawn slot.
+    perm = torch.argsort(torch.rand(N, num_active, device=device), dim=1)
+    x = x.gather(1, perm)
+
     y = torch.empty((N, num_active), device=device).uniform_(*spawn_box.y_range)
     z = torch.empty((N, num_active), device=device).uniform_(*spawn_box.z_range)
     yaw = torch.empty((N, num_active), device=device).uniform_(*spawn_box.yaw_range)

@@ -7,7 +7,7 @@
 Scene: unified collection of 16 labelled cubes on a moving belt, target drum
 beside the belt.  Labels decide sorting logic (0 = target, 1 = distractor).
 
-Stage 1 curriculum: 1 green cube, 0 red cubes, belt speed 0.1-0.3 m/s.
+Stage 4 curriculum: 6 green cubes, 4 red cubes, static belt speed.
 """
 
 from isaaclab.envs import ManagerBasedRLEnvCfg
@@ -35,6 +35,28 @@ from .mdp import cube_sorting_mdp as task_mdp
 from .mdp import rewards as task_rew
 from ..shared import gripper_cfg as shared_rew
 
+
+# ── Episode Length ────────────────────────────────────────────────────────
+ROBOT_X: float = 0.15
+PROCESSING_MARGIN_S: float = 4.0
+
+
+def compute_episode_length(
+    belt_speed: float,
+    spawn_x_farthest: float,
+    conveyor_end_x: float = CONVEYOR_END_X,
+    processing_margin_s: float = PROCESSING_MARGIN_S,
+) -> float:
+    """Compute minimum episode duration so all cubes pass and the robot
+    can handle the last one.
+
+    episode = belt_transit_time + processing_margin
+    belt_transit_time = (conveyor_end_x - spawn_x_farthest) / belt_speed
+    """
+    belt_transit_s = (conveyor_end_x - spawn_x_farthest) / belt_speed
+    return belt_transit_s + processing_margin_s
+
+
 # ── Constants ─────────────────────────────────────────────────────────────
 CONTROLLED_JOINT_NAMES = [
     "base_y_joint", "base_z_joint",
@@ -46,10 +68,19 @@ GRASP_BODIES = [EE_LINK]
 
 CUBES_KEY = "cubes"
 
+# ── Belt / Spawn ──────────────────────────────────────────────────────────
+BELT_SPEED: float = 0.20  # m/s — static for all envs
+
 _SPAWN_BOX = task_mdp.SpawnBox(
-    x_range=(CONVEYOR_START_X + 1.50, CONVEYOR_START_X + 2.70),
+    x_range=(-1.50, -0.30),
     y_range=(-0.20, 0.20),
     z_range=(BELT_HEIGHT_M + 0.03, BELT_HEIGHT_M + 0.05),
+    min_x_spacing=0.20,
+)
+
+_EPISODE_LENGTH_S: float = compute_episode_length(
+    belt_speed=BELT_SPEED,
+    spawn_x_farthest=_SPAWN_BOX.x_range[0],
 )
 
 _BIN_GEOM = shared_rew.BinCylinder(radius=0.547 * 0.5, height=0.30)
@@ -244,7 +275,7 @@ class EventsCfg:
         },
     )
 
-    # Stage 1: 1 green, 0 red (curriculum will increase these)
+    # Stage 1: 1 green, 0 red — learn grasp + place single cube
     reset_cubes = EventTerm(
         func=task_mdp.reset_cubes,
         mode="reset",
@@ -256,11 +287,11 @@ class EventsCfg:
         },
     )
 
-    # Stage 1: moderate belt speed 0.2-0.5 m/s
+    # Static belt speed for all envs
     sample_belt_speed = EventTerm(
         func=task_mdp.sample_and_store_belt_speed,
         mode="reset",
-        params={"high": 0.5, "low": 0.2, "key": "belt_speed"},
+        params={"high": BELT_SPEED, "low": BELT_SPEED, "key": "belt_speed"},
     )
 
     apply_conveyor = EventTerm(
@@ -365,7 +396,7 @@ class RewardsCfg:
     # ── 4. Transport with urgency ────────────────────────────────────
     goal_tracking = RewTerm(
         func=task_rew.approach_target_tanh,
-        weight=30.0,
+        weight=40.0,
         params={
             "collection_name": CUBES_KEY,
             "label": TARGET_LABEL,
@@ -373,7 +404,7 @@ class RewardsCfg:
             "belt_height": BELT_HEIGHT_M,
             "std": 1.0,
             "lift_threshold": 0.02,
-            "urgency_alpha": 4.0,
+            "urgency_alpha": 2.0,
             "urgency_beta": 0.5,
             "belt_start_x": CONVEYOR_START_X,
             "belt_end_x": CONVEYOR_END_X,
@@ -383,7 +414,7 @@ class RewardsCfg:
     # ── 4b. Transport (fine) ─────────────────────────────────────────
     goal_tracking_fine = RewTerm(
         func=task_rew.approach_target_tanh,
-        weight=5.0,
+        weight=10.0,
         params={
             "collection_name": CUBES_KEY,
             "label": TARGET_LABEL,
@@ -391,7 +422,7 @@ class RewardsCfg:
             "belt_height": BELT_HEIGHT_M,
             "std": 0.20,
             "lift_threshold": 0.02,
-            "urgency_alpha": 4.0,
+            "urgency_alpha": 2.0,
             "urgency_beta": 0.5,
             "belt_start_x": CONVEYOR_START_X,
             "belt_end_x": CONVEYOR_END_X,
@@ -413,10 +444,26 @@ class RewardsCfg:
         },
     )
 
+    # ── 5b. Success: per-step reward while target cubes rest in drum ──
+    # This is the critical mechanism that makes release clearly better
+    # than holding near the drum.  Mirrors cube_place's green_in_target
+    # (weight=100).  Without this, transport reward dominates and the
+    # agent never learns to release.
+    target_in_drum = RewTerm(
+        func=task_rew.target_in_drum_reward,
+        weight=100.0,
+        params={
+            "collection_name": CUBES_KEY,
+            "label": TARGET_LABEL,
+            "target_bin_name": "drum_target",
+            "bin_geom": _BIN_GEOM,
+        },
+    )
+
     # ── 6. Re-orient (return to belt after placing) ──────────────────
     reorient = RewTerm(
         func=task_rew.reorient_to_belt,
-        weight=2.0,
+        weight=8.0,
         params={
             "ee_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES),
             "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
@@ -428,6 +475,7 @@ class RewardsCfg:
 
     # ── Regularisation ───────────────────────────────────────────────
     action_rate = RewTerm(func=shared_rew.action_rate_l2, weight=-1e-4)
+
     joint_vel = RewTerm(
         func=shared_rew.joint_vel_l2_controlled,
         weight=-1e-4,
@@ -562,7 +610,7 @@ class TensegrityCubeSortEnvCfg(ManagerBasedRLEnvCfg):
 
     def __post_init__(self) -> None:
         self.decimation = 2
-        self.episode_length_s = 8.0
+        self.episode_length_s = _EPISODE_LENGTH_S
         self.viewer.eye = (8.0, 0.0, 5.0)
         self.sim.dt = 0.01
         self.sim.render_interval = self.decimation

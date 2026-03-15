@@ -43,7 +43,7 @@ GRASP_MIN_CLOSURE = 0.20
 
 # Event reward magnitudes (NOT dt-scaled, per research report Section 3)
 PLACEMENT_BASE_REWARD = 50.0
-PLACEMENT_SCALING = 0.5
+PLACEMENT_SCALING = 10.0
 ALL_COMPLETE_BONUS = 100.0
 CUBE_MISSED_PENALTY = -8.0
 RED_GRABBED_PENALTY = -5.0
@@ -80,10 +80,28 @@ class TensegrityCubeSortEnv(ManagerBasedRLEnv):
         self._prev_in_drum = torch.zeros(self.num_envs, num_cubes, dtype=torch.bool, device=self.device)
         self._prev_missed = torch.zeros(self.num_envs, num_cubes, dtype=torch.bool, device=self.device)
         self._prev_red_grabbed = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        self._is_placed = torch.zeros(self.num_envs, num_cubes, dtype=torch.bool, device=self.device)
+
+        # Per-cube grasp tracking: (N, M) bool — latched per unique cube
+        self._cube_was_grasped = torch.zeros(self.num_envs, num_cubes, dtype=torch.bool, device=self.device)
+        # Red cube grab event counter (per-env)
+        self._red_grabbed_count = torch.zeros(self.num_envs, dtype=torch.int32, device=self.device)
+
+        num_labels = max(TARGET_LABEL, DISTRACTOR_LABEL) + 1
+        self._tracked_idx = torch.full(
+            (self.num_envs, num_labels), -1, dtype=torch.long, device=self.device,
+        )
 
         self._bin_geom = BinCylinder(radius=DRUM_RADIUS, height=DRUM_HEIGHT)
         self._target_mask = (self.cube_labels == TARGET_LABEL)[None, :]  # (1, M)
         self._distractor_mask = (self.cube_labels == DISTRACTOR_LABEL)[None, :]
+
+        # Count active cubes per label for normalised metrics
+        # Extract from reset_cubes event config
+        reset_params = cfg.events.reset_cubes.params
+        active_per_label = reset_params.get("active_per_label", {})
+        self._num_active_green = int(active_per_label.get(str(TARGET_LABEL), 0))
+        self._num_active_red = int(active_per_label.get(str(DISTRACTOR_LABEL), 0))
 
     @property
     def cube_labels(self) -> torch.Tensor:
@@ -122,12 +140,8 @@ class TensegrityCubeSortEnv(ManagerBasedRLEnv):
         return torch.any(per_cube, dim=1)
 
     @property
-    def was_grasped(self) -> torch.Tensor:
-        """Per-env bool: True once any target cube has been grasped this episode."""
-        return self._was_grasped
-
-    def _detect_red_grabbed(self) -> torch.Tensor:
-        """Per-env bool: True when gripper is closing on a red/distractor cube."""
+    def grasp_active_per_cube(self) -> torch.Tensor:
+        """(N, M) bool: per-cube grasp detection for ALL cubes (targets only)."""
         cubes: RigidObjectCollection = self.scene[CUBES_KEY]
         robot: Articulation = self.scene["robot"]
 
@@ -136,10 +150,36 @@ class TensegrityCubeSortEnv(ManagerBasedRLEnv):
         distance = torch.norm(cube_pos - gc_pos[:, None, :], dim=-1)
         is_close = distance < GRASP_PROXIMITY_THRESHOLD
 
+        local_z = cube_pos[:, :, 2] - self.scene.env_origins[:, None, 2]
+        is_lifted = local_z > (BELT_HEIGHT_M + GRASP_LIFT_THRESHOLD)
+
         finger_pos = robot.data.joint_pos[:, self._finger_joint_idx]
         is_closing = finger_pos > GRASP_MIN_CLOSURE
 
-        per_cube = is_close & is_closing[:, None] & self._distractor_mask
+        return is_close & is_lifted & is_closing[:, None] & self._target_mask
+
+    @property
+    def was_grasped(self) -> torch.Tensor:
+        """Per-env bool: True once any target cube has been grasped this episode."""
+        return self._was_grasped
+
+    def _detect_red_grabbed(self) -> torch.Tensor:
+        """Per-env bool: True when gripper is lifting a red/distractor cube."""
+        cubes: RigidObjectCollection = self.scene[CUBES_KEY]
+        robot: Articulation = self.scene["robot"]
+
+        gc_pos = self._grasp_center_pos()
+        cube_pos = cubes.data.object_pos_w
+        distance = torch.norm(cube_pos - gc_pos[:, None, :], dim=-1)
+        is_close = distance < GRASP_PROXIMITY_THRESHOLD
+
+        local_z = cube_pos[:, :, 2] - self.scene.env_origins[:, None, 2]
+        is_lifted = local_z > (BELT_HEIGHT_M + GRASP_LIFT_THRESHOLD)
+
+        finger_pos = robot.data.joint_pos[:, self._finger_joint_idx]
+        is_closing = finger_pos > GRASP_MIN_CLOSURE
+
+        per_cube = is_close & is_lifted & is_closing[:, None] & self._distractor_mask
         return torch.any(per_cube, dim=1)
 
     def _compute_event_rewards(self) -> torch.Tensor:
@@ -189,11 +229,13 @@ class TensegrityCubeSortEnv(ManagerBasedRLEnv):
         red_grabbed_now = self._detect_red_grabbed()
         new_red_grab = red_grabbed_now & ~self._prev_red_grabbed
         red_penalty = new_red_grab.float() * RED_GRABBED_PENALTY
+        self._red_grabbed_count += new_red_grab.to(torch.int32)
 
         # Update tracking state
         self._prev_in_drum = current_in_drum
         self._prev_missed = current_missed
         self._prev_red_grabbed = red_grabbed_now
+        self._is_placed = self._is_placed | new_placements
 
         return placement_reward + completion_bonus + miss_penalty + red_penalty
 
@@ -202,6 +244,10 @@ class TensegrityCubeSortEnv(ManagerBasedRLEnv):
 
         still_running = ~(terminated | time_outs)
         self._was_grasped[still_running] |= self.grasp_active[still_running]
+
+        # Track per-cube grasps (latch: once grasped, stays True)
+        per_cube_grasp = self.grasp_active_per_cube  # (N, M)
+        self._cube_was_grasped[still_running] |= per_cube_grasp[still_running]
 
         # Add event-based rewards (not dt-scaled)
         event_reward = self._compute_event_rewards()
@@ -216,16 +262,57 @@ class TensegrityCubeSortEnv(ManagerBasedRLEnv):
             else env_ids
         )
 
-        # Log metrics before reset
-        grasp_rate = torch.tensor(0.0, device=self.device)
-        mean_ep_len = torch.tensor(0.0, device=self.device)
-        mean_placed = torch.tensor(0.0, device=self.device)
-        mean_missed = torch.tensor(0.0, device=self.device)
+        # ── Compute metrics before reset ──────────────────────────────
+        zero = torch.tensor(0.0, device=self.device)
+        mean_ep_len = zero
+        # Raw counts
+        green_placed_count = zero
+        green_missed_count = zero
+        green_grasped_count = zero
+        red_grabbed_count = zero
+        red_in_drum_count = zero
+        # Normalised rates
+        green_placement_rate = zero
+        green_miss_rate = zero
+        green_grasp_rate = zero
+        # Legacy (binary per-env)
+        any_grasp_rate = zero
+
         if len(env_ids_t) > 0:
-            grasp_rate = self._was_grasped[env_ids_t].float().mean()
             mean_ep_len = self.episode_length_buf[env_ids_t].float().mean()
-            mean_placed = self._targets_placed[env_ids_t].float().mean()
-            mean_missed = self._targets_missed[env_ids_t].float().mean()
+
+            # Green cube counts
+            placed = self._targets_placed[env_ids_t].float()
+            missed = self._targets_missed[env_ids_t].float()
+            green_placed_count = placed.mean()
+            green_missed_count = missed.mean()
+
+            # Per-cube green grasps (how many unique green cubes were grasped)
+            per_cube_grasped = self._cube_was_grasped[env_ids_t] & self._target_mask
+            green_grasped_count = per_cube_grasped.float().sum(dim=1).mean()
+
+            # Red cube metrics
+            red_grabbed_count = self._red_grabbed_count[env_ids_t].float().mean()
+
+            # Red cubes currently in drum at end of episode (sorting errors)
+            cubes: RigidObjectCollection = self.scene[CUBES_KEY]
+            cube_pos = cubes.data.object_pos_w[env_ids_t]
+            drum_pos = get_world_pos(self.scene["drum_target"], env=self)
+            if drum_pos.shape[0] != env_ids_t.shape[0]:
+                drum_pos = drum_pos[env_ids_t]
+            red_in_drum = in_upright_cylinder(cube_pos, drum_pos, self._bin_geom)
+            red_in_drum = red_in_drum & self._distractor_mask
+            red_in_drum_count = red_in_drum.float().sum(dim=1).mean()
+
+            # Normalised rates (per active cube)
+            num_green = max(self._num_active_green, 1)
+            num_red = max(self._num_active_red, 1)
+            green_placement_rate = green_placed_count / num_green
+            green_miss_rate = green_missed_count / num_green
+            green_grasp_rate = green_grasped_count / num_green
+
+            # Legacy binary grasp rate
+            any_grasp_rate = self._was_grasped[env_ids_t].float().mean()
 
         result = super()._reset_idx(env_ids)
 
@@ -236,11 +323,32 @@ class TensegrityCubeSortEnv(ManagerBasedRLEnv):
         self._prev_in_drum[env_ids_t] = False
         self._prev_missed[env_ids_t] = False
         self._prev_red_grabbed[env_ids_t] = False
+        self._is_placed[env_ids_t] = False
+        self._cube_was_grasped[env_ids_t] = False
+        self._red_grabbed_count[env_ids_t] = 0
+        self._tracked_idx[env_ids_t] = -1
 
-        # Log metrics
-        self.extras["log"]["Metrics/grasp_rate"] = grasp_rate
-        self.extras["log"]["Metrics/mean_episode_length"] = mean_ep_len
-        self.extras["log"]["Metrics/mean_targets_placed"] = mean_placed
-        self.extras["log"]["Metrics/mean_targets_missed"] = mean_missed
+        # ── Log metrics ───────────────────────────────────────────────
+        log = self.extras["log"]
+        log["Metrics/mean_episode_length"] = mean_ep_len
+
+        # Per-cube normalised rates (the PRIMARY metrics to watch)
+        log["Metrics/green_grasp_rate"] = green_grasp_rate
+        log["Metrics/green_placement_rate"] = green_placement_rate
+        log["Metrics/green_miss_rate"] = green_miss_rate
+
+        # Raw counts per episode
+        log["Metrics/green_grasped_count"] = green_grasped_count
+        log["Metrics/green_placed_count"] = green_placed_count
+        log["Metrics/green_missed_count"] = green_missed_count
+
+        # Red cube metrics
+        log["Metrics/red_grabbed_count"] = red_grabbed_count
+        log["Metrics/red_in_drum_count"] = red_in_drum_count
+
+        # Legacy (kept for backward compat — this is binary, NOT per-cube)
+        log["Metrics/grasp_rate"] = any_grasp_rate
+        log["Metrics/mean_targets_placed"] = green_placed_count
+        log["Metrics/mean_targets_missed"] = green_missed_count
 
         return result

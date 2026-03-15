@@ -9,7 +9,7 @@ models:
     class: GaussianMixin
     clip_actions: False
     clip_log_std: True
-    min_log_std: -1.0
+    min_log_std: -2.5
     max_log_std: 2.0
     initial_log_std: 0.0
     network:
@@ -36,19 +36,19 @@ memory:
   memory_size: -1  # automatically determined (same as agent:rollouts)
 
 
-# PPO agent configuration — per research report Section 7
+# PPO agent configuration
 # https://skrl.readthedocs.io/en/latest/api/agents/ppo.html
 agent:
   class: PPO
-  rollouts: 64                           # increased from 48 (more trajectory per update)
+  rollouts: 48
   learning_epochs: 5
-  mini_batches: 8                        # 64×8192/8 ≈ 65K per mini-batch
-  discount_factor: 0.995                 # increased from 0.99 (long-horizon credit)
+  mini_batches: 8
+  discount_factor: 0.995
   lambda: 0.95
-  learning_rate: 3.0e-04                 # increased from 1e-4
+  learning_rate: 1.0e-04
   learning_rate_scheduler: KLAdaptiveLR
   learning_rate_scheduler_kwargs:
-    kl_threshold: 0.008                  # relaxed from 0.004
+    kl_threshold: 0.008
   state_preprocessor: RunningStandardScaler
   state_preprocessor_kwargs: null
   value_preprocessor: RunningStandardScaler
@@ -59,11 +59,11 @@ agent:
   ratio_clip: 0.2
   value_clip: 0.2
   clip_predicted_values: True
-  entropy_loss_scale: 0.03               # strong exploration pressure
+  entropy_loss_scale: 0.005
   value_loss_scale: 2.0
   kl_threshold: 0.0
   rewards_shaper_scale: 0.5
-  time_limit_bootstrap: True             # critical for truncated episodes
+  time_limit_bootstrap: True
   # logging and checkpoint
   experiment:
     directory: "cube_sort"
@@ -76,5 +76,5 @@ agent:
 # https://skrl.readthedocs.io/en/latest/api/trainers/sequential.html
 trainer:
   class: SequentialTrainer
-  timesteps: 300000
+  timesteps: 800000
   environment_info: log

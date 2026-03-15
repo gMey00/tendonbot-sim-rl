@@ -20,7 +20,7 @@ simulation documentation.
 
 | Task | README |
 |------|--------|
-| Reach | [tensegrity_reach/README.md](source/tensegrity_pick/tensegrity_pick/tasks/manager_based/tensegrity_reach/README.md) |
+| Reach | [reach/README.md](source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/README.md) |
 | Cube Place | [cube_place/README.md](source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/README.md) |
 | Cube Sort | [cube_sort/README.md](source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/README.md) |
 | Shirt Place | [shirt_place/README.md](source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shirt_place/README.md) |
@@ -45,6 +45,14 @@ simulation documentation.
 | `Template-Tensegrity-Cube-Place-Play-v0` | PD | Cube Place (play/eval variant, 50 envs). |
 | `Template-Tensegrity-Cube-Place-Tendon-v0` | Tendon | **Cube Place (Tendon)** — Same task as Cube Place but the arm is tendon-driven. |
 | `Template-Tensegrity-Cube-Place-Tendon-Play-v0` | Tendon | Cube Place Tendon (play/eval variant, 50 envs). |
+| `Template-UR10e-Reach-v0` | PD | **Reach (UR10e)** — Same reach task with UR10e + Robotiq 2F-140 (PG-6 baseline). |
+| `Template-UR10e-Reach-Play-v0` | PD | Reach UR10e (play/eval variant, 50 envs). |
+| `Template-UR10e-Cube-Place-v0` | PD | **Cube Place (UR10e)** — Same cube place task with UR10e + Robotiq 2F-140 (PG-6 baseline). |
+| `Template-UR10e-Cube-Place-Play-v0` | PD | Cube Place UR10e (play/eval variant, 50 envs). |
+| `Template-Kinova-Reach-v0` | PD | **Reach (Kinova)** — Same reach task with Kinova Gen3 7-DOF + Robotiq 2F-140 (PG-6 baseline). |
+| `Template-Kinova-Reach-Play-v0` | PD | Reach Kinova (play/eval variant, 50 envs). |
+| `Template-Kinova-Cube-Place-v0` | PD | **Cube Place (Kinova)** — Same cube place task with Kinova Gen3 7-DOF + Robotiq 2F-140 (PG-6 baseline). |
+| `Template-Kinova-Cube-Place-Play-v0` | PD | Cube Place Kinova (play/eval variant, 50 envs). |
 | `Template-Tensegrity-Shirt-Place-v0` | PD | **Shirt Place** — *(template)* Place a T-shirt into a drum. Cloth simulation. |
 | `Template-Tensegrity-Shirt-Sort-v0` | PD | **Shirt Sort** — *(template)* Sort T-shirts on a moving conveyor. Cloth simulation. |
 
@@ -138,6 +146,26 @@ python scripts/skrl/play.py    --task=Template-Tensegrity-Cube-Place-Play-v0 --n
 python scripts/zero_agent.py   --task=Template-Tensegrity-Cube-Place-Tendon-v0      --num_envs=10
 python scripts/skrl/train.py   --task=Template-Tensegrity-Cube-Place-Tendon-v0      --headless
 python scripts/skrl/play.py    --task=Template-Tensegrity-Cube-Place-Tendon-Play-v0 --num_envs=10
+
+# --- Reach (UR10e) ---
+python scripts/zero_agent.py   --task=Template-UR10e-Reach-v0      --num_envs=10
+python scripts/skrl/train.py   --task=Template-UR10e-Reach-v0      --headless
+python scripts/skrl/play.py    --task=Template-UR10e-Reach-Play-v0 --num_envs=10
+
+# --- Cube Place (UR10e) ---
+python scripts/zero_agent.py   --task=Template-UR10e-Cube-Place-v0      --num_envs=10
+python scripts/skrl/train.py   --task=Template-UR10e-Cube-Place-v0      --headless
+python scripts/skrl/play.py    --task=Template-UR10e-Cube-Place-Play-v0 --num_envs=10
+
+# --- Reach (Kinova Gen3) ---
+python scripts/zero_agent.py   --task=Template-Kinova-Reach-v0      --num_envs=10
+python scripts/skrl/train.py   --task=Template-Kinova-Reach-v0      --headless
+python scripts/skrl/play.py    --task=Template-Kinova-Reach-Play-v0 --num_envs=10
+
+# --- Cube Place (Kinova Gen3) ---
+python scripts/zero_agent.py   --task=Template-Kinova-Cube-Place-v0      --num_envs=10
+python scripts/skrl/train.py   --task=Template-Kinova-Cube-Place-v0      --headless
+python scripts/skrl/play.py    --task=Template-Kinova-Cube-Place-Play-v0 --num_envs=10
 ```
 
 ### Step Response Validation
@@ -165,7 +193,9 @@ source/tensegrity_pick/tensegrity_pick/
 │   ├── __init__.py                      #   Exports all configs + TendonEffortAction
 │   ├── tensegrity_robot_cfg.py          #   TENS_3DOF_CFG, TENS_5DOF_GRIPPER_CFG (PD)
 │   ├── tendon_actuator.py               #   TendonEffortAction + TendonEffortActionCfg
-│   └── tendon_robot_cfg.py              #   TENS_3DOF_TENDON_CFG, TENS_5DOF_GRIPPER_TENDON_CFG
+│   ├── tendon_robot_cfg.py              #   TENS_3DOF_TENDON_CFG, TENS_5DOF_GRIPPER_TENDON_CFG
+│   ├── ur10e_robot_cfg.py               #   UR10E_GRIPPER_CFG (PG-6 baseline)
+│   └── kinova_gen3_robot_cfg.py         #   KINOVA_GEN3_GRIPPER_CFG (PG-6 baseline)
 ├── tasks/
 │   ├── __init__.py                      # import_packages auto-discovery
 │   └── manager_based/
@@ -179,19 +209,21 @@ source/tensegrity_pick/tensegrity_pick/
 │       │   ├── cube_sorting_scene_cfg.py
 │       │   ├── mdp/                     #   Rewards, observations, events
 │       │   └── agents/                  #   skrl PPO config
-│       ├── tensegrity_reach/            # Reach task
-│       │   ├── __init__.py              #   gym.register(Reach, Reach-Play, Reach-Tendon, ...)
-│       │   ├── tensegrity_reach_env_cfg.py          # PD-driven
-│       │   ├── tensegrity_reach_tendon_env_cfg.py   # Tendon-driven
+│       ├── reach/                       # Reach task
+│       │   ├── __init__.py              #   gym.register(Template-Reach-...)
+│       │   ├── reach_env_cfg.py         # Shared reach MDP structure
+│       │   ├── config/                  #   tensegrity, tensegrity_tendon, ur10e, kinova
 │       │   ├── mdp/                     #   FK sampling, position/orientation rewards
-│       │   └── agents/                  #   skrl PPO config
+│       │   ├── figures/                 #   per-variant plotting outputs
+│       │   └── reports/                 #   per-variant markdown reports
 │       └── cube_place/                  # Cube Place task
-│           ├── __init__.py              #   gym.register(Cube-Place, Cube-Place-Play, Cube-Place-Tendon, ...)
-│           ├── cube_place_env_cfg.py                 # PD + tendon variants
+│           ├── __init__.py              #   imports config/
+│           ├── place_env_cfg.py         #   Base MDP + Tensegrity PD env configs
 │           ├── place_scene_cfg.py       #   1 green + 1 red cube scene
 │           ├── place_env.py             #   TensegrityPlaceEnv (grasp tracking)
 │           ├── mdp/                     #   Rewards, curriculum, tendon_actions shim
-│           └── agents/                  #   skrl PPO config
+│           ├── figures/                 #   per-variant plotting outputs
+│           └── config/                  #   tensegrity, tensegrity_tendon, ur10e, kinova
 │       ├── shirt_place/                 # Shirt Place task (template)
 │       │   ├── __init__.py              #   gym.register(Shirt-Place-v0)
 │       │   ├── shirt_place_env_cfg.py
@@ -217,8 +249,8 @@ scripts/
 
 ### Adding a new task
 
-1. Create `tasks/manager_based/<your_task>/` with `__init__.py`, env config, mdp, and agents.
-2. In `__init__.py`, call `gym.register(id="Template-Tensegrity-<YourTask>-v0", ...)`.
+1. Create `tasks/manager_based/<your_task>/` with `__init__.py`, base env config, `mdp/`, and `config/`.
+2. For each robot variant, add `config/<robot>/__init__.py` (with `gym.register(...)`) and `config/<robot>/joint_pos_env_cfg.py`.
 3. The task is automatically discovered — no other files need editing.
 
 ---
