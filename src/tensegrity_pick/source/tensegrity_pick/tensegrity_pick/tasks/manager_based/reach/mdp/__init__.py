@@ -1,9 +1,9 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers.
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""MDP functions specific to the tensegrity reach environment."""
+"""This sub-module contains the functions that are specific to the locomotion environments."""
 
 from isaaclab.envs.mdp import *  # noqa: F401, F403
 

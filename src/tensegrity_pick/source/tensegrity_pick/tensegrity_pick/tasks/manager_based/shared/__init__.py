@@ -14,10 +14,12 @@ from .proj_base_scene_cfg import (  # noqa: F401
     DRUM_HEIGHT_M,
     DRUM_USD_DIAMETER_SCALE,
     DRUM_USD_HEIGHT_SCALE,
+    KINOVA_MOUNT_HEIGHT_M,
     PROJ_ASSETS_PATH,
     ROBOT_MOUNT_HEIGHT_M,
     TOTAL_CONVEYOR_START_X,
     TOTAL_CONVEYOR_END_X,
+    UR10E_MOUNT_HEIGHT_M,
 )
 
 from .gripper_cfg import (  # noqa: F401

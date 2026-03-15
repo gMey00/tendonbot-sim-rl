@@ -130,3 +130,10 @@ fi
 # activate conda env (if not already done)
 source "${CONDA_PATH}/etc/profile.d/conda.sh"
 conda activate env_isaaclab
+
+# ======== Additional Python packages =========== #
+# Packages needed for the workspace analysis notebook and tooling.
+pip install plotly ipywidgets anywidget 2>/dev/null || {
+    echo "[WARN] Failed to install extra notebook packages (plotly, ipywidgets, anywidget)."
+    echo "Install them manually: pip install plotly ipywidgets anywidget"
+}

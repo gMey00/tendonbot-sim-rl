@@ -17,6 +17,12 @@ from isaaclab.assets.articulation import ArticulationCfg
 
 PROJ_ASSETS_PATH = "/home/robot/studentische-arbeiten/res"
 
+TARGET_LINK_NAME_3DOF = "tool_link"
+CONTROLLED_JOINT_NAMES_3DOF = ["elbow_joint", "wrist_y_joint", "wrist_x_joint"]
+TARGET_LINK_NAME_5DOF = "tool_link_0"
+CONTROLLED_JOINT_NAMES_5DOF = ["base_y_joint", "base_z_joint", "elbow_joint", "wrist_y_joint", "wrist_x_joint"]
+
+
 TENS_3DOF_CFG = ArticulationCfg(
 
     spawn=sim_utils.UsdFileCfg(

@@ -14,7 +14,7 @@ from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdF
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, check_file_path
 
-from .tensegrity_robot_cfg import TENS_5DOF_GRIPPER_CFG  # or MyRobotCfg, etc.
+from tensegrity_pick.robots.tensegrity_robot_cfg import TENS_5DOF_GRIPPER_CFG
 
 ENV_NS = "{ENV_REGEX_NS}"
 PROJ_ASSETS_PATH = "/home/robot/studentische-arbeiten/res"
@@ -34,6 +34,10 @@ DRUM_USD_HEIGHT_SCALE = 0.01115 * DRUM_HEIGHT_M
 DRUM_CENTER_TO_CONVEYOR_EDGE_M = 0.450
 ROBOT_TO_CONVEYOR_GAP_M = 0.040
 ROBOT_MOUNT_HEIGHT_M = 2.30
+
+# Per-robot optimal mount heights (determined by workspace coverage sweep).
+UR10E_MOUNT_HEIGHT_M = 1.40
+KINOVA_MOUNT_HEIGHT_M = 1.40
 
 CONVEYOR_LENGTH_M = 2.0
 CONVEYOR_USD_ORIGIN_TO_BELT_SURFACE_M = 1.78056  # from USD geometry analysis

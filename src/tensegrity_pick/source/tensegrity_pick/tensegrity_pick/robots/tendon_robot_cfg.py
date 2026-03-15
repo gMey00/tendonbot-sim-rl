@@ -25,6 +25,11 @@ from isaaclab.assets.articulation import ArticulationCfg
 
 from .tensegrity_robot_cfg import PROJ_ASSETS_PATH, TENS_3DOF_CFG, TENS_5DOF_GRIPPER_CFG
 
+TARGET_LINK_NAME_3DOF = "tool_link"
+CONTROLLED_JOINT_NAMES_3DOF = ["elbow_joint", "wrist_y_joint", "wrist_x_joint"]
+TARGET_LINK_NAME_5DOF = "tool_link_0"
+CONTROLLED_JOINT_NAMES_5DOF = ["base_y_joint", "base_z_joint", "elbow_joint", "wrist_y_joint", "wrist_x_joint"]
+
 
 # ── Shared tendon arm actuator ─────────────────────────────────────────────
 # IdealPDActuator with stiffness=0, damping=0 acts as pure effort passthrough.
