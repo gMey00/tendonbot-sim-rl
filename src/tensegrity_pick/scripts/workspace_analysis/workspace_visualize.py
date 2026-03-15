@@ -46,11 +46,17 @@ import numpy as np  # noqa: E402
 from matplotlib.colors import Normalize  # noqa: E402
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection  # noqa: E402
 
-# ── Constants ─────────────────────────────────────────────────────────────
+from workspace_analysis_helper import (  # noqa: E402
+    DESIRED_WS_MAX,
+    DESIRED_WS_MIN,
+    ROBOT_DISPLAY_NAMES,
+    compute_2d_density,
+    compute_2d_heatmap,
+    load_workspace_data,
+    voxelize,
+)
 
-# Desired workspace box in env-local coordinates [Klein 2023, Ref. 3].
-DESIRED_WS_MIN = np.array([-0.05, -0.40, 0.80])
-DESIRED_WS_MAX = np.array([0.35, 0.95, 1.30])
+from workspace_config import DEFAULT_SLICE_THICKNESS, DEFAULT_VOXEL_SIZE  # noqa: E402
 
 
 # ── Data classes ──────────────────────────────────────────────────────────
@@ -97,87 +103,6 @@ FRONT_VIEW = HeatmapViewConfig(
     rect_x_min=DESIRED_WS_MIN[1], rect_x_max=DESIRED_WS_MAX[1],
     rect_y_min=DESIRED_WS_MIN[2], rect_y_max=DESIRED_WS_MAX[2],
 )
-
-
-# ── Voxelisation ──────────────────────────────────────────────────────────
-
-def voxelize(
-    positions: np.ndarray,
-    values: np.ndarray,
-    voxel_size: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Bin positions into a 3-D voxel grid and compute per-voxel mean.
-
-    Returns ``(voxel_centers, voxel_means, voxel_counts)``.
-    """
-    grid_indices = np.floor(positions / voxel_size).astype(np.int32)
-    unique_voxels, inverse_indices, voxel_counts = np.unique(
-        grid_indices, axis=0, return_inverse=True, return_counts=True,
-    )
-
-    valid_mask = np.isfinite(values)
-    voxel_value_sums = np.zeros(len(unique_voxels), dtype=np.float64)
-    voxel_valid_counts = np.zeros(len(unique_voxels), dtype=np.int64)
-
-    np.add.at(voxel_value_sums, inverse_indices[valid_mask], values[valid_mask].astype(np.float64))
-    np.add.at(voxel_valid_counts, inverse_indices[valid_mask], 1)
-
-    voxel_means = np.where(
-        voxel_valid_counts > 0,
-        voxel_value_sums / voxel_valid_counts,
-        np.nan,
-    ).astype(np.float32)
-
-    voxel_centers = (unique_voxels.astype(np.float64) + 0.5) * voxel_size
-    return voxel_centers.astype(np.float32), voxel_means, voxel_counts
-
-
-def compute_2d_heatmap(
-    coord_a: np.ndarray,
-    coord_b: np.ndarray,
-    values: np.ndarray,
-    bin_size: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Compute a 2-D binned-mean heatmap of *values*.
-
-    Returns ``(a_edges, b_edges, grid_mean)`` where ``grid_mean`` has NaN
-    for empty bins.
-    """
-    a_edges = np.arange(coord_a.min(), coord_a.max() + bin_size, bin_size)
-    b_edges = np.arange(coord_b.min(), coord_b.max() + bin_size, bin_size)
-
-    a_idx = np.clip(np.digitize(coord_a, a_edges) - 1, 0, len(a_edges) - 2)
-    b_idx = np.clip(np.digitize(coord_b, b_edges) - 1, 0, len(b_edges) - 2)
-
-    grid_sum = np.zeros((len(a_edges) - 1, len(b_edges) - 1), dtype=np.float64)
-    grid_count = np.zeros_like(grid_sum)
-
-    valid = np.isfinite(values)
-    np.add.at(grid_sum, (a_idx[valid], b_idx[valid]), values[valid].astype(np.float64))
-    np.add.at(grid_count, (a_idx[valid], b_idx[valid]), 1)
-
-    grid_mean = np.full_like(grid_sum, np.nan, dtype=np.float32)
-    occupied = grid_count > 0
-    grid_mean[occupied] = (grid_sum[occupied] / grid_count[occupied]).astype(np.float32)
-
-    return a_edges, b_edges, grid_mean
-
-
-def compute_2d_density(
-    coord_a: np.ndarray,
-    coord_b: np.ndarray,
-    bin_size: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Compute a 2-D log-density heatmap (NaN where zero counts).
-
-    Returns ``(a_edges, b_edges, log_histogram)``.
-    """
-    a_edges = np.arange(coord_a.min(), coord_a.max() + bin_size, bin_size)
-    b_edges = np.arange(coord_b.min(), coord_b.max() + bin_size, bin_size)
-    histogram, _, _ = np.histogram2d(coord_a, coord_b, bins=[a_edges, b_edges])
-    log_histogram = np.log1p(histogram)
-    log_histogram[histogram == 0] = np.nan
-    return a_edges, b_edges, log_histogram
 
 
 # ── Drawing helpers ───────────────────────────────────────────────────────
@@ -413,12 +338,16 @@ def main() -> None:
         help="Directory containing .npy data files (default: outputs/workspace_analysis/)",
     )
     parser.add_argument(
-        "--voxel_size", type=float, default=0.02,
-        help="Voxel edge length in metres for 3-D binning (default: 0.02)",
+        "--voxel_size", type=float, default=DEFAULT_VOXEL_SIZE,
+        help=f"Voxel edge length in metres for 3-D binning (default: {DEFAULT_VOXEL_SIZE})",
     )
     parser.add_argument(
-        "--slice_thickness", type=float, default=0.05,
-        help="Thickness of 2-D cross-section slices in metres (default: 0.05)",
+        "--slice_thickness", type=float, default=DEFAULT_SLICE_THICKNESS,
+        help=f"Thickness of 2-D cross-section slices in metres (default: {DEFAULT_SLICE_THICKNESS})",
+    )
+    parser.add_argument(
+        "--robot_name", type=str, default=None,
+        help="Robot display name for figure titles (auto-detected from statistics.json if present)",
     )
     args = parser.parse_args()
 
@@ -426,9 +355,20 @@ def main() -> None:
     voxel_size = args.voxel_size
     slice_thickness = args.slice_thickness
 
-    positions = np.load(input_dir / "ee_positions.npy")
-    yoshikawa = np.load(input_dir / "yoshikawa.npy")
-    condition = np.load(input_dir / "condition_number.npy")
+    # Auto-detect robot name from statistics.json if available
+    robot_display_name = args.robot_name
+    if robot_display_name is None:
+        stats_path = input_dir / "statistics.json"
+        if stats_path.exists():
+            import json
+            with open(stats_path) as f:
+                stats = json.load(f)
+            robot_key = stats.get("robot", "tensegrity")
+            robot_display_name = ROBOT_DISPLAY_NAMES.get(robot_key, robot_key)
+        else:
+            robot_display_name = "5-DOF Tensegrity Robot"
+
+    positions, yoshikawa, condition = load_workspace_data(input_dir)
 
     print(f"Loaded {len(positions):,} samples from {input_dir}/")
 
@@ -437,7 +377,7 @@ def main() -> None:
         positions, yoshikawa, voxel_size,
         output_path=input_dir / "workspace_manipulability.png",
         figure_title=(
-            "5-DOF Tensegrity Robot -- Workspace Manipulability Analysis\n"
+            f"{robot_display_name} — Workspace Manipulability Analysis\n"
             "Colour = Yoshikawa Manipulability Index  w(q) = sqrt(det(J J^T))  [Yoshikawa 1985]"
         ),
         colorbar_label="Yoshikawa Index",
@@ -450,8 +390,8 @@ def main() -> None:
         positions, condition, voxel_size,
         output_path=input_dir / "workspace_condition.png",
         figure_title=(
-            "5-DOF Tensegrity Robot -- Workspace Isotropy Analysis\n"
-            "Colour = Inverse Condition Number  sigma_min / sigma_max  [Salisbury & Craig 1982]"
+            f"{robot_display_name} — Workspace Isotropy Analysis\n"
+            "Colour = Inverse Condition Number  σ_min / σ_max  [Salisbury & Craig 1982]"
         ),
         colorbar_label="Inv. Condition Number",
         colormap="inferno",
@@ -463,7 +403,7 @@ def main() -> None:
         positions, positions[:, 0], voxel_size,  # per_sample_values ignored in density mode
         output_path=input_dir / "workspace_density.png",
         figure_title=(
-            "5-DOF Tensegrity Robot -- Reachability Density Analysis\n"
+            f"{robot_display_name} — Reachability Density Analysis\n"
             "Colour = log(1 + sample count per voxel)  [Monte Carlo FK sampling, Ref. 4]"
         ),
         colorbar_label="log(1 + count)",

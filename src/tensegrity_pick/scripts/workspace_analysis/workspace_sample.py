@@ -62,27 +62,55 @@ Usage
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import sys
 from pathlib import Path
 
 from isaaclab.app import AppLauncher
 
+from workspace_config import (
+    COLLISION_ADJACENCY_SKIP,
+    COLLISION_MIN_DISTANCE,
+    DEFAULT_NUM_ENVS,
+    DEFAULT_NUM_SAMPLES,
+    DESIRED_WS_MAX,
+    DESIRED_WS_MIN,
+    GRIPPER_TIP_OFFSET,
+    ROBOTS,
+)
+
 # ── CLI ───────────────────────────────────────────────────────────────────
 parser = argparse.ArgumentParser(
-    description="Monte Carlo FK sampling for 5-DOF tensegrity robot workspace analysis",
+    description="Monte Carlo FK sampling for robot workspace analysis",
 )
 parser.add_argument(
-    "--num_samples", type=int, default=200_000,
-    help="Total FK samples (default: 200 000)",
+    "--robot", choices=list(ROBOTS), default="tensegrity",
+    help="Robot to analyse (default: tensegrity)",
 )
 parser.add_argument(
-    "--num_envs", type=int, default=4096,
-    help="Parallel environments for batched sampling (default: 4096)",
+    "--num_samples", type=int, default=DEFAULT_NUM_SAMPLES,
+    help=f"Total FK samples (default: {DEFAULT_NUM_SAMPLES:,})",
+)
+parser.add_argument(
+    "--num_envs", type=int, default=DEFAULT_NUM_ENVS,
+    help=f"Parallel environments for batched sampling (default: {DEFAULT_NUM_ENVS:,})",
+)
+parser.add_argument(
+    "--mount_height", type=float, default=None,
+    help="Override robot mount height in metres (default: scene default)",
+)
+parser.add_argument(
+    "--mount_direction", choices=["up", "down"], default=None,
+    help="Mount orientation: 'down' = ceiling-mounted, 'up' = floor-mounted (default: per-robot)",
 )
 parser.add_argument(
     "--output_dir", type=str, default=None,
-    help="Directory for output files (default: outputs/workspace_analysis)",
+    help="Directory for output files (default: outputs/workspace_analysis[_ur10e])",
+)
+parser.add_argument(
+    "--append", action="store_true",
+    help="Append new samples to existing data in output_dir instead of overwriting",
 )
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
@@ -100,34 +128,20 @@ from isaaclab.scene import InteractiveScene  # noqa: E402
 from isaaclab.sim import SimulationCfg, SimulationContext  # noqa: E402
 from isaaclab.utils.math import quat_apply  # noqa: E402
 
+from isaaclab.assets.articulation import ArticulationCfg  # noqa: E402
+
 from tensegrity_pick.tasks.manager_based.shared.proj_base_scene_cfg import (  # noqa: E402
     CONVEYOR_SURFACE_HEIGHT_M,
     CONVEYOR_WIDTH_M,
     DRUM_CENTER_TO_CONVEYOR_EDGE_M,
     DRUM_HEIGHT_M,
-    ROBOT_MOUNT_HEIGHT_M,
     ProjBaseSceneCfg,
 )
 
 
-# ── Constants ─────────────────────────────────────────────────────────────
+from workspace_analysis_helper import compute_desired_workspace_coverage  # noqa: E402
 
-EE_BODY_NAME = "tool_link_0"
-
-# The gripper tip extends 22.5 cm along the EE body's local Z axis.
-GRIPPER_TIP_LOCAL_OFFSET = torch.tensor([0.0, 0.0, 0.225])
-
-CONTROLLED_JOINT_NAMES = [
-    "base_y_joint",
-    "base_z_joint",
-    "elbow_joint",
-    "wrist_y_joint",
-    "wrist_x_joint",
-]
-
-# Desired workspace box in env-local coordinates [Klein 2023, Ref. 3].
-DESIRED_WS_MIN = np.array([-0.05, -0.40, 0.80])
-DESIRED_WS_MAX = np.array([0.35, 0.95, 1.30])
+GRIPPER_TIP_LOCAL_OFFSET = torch.tensor(GRIPPER_TIP_OFFSET)
 
 
 # ── Logging ───────────────────────────────────────────────────────────────
@@ -270,6 +284,49 @@ def compute_inverse_condition_number(jacobian_linear: torch.Tensor) -> torch.Ten
     )
 
 
+# ── Geometric self-collision check ────────────────────────────────────────
+
+def compute_self_collision_mask(
+    body_positions: torch.Tensor,
+    adjacency_skip: int = 1,
+    min_distance: float = 0.05,
+) -> torch.Tensor:
+    """Geometric self-collision check via pairwise body-body distances.
+
+    Unlike PhysX ``enabled_self_collisions`` (which feeds self-contact
+    constraints back into the solver and can destabilise articulations),
+    this check runs **post-FK** on the body positions and never modifies
+    the physics.
+
+    Parameters
+    ----------
+    body_positions : ``(num_envs, num_bodies, 3)``
+        World-frame positions of all articulation bodies.
+    adjacency_skip : int
+        Body pairs with ``|i - j| <= adjacency_skip`` are considered
+        kinematically adjacent and always allowed to be close.  Default 1
+        means only directly connected links are skipped.
+    min_distance : float
+        Minimum distance (metres) between non-adjacent body origins.
+        Environments where any pair is closer are flagged as colliding.
+
+    Returns
+    -------
+    collision_free : ``(num_envs,)`` bool tensor — ``True`` = no collision.
+    """
+    num_envs, num_bodies, _ = body_positions.shape
+    collision_free = torch.ones(num_envs, dtype=torch.bool, device=body_positions.device)
+
+    for i in range(num_bodies):
+        for j in range(i + 1, num_bodies):
+            if abs(i - j) <= adjacency_skip:
+                continue
+            dist = torch.norm(body_positions[:, i] - body_positions[:, j], dim=-1)
+            collision_free &= dist > min_distance
+
+    return collision_free
+
+
 # ── Monte Carlo FK sampling ──────────────────────────────────────────────
 
 def sample_workspace(
@@ -282,8 +339,24 @@ def sample_workspace(
     sim: SimulationContext,
     scene: InteractiveScene,
     device: str,
+    filter_self_collisions: bool = True,
+    collision_min_distance: float = 0.05,
+    collision_adjacency_skip: int = 1,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Collect EE positions and manipulability via randomised FK.
+
+    Parameters
+    ----------
+    filter_self_collisions : bool
+        When True, post-FK geometric body-distance checks discard
+        samples where non-adjacent links are closer than
+        *collision_min_distance*.  This avoids PhysX
+        ``enabled_self_collisions`` which can destabilise the solver.
+    collision_min_distance : float
+        Minimum body-origin distance (metres) for the geometric check.
+    collision_adjacency_skip : int
+        Body pairs with ``|i - j| <= adjacency_skip`` are kinematically
+        adjacent and excluded from the distance check.
 
     Returns
     -------
@@ -295,6 +368,11 @@ def sample_workspace(
     lower = joint_limits[:, 0]
     upper = joint_limits[:, 1]
 
+    # Clamp infinite limits (continuous-rotation joints) to ±π so that
+    # uniform random sampling stays finite.
+    lower = torch.clamp(lower, min=-math.pi)
+    upper = torch.clamp(upper, max=math.pi)
+
     dt = sim.get_physics_dt()
     num_batches = math.ceil(num_samples / num_envs)
     num_robot_bodies = len(robot.body_names)
@@ -303,6 +381,7 @@ def sample_workspace(
     all_yoshikawa: list[np.ndarray] = []
     all_condition: list[np.ndarray] = []
     jacobian_available = True
+    total_collision_filtered = 0
 
     for batch_index in range(num_batches):
         random_joint_positions = lower + (upper - lower) * torch.rand(
@@ -317,13 +396,28 @@ def sample_workspace(
         sim.step()
         scene.update(dt)
 
+        # ── Self-collision mask (geometric body-distance check) ─────
+        if filter_self_collisions:
+            collision_free = compute_self_collision_mask(
+                robot.data.body_pos_w,
+                adjacency_skip=collision_adjacency_skip,
+                min_distance=collision_min_distance,
+            )
+            collision_free_np = collision_free.cpu().numpy()
+            total_collision_filtered += int((~collision_free).sum().item())
+        else:
+            collision_free_np = np.ones(num_envs, dtype=bool)
+
         ee_world = robot.data.body_pos_w[:, ee_body_index, :3]
         ee_quat = robot.data.body_quat_w[:, ee_body_index, :]
         tip_offset_world = quat_apply(
             ee_quat, GRIPPER_TIP_LOCAL_OFFSET.to(device).expand(num_envs, -1),
         )
         tip_world = ee_world + tip_offset_world
-        all_positions.append((tip_world - env_origins).cpu().numpy())
+        batch_positions = (tip_world - env_origins).cpu().numpy()
+
+        batch_yoshikawa: np.ndarray
+        batch_condition: np.ndarray
 
         if jacobian_available:
             try:
@@ -334,8 +428,8 @@ def sample_workspace(
                     jacobian_raw, ee_body_index, joint_ids, num_robot_bodies,
                 )
                 if jacobian_linear is not None:
-                    all_yoshikawa.append(compute_yoshikawa_index(jacobian_linear).cpu().numpy())
-                    all_condition.append(compute_inverse_condition_number(jacobian_linear).cpu().numpy())
+                    batch_yoshikawa = compute_yoshikawa_index(jacobian_linear).cpu().numpy()
+                    batch_condition = compute_inverse_condition_number(jacobian_linear).cpu().numpy()
                 else:
                     jacobian_available = False
             except Exception as exc:
@@ -344,15 +438,28 @@ def sample_workspace(
                 jacobian_available = False
 
         if not jacobian_available:
-            all_yoshikawa.append(np.full(num_envs, np.nan, dtype=np.float32))
-            all_condition.append(np.full(num_envs, np.nan, dtype=np.float32))
+            batch_yoshikawa = np.full(num_envs, np.nan, dtype=np.float32)
+            batch_condition = np.full(num_envs, np.nan, dtype=np.float32)
+
+        # Apply self-collision filter
+        all_positions.append(batch_positions[collision_free_np])
+        all_yoshikawa.append(batch_yoshikawa[collision_free_np])
+        all_condition.append(batch_condition[collision_free_np])
 
         if (batch_index + 1) % 25 == 0 or batch_index == num_batches - 1:
-            _log(f"  Batch {batch_index + 1}/{num_batches}")
+            collected = sum(len(a) for a in all_positions)
+            _log(f"  Batch {batch_index + 1}/{num_batches}  (collected: {collected:,})")
 
     positions = np.concatenate(all_positions, axis=0)[:num_samples]
     yoshikawa = np.concatenate(all_yoshikawa, axis=0)[:num_samples]
     condition = np.concatenate(all_condition, axis=0)[:num_samples]
+
+    if total_collision_filtered > 0:
+        total_tested = num_batches * num_envs
+        _log(
+            f"  Self-collision filter: removed {total_collision_filtered:,} / "
+            f"{total_tested:,} samples ({total_collision_filtered / total_tested * 100:.1f}%)"
+        )
 
     if not jacobian_available:
         _log("  NOTE: Manipulability values are NaN (Jacobian was unavailable)")
@@ -362,48 +469,83 @@ def sample_workspace(
 
 # ── Statistics ────────────────────────────────────────────────────────────
 
+def _print_metric_block(
+    label: str,
+    values_global: np.ndarray,
+    values_inside: np.ndarray,
+) -> None:
+    """Print a statistics block for a manipulability metric."""
+    valid_global = values_global[np.isfinite(values_global)]
+    valid_inside = values_inside[np.isfinite(values_inside)]
+
+    if len(valid_global) == 0:
+        _log(f"\n  {label}: No valid samples")
+        return
+
+    _log(f"\n  {label} — Global (all reachable):")
+    _log(f"    Mean  : {valid_global.mean():.6f}")
+    _log(f"    Median: {np.median(valid_global):.6f}")
+    _log(f"    Std   : {valid_global.std():.6f}")
+    _log(f"    Range : [{valid_global.min():.6f}, {valid_global.max():.6f}]")
+
+    if len(valid_inside) == 0:
+        _log(f"  {label} — Inside desired WS: N/A (no samples)")
+        return
+
+    _log(f"  {label} — Inside desired WS ({len(valid_inside):,} samples):")
+    _log(f"    Mean  : {valid_inside.mean():.6f}")
+    _log(f"    Median: {np.median(valid_inside):.6f}")
+    _log(f"    Std   : {valid_inside.std():.6f}")
+    _log(f"    P5    : {np.percentile(valid_inside, 5):.6f}")
+    _log(f"    P25   : {np.percentile(valid_inside, 25):.6f}")
+    _log(f"    P75   : {np.percentile(valid_inside, 75):.6f}")
+    _log(f"    P95   : {np.percentile(valid_inside, 95):.6f}")
+    _log(f"    Range : [{valid_inside.min():.6f}, {valid_inside.max():.6f}]")
+
+
 def print_statistics(
     positions: np.ndarray,
     yoshikawa: np.ndarray,
     condition: np.ndarray,
+    mount_height: float,
 ) -> None:
     """Print workspace and manipulability statistics to stderr."""
-    _log(f"\n{'=' * 60}")
+    _log(f"\n{'=' * 70}")
     _log("WORKSPACE ANALYSIS RESULTS")
-    _log(f"{'=' * 60}")
-    _log(f"  Total samples : {len(positions):,}")
-    _log(f"  X range       : [{positions[:, 0].min():.4f}, {positions[:, 0].max():.4f}] m")
-    _log(f"  Y range       : [{positions[:, 1].min():.4f}, {positions[:, 1].max():.4f}] m")
-    _log(f"  Z range       : [{positions[:, 2].min():.4f}, {positions[:, 2].max():.4f}] m")
+    _log(f"{'=' * 70}")
+    _log(f"  Total FK samples : {len(positions):,}")
+    _log(f"  X range          : [{positions[:, 0].min():.4f}, {positions[:, 0].max():.4f}] m")
+    _log(f"  Y range          : [{positions[:, 1].min():.4f}, {positions[:, 1].max():.4f}] m")
+    _log(f"  Z range          : [{positions[:, 2].min():.4f}, {positions[:, 2].max():.4f}] m")
 
+    # ── Sample-level coverage ─────────────────────────────────────────
     inside = np.all(
         (positions >= DESIRED_WS_MIN) & (positions <= DESIRED_WS_MAX), axis=1,
     )
-    coverage_percentage = inside.sum() / len(positions) * 100
-    _log(f"  Points inside desired WS : {inside.sum():,} ({coverage_percentage:.1f}%)")
+    inside_fraction = inside.sum() / len(positions) * 100
+    _log(f"\n  Samples inside desired WS : {inside.sum():,} / {len(positions):,} ({inside_fraction:.1f}%)")
 
-    valid_yoshikawa = yoshikawa[np.isfinite(yoshikawa)]
-    if len(valid_yoshikawa) > 0:
-        _log(f"\n  Yoshikawa Manipulability Index [Ref. 1]:")
-        _log(f"    Min   : {valid_yoshikawa.min():.6f}")
-        _log(f"    Max   : {valid_yoshikawa.max():.6f}")
-        _log(f"    Mean  : {valid_yoshikawa.mean():.6f}")
-        _log(f"    Median: {np.median(valid_yoshikawa):.6f}")
-        _log(f"    Std   : {valid_yoshikawa.std():.6f}")
+    # ── Volumetric coverage of desired workspace ──────────────────────
+    coverage, reached, total = compute_desired_workspace_coverage(positions)
+    _log(f"\n  --- DESIRED WORKSPACE COVERAGE (voxel-based, 2 cm) ---")
+    _log(f"    Voxels reached  : {reached:,} / {total:,}")
+    _log(f"    Volume coverage : {coverage * 100:.1f}%")
 
-        inside_yoshikawa = yoshikawa[inside & np.isfinite(yoshikawa)]
-        if len(inside_yoshikawa) > 0:
-            _log(f"    Mean (inside desired WS): {inside_yoshikawa.mean():.6f}")
-        else:
-            _log(f"    Mean (inside desired WS): N/A (no samples)")
+    desired_volume = float(np.prod(DESIRED_WS_MAX - DESIRED_WS_MIN))
+    _log(f"    Desired WS vol  : {desired_volume:.4f} m³")
 
-    valid_condition = condition[np.isfinite(condition)]
-    if len(valid_condition) > 0:
-        _log(f"\n  Inverse Condition Number (Isotropy) [Ref. 2]:")
-        _log(f"    Min   : {valid_condition.min():.6f}")
-        _log(f"    Max   : {valid_condition.max():.6f}")
-        _log(f"    Mean  : {valid_condition.mean():.6f}")
-        _log(f"    Median: {np.median(valid_condition):.6f}")
+    # ── Manipulability inside desired workspace ───────────────────────
+    inside_yoshikawa = yoshikawa[inside]
+    inside_condition = condition[inside]
+
+    _print_metric_block(
+        "Yoshikawa Manipulability Index [Ref. 1]",
+        yoshikawa, inside_yoshikawa,
+    )
+    _print_metric_block(
+        "Inverse Condition Number (Isotropy) [Ref. 2]",
+        condition, inside_condition,
+    )
 
     _log(f"\n  Desired workspace box (env-local) [Ref. 3]:")
     _log(f"    X : [{DESIRED_WS_MIN[0]:.2f}, {DESIRED_WS_MAX[0]:.2f}] m")
@@ -411,12 +553,65 @@ def print_statistics(
     _log(f"    Z : [{DESIRED_WS_MIN[2]:.2f}, {DESIRED_WS_MAX[2]:.2f}] m")
 
     _log(f"\n  Scene reference points (env-local):")
-    _log(f"    Robot mount     : (0.15, 0.00, {ROBOT_MOUNT_HEIGHT_M:.2f})")
+    _log(f"    Robot mount     : (0.15, 0.00, {mount_height:.2f})")
     _log(f"    Belt surface    : z = {CONVEYOR_SURFACE_HEIGHT_M:.2f}")
     drum_y = CONVEYOR_WIDTH_M * 0.5 + DRUM_CENTER_TO_CONVEYOR_EDGE_M
     _log(f"    Drum centre     : (0.15, {drum_y:.2f}, 0.00)")
     _log(f"    Drum rim height : z = {DRUM_HEIGHT_M:.2f}")
-    _log(f"{'=' * 60}\n")
+    _log(f"{'=' * 70}\n")
+
+
+def save_statistics_json(
+    positions: np.ndarray,
+    yoshikawa: np.ndarray,
+    condition: np.ndarray,
+    mount_height: float,
+    mount_direction: str,
+    robot_name: str,
+    output_dir: Path,
+) -> None:
+    """Save machine-readable statistics as JSON for documentation tooling."""
+    inside = np.all(
+        (positions >= DESIRED_WS_MIN) & (positions <= DESIRED_WS_MAX), axis=1,
+    )
+    coverage_frac, reached_voxels, total_voxels = compute_desired_workspace_coverage(positions)
+
+    def _metric_dict(values: np.ndarray) -> dict:
+        valid = values[np.isfinite(values)]
+        if len(valid) == 0:
+            return {"n": 0}
+        return {
+            "n": int(len(valid)),
+            "mean": round(float(valid.mean()), 6),
+            "median": round(float(np.median(valid)), 6),
+            "std": round(float(valid.std()), 6),
+            "min": round(float(valid.min()), 6),
+            "max": round(float(valid.max()), 6),
+            "p5": round(float(np.percentile(valid, 5)), 6),
+            "p25": round(float(np.percentile(valid, 25)), 6),
+            "p75": round(float(np.percentile(valid, 75)), 6),
+            "p95": round(float(np.percentile(valid, 95)), 6),
+        }
+
+    stats = {
+        "robot": robot_name,
+        "mount_height_m": round(mount_height, 3),
+        "mount_direction": mount_direction,
+        "total_samples": len(positions),
+        "samples_inside_desired_ws": int(inside.sum()),
+        "desired_ws_coverage_fraction": round(coverage_frac, 4),
+        "desired_ws_voxels_reached": reached_voxels,
+        "desired_ws_voxels_total": total_voxels,
+        "yoshikawa_global": _metric_dict(yoshikawa),
+        "yoshikawa_inside_ws": _metric_dict(yoshikawa[inside]),
+        "condition_global": _metric_dict(condition),
+        "condition_inside_ws": _metric_dict(condition[inside]),
+    }
+
+    output_path = output_dir / "statistics.json"
+    with open(output_path, "w") as f:
+        json.dump(stats, f, indent=2)
+    _log(f"  Statistics saved to {output_path}")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────
@@ -424,14 +619,45 @@ def print_statistics(
 def main() -> None:
     num_envs = args_cli.num_envs
     num_samples = args_cli.num_samples
+    robot_choice = args_cli.robot
     device = "cuda:0"
 
-    output_dir = Path(args_cli.output_dir or "outputs/workspace_analysis")
+    robot_cfg = ROBOTS[robot_choice]
+    output_dir = Path(args_cli.output_dir or robot_cfg.output_directory)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    EE_BODY_NAME = robot_cfg.ee_body_name
+    CONTROLLED_JOINT_NAMES = list(robot_cfg.controlled_joints)
 
     sim = SimulationContext(SimulationCfg(dt=1.0 / 60.0, device=device))
 
+    mount_height = args_cli.mount_height or robot_cfg.mount_height
+    mount_direction = args_cli.mount_direction or robot_cfg.default_mount_direction
+    mount_rotation = robot_cfg.mount_rotations[mount_direction]
+
     scene_cfg = ProjBaseSceneCfg(num_envs=num_envs, env_spacing=5.0)
+
+    init_state = ArticulationCfg.InitialStateCfg(
+        pos=(0.15, 0.0, mount_height),
+        rot=mount_rotation,
+    )
+    if robot_choice == "ur10e":
+        from tensegrity_pick.robots import UR10E_GRIPPER_CFG
+
+        scene_cfg.robot = UR10E_GRIPPER_CFG.replace(
+            prim_path="{ENV_REGEX_NS}/Robot",
+            init_state=init_state,
+        )
+    elif robot_choice == "kinova":
+        from tensegrity_pick.robots import KINOVA_GEN3_GRIPPER_CFG
+
+        scene_cfg.robot = KINOVA_GEN3_GRIPPER_CFG.replace(
+            prim_path="{ENV_REGEX_NS}/Robot",
+            init_state=init_state,
+        )
+    else:
+        scene_cfg.robot = scene_cfg.robot.replace(init_state=init_state)
+
     scene = InteractiveScene(scene_cfg)
 
     sim.reset()
@@ -470,14 +696,36 @@ def main() -> None:
     positions, yoshikawa, condition = sample_workspace(
         robot, ee_body_index, joint_ids, env_origins,
         num_samples, num_envs, sim, scene, device,
+        collision_min_distance=COLLISION_MIN_DISTANCE,
+        collision_adjacency_skip=COLLISION_ADJACENCY_SKIP,
     )
+
+    # ── Append mode: merge with existing data ─────────────────────────
+    if args_cli.append:
+        existing_files = (
+            output_dir / "ee_positions.npy",
+            output_dir / "yoshikawa.npy",
+            output_dir / "condition_number.npy",
+        )
+        if all(f.exists() for f in existing_files):
+            _log("Append mode: merging with existing data...")
+            positions = np.concatenate([np.load(existing_files[0]), positions], axis=0)
+            yoshikawa = np.concatenate([np.load(existing_files[1]), yoshikawa], axis=0)
+            condition = np.concatenate([np.load(existing_files[2]), condition], axis=0)
+            _log(f"  Combined sample count: {len(positions):,}")
+        else:
+            _log("Append mode: no existing data found, saving as new.")
 
     np.save(output_dir / "ee_positions.npy", positions)
     np.save(output_dir / "yoshikawa.npy", yoshikawa)
     np.save(output_dir / "condition_number.npy", condition)
     _log(f"Raw data saved to {output_dir}/")
 
-    print_statistics(positions, yoshikawa, condition)
+    print_statistics(positions, yoshikawa, condition, mount_height)
+    save_statistics_json(
+        positions, yoshikawa, condition, mount_height, mount_direction,
+        robot_choice, output_dir,
+    )
 
     _log("Done.")
     simulation_app.close()
