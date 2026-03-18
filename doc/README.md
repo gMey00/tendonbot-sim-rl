@@ -12,6 +12,10 @@ Project documentation for the tensegrity robot simulation and reinforcement lear
 | [tendon_simulation.md](tendon_simulation.md) | Tendon-driven simulation: physical model, software architecture, validation |
 | [remote_desktop_setup.md](remote_desktop_setup.md) | Secure remote desktop setup with Tailscale and RustDesk |
 | [reinforcement_learning.md](reinforcement_learning.md) | Reinforcement learning notes and evaluation methodology |
+| [project_thesis.md](project_thesis.md) | Project thesis proposal, research question, goals, and literature |
+| [master_thesis.md](master_thesis.md) | Master thesis proposal, research question, goals, and literature |
+| [workflow_guide.md](workflow_guide.md) | Development workflow for Manipulator RL Tasks from scratch |
+| [workflow_guide_de.md](workflow_guide_de.md) | Entwicklungs-Workflow für Manipulator RL-Aufgaben von Grunddauf |
 
 ### Literature
 
