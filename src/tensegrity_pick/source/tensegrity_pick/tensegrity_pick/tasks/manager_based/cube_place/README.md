@@ -222,11 +222,14 @@ flowchart TD
 
 ### Metrics (tiny weight, for TensorBoard)
 
-| Term | Weight | Tracks |
-|---|---|---|
-| `metric_place_success` | +0.01 | Binary success rate |
-| `metric_grasp_rate` | +0.01 | Green cube grasped and lifted |
-| `metric_ee_distance` | −0.01 | EE-to-green L2 distance |
+| Term | Weight | Tracks | TensorBoard tag |
+|---|---|---|---|
+| `metric_place_success` | +0.01 | Per-step: cube inside drum (→ "Time in Drum %") | `Episode_Reward/metric_place_success` |
+| `metric_grasp_rate` | +0.01 | Per-step: cube grasped and lifted | `Episode_Reward/metric_grasp_rate` |
+| `metric_ee_distance` | −0.01 | EE-to-green L2 distance | `Episode_Reward/metric_ee_distance` |
+| — | — | Per-episode: ≥1 grasp this episode (→ "Grasp Rate %") | `Metrics/grasp_rate` |
+| — | — | Per-episode: ≥1 step with cube in drum (→ "Place Success Rate %") | `Metrics/place_success_rate` |
+| — | — | Mean episode length in control steps | `Metrics/mean_episode_length` |
 
 ## Terminations
 
@@ -369,23 +372,36 @@ conda run --no-capture-output -n env_isaaclab python3 scripts/skrl/play.py \
 Results from training run `2026-03-06_21-05-45` (PPO, 8 192 envs, 293k steps), Tensegrity PD variant.
 Plots generated with `scripts/plot_place_training_results.py --variant tensegrity`.
 
+### Key Performance Numbers
+
+| Metric | Converged Value | Notes |
+|---|---|---|
+| **Grasp Rate** | **96.7 %** | % of episodes with ≥1 successful grasp-and-lift (last 10 % of training) |
+| **Place Success Rate** | n/a for this run | % of episodes where cube entered drum ≥1 step; tracked from `was_placed` latch — available in future runs |
+| **Time in Drum** | **13.9 %** of steps (~35 / 250) | Average fraction of episode steps with cube inside drum; proxy for placement timing |
+| **Reward Plateau** | **337** | Mean total episode return averaged over last 10 % of training |
+| **Avg. Episode Length** | **248 steps** | Out of max 250; near-zero early terminations at convergence |
+| **Training Duration** | **293k steps** | ~1 h wall-clock with 8 192 parallel envs on a single GPU |
+
 ### Total Episode Reward
 
 The total reward curve shows the complete learning trajectory.  The min/max
 envelope reveals the spread across the environment population.  Two curriculum
 events are marked: the red distractor cube introduction at 100k steps causes a
 brief reward crash (~365 → ~55), and the regularisation ramp begins at 200k
-steps.
+steps.  The green dashed line marks the convergence plateau at **≈ 337**.
 
 ![Total Reward](figures/tensegrity/01_total_reward.png)
 
 ### Task Success
 
-Grasp rate (left axis) and green-in-target reward (right axis) track the two
-key task milestones.  The agent learns to grasp within the first 10k steps and
-achieves consistent placement around 150k steps.  The red cube introduction at
-100k causes a temporary dip in both metrics as the agent adapts to the
-distractor.
+All three success metrics on a common percentage axis:
+
+- **Grasp Rate** — fraction of episodes with at least one successful grasp-and-lift event; reaches ~97 % by 50k steps.
+- **Time in Drum** — average fraction of episode steps with the green cube inside the drum; rises to ~14 % at convergence, meaning the agent deposits the cube with roughly 35 steps remaining per episode.
+- **Place Success Rate** — fraction of episodes where the cube entered the drum at least once (binary, per-episode); only available for runs after the `was_placed` latch was added to `place_env.py`.
+
+The red cube introduction at 100k steps causes a brief dip in all metrics as the agent adapts to the distractor.
 
 ![Task Success](figures/tensegrity/02_task_success.png)
 
@@ -429,6 +445,16 @@ component — a known consequence of manipulating cubes near the belt edge.
 
 ![Converged Breakdown](figures/tensegrity/06_converged_breakdown.png)
 
+### Average Episode Length
+
+Mean control steps per episode over training.  Early in training, frequent
+early terminations (joint velocity divergence, belt collisions) keep episodes
+short (~80–115 steps).  As the policy stabilises the episode length converges
+to **≈ 248 steps** — effectively full 250-step episodes — indicating that
+early-termination events become negligible at convergence.
+
+![Episode Length](figures/tensegrity/07_episode_length.png)
+
 ### Regenerating Plots
 
 ```bash
@@ -450,6 +476,7 @@ conda run --no-capture-output -n env_isaaclab python3 scripts/plot_place_trainin
 ```
 
 Figures are saved to `figures/<variant>/` (e.g., `figures/tensegrity/01_total_reward.png`).
+Seven figures are generated per run: 01–06 (reward/policy diagnostics) plus 07 (episode length).
 
 ## Related
 
