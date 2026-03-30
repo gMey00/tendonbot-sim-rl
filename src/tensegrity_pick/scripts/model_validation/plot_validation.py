@@ -47,31 +47,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / ".config"))
 import common
+import plot_config as pcfg
 
-
-# ── Style constants ────────────────────────────────────────────────────────────
-THESIS_COLORS  = ["#1f77b4", "#ff7f0e", "#2ca02c"]   # blue / orange / green
-KLEIN_COLOR    = "#ff7f0e"
-PD_COLOR       = "#1f77b4"
-TENDON_COLOR   = "#2ca02c"
-SWEEP_CMAP     = "viridis"
+pcfg.apply_style()
 
 TENDON_LABELS  = [
     "T0 (elbow +)", "T1 (elbow −)",
     "T2 (wrist 0°)", "T3 (wrist 120°)", "T4 (wrist 240°)",
 ]
-
-
-# ── Figure helpers ─────────────────────────────────────────────────────────────
-
-def _finalise(fig: plt.Figure, path: Path, dpi: int = 150) -> None:
-    """Tighten layout, save, close, and print confirmation."""
-    plt.tight_layout()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path, dpi=dpi)
-    plt.close(fig)
-    print(f"  {path.name}")
 
 
 def _group_by_joint(trials: list[dict]) -> dict[str, list[dict]]:
@@ -110,12 +95,11 @@ def plot_step_responses(
     fig, axes = plt.subplots(nrows, 1, figsize=(11, 7 if has_tensions else 4.5), sharex=False)
     if nrows == 1:
         axes = [axes]
-    fig.suptitle(f"Step Response — {joint_name.replace('_', ' ').title()}  ({model_label})",
-                 fontsize=13)
+    _title = f"Step Response — {joint_name.replace('_', ' ').title()}  ({model_label})"
 
     ax_angle = axes[0]
     for idx, trial in enumerate(trials):
-        color = THESIS_COLORS[idx % len(THESIS_COLORS)]
+        color = pcfg.CYCLE_COLORS[idx % len(pcfg.CYCLE_COLORS)]
         amp   = trial["amplitude_deg"]
         t     = trial["time_s"]
         y     = trial["actual_deg"]
@@ -142,8 +126,7 @@ def plot_step_responses(
     klein_vals = common.KLEIN_NRMSE.get(joint_name, [])
     ax_angle.set_ylabel("Angle [°]")
     ax_angle.set_xlabel("Time [s]")
-    ax_angle.legend(fontsize=8, ncol=2, loc="lower right")
-    ax_angle.grid(True, alpha=0.3)
+    ax_angle.legend(ncol=2, loc="lower right")
     ax_angle.set_xlim(0, common.STEP_HOLD_S + common.RETURN_HOLD_S)
     ax_angle.axvline(common.STEP_HOLD_S, color="gray", linestyle=":", alpha=0.5,
                      label="return")
@@ -161,12 +144,11 @@ def plot_step_responses(
 
         ax_t.set_ylabel("Tension [N]")
         ax_t.set_xlabel("Time [s]")
-        ax_t.legend(fontsize=6.5, ncol=3, loc="upper right")
-        ax_t.grid(True, alpha=0.3)
+        ax_t.legend(ncol=3, loc="upper right")
         ax_t.set_xlim(0, common.STEP_HOLD_S + common.RETURN_HOLD_S)
         ax_t.axvline(common.STEP_HOLD_S, color="gray", linestyle=":", alpha=0.5)
 
-    _finalise(fig, output_path)
+    pcfg.finalize(fig, output_path, title=_title)
 
 
 # ── Combined metrics table ────────────────────────────────────────────────────
@@ -221,7 +203,8 @@ def plot_metrics_table(
         "Klein\nNRMSE",
     ]
 
-    fig, ax = plt.subplots(figsize=(15, max(2.5, 1.1 + 0.7 * len(rows))))
+    table_h = max(2.5, 1.1 + 0.7 * len(rows))
+    fig, ax = plt.subplots(figsize=(15, table_h))
     ax.axis("off")
     table = ax.table(
         cellText=rows,
@@ -235,15 +218,16 @@ def plot_metrics_table(
 
     # Colour-code header cells
     for j in range(len(col_labels)):
-        table[0, j].set_facecolor("#dce6f1")
+        table[0, j].set_facecolor(pcfg.FAPS_LIGHT_GREY)
         table[0, j].set_text_props(weight="bold")
 
-    fig.suptitle(
-        f"Step-Response Metrics — {joint_name.replace('_', ' ').title()}"
-        f"  (cf. Klein 2023 Table 4.2)",
-        fontsize=11,
+    pcfg.finalize(
+        fig, output_path,
+        title=(
+            f"Step-Response Metrics — {joint_name.replace('_', ' ').title()}"
+            f"  (cf. Klein 2023 Table 4.2)"
+        ),
     )
-    _finalise(fig, output_path)
 
 
 # ── NRMSE comparison bar chart ────────────────────────────────────────────────
@@ -262,7 +246,7 @@ def plot_nrmse_comparison(
     joint_order = ["elbow_joint", "wrist_y_joint", "wrist_x_joint"]
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-    fig.suptitle("NRMSE Comparison: Klein (2023) Gazebo vs. Isaac Sim Models", fontsize=13)
+    _title = "NRMSE Comparison: Klein (2023) Gazebo vs. Isaac Sim Models"
 
     for ax, joint_name in zip(axes, joint_order):
         klein_vals  = common.KLEIN_NRMSE.get(joint_name, [])
@@ -283,23 +267,24 @@ def plot_nrmse_comparison(
 
         if klein_vals:
             ax.bar(x - width, klein_vals[:n], width,
-                   label="Klein 2023 (Gazebo)", color=KLEIN_COLOR, alpha=0.85)
+                   label="Klein 2023 (Gazebo)", color=pcfg.KLEIN_COLOR, alpha=0.85)
         if pd_nrmse:
             ax.bar(x,          pd_nrmse[:n],   width,
-                   label="PD  (Isaac, D=20)",   color=PD_COLOR,    alpha=0.85)
+                   label="PD  (Isaac, D=20)",   color=pcfg.PD_COLOR,    alpha=0.85)
         if ten_nrmse:
             ax.bar(x + width, ten_nrmse[:n],   width,
-                   label="Tendon (Isaac)",       color=TENDON_COLOR, alpha=0.85)
+                   label="Tendon (Isaac)",       color=pcfg.TENDON_COLOR, alpha=0.85)
 
         ax.set_xlabel("Step Amplitude")
         ax.set_ylabel("NRMSE [%]")
         ax.set_title(joint_name.replace("_", " ").title())
         ax.set_xticks(x[:len(amps_deg)])
         ax.set_xticklabels([f"{a:.0f}°" for a in amps_deg[:n]])
-        ax.legend(fontsize=8)
-        ax.grid(axis="y", alpha=0.3)
+        ax.legend(fontsize=7)
+        ax.grid(axis="y")
+        pcfg.annotate_direction(ax, "lower is better", "down")
 
-    _finalise(fig, output_path)
+    pcfg.finalize(fig, output_path, title=_title)
 
 
 # ── Settling time comparison ─────────────────────────────────────────────────
@@ -313,7 +298,7 @@ def plot_settling_comparison(
     joint_order = ["elbow_joint", "wrist_y_joint", "wrist_x_joint"]
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-    fig.suptitle("Settling Time Comparison: PD vs. Tendon", fontsize=13)
+    _title = "Settling Time Comparison: PD vs. Tendon"
 
     for ax, joint_name in zip(axes, joint_order):
         pd_trials  = pd_data.get(joint_name, [])
@@ -336,8 +321,8 @@ def plot_settling_comparison(
         pd_settle  = [pd_by_amp.get(a, {}).get("settling_time_ms") or np.nan for a in all_amps]
         ten_settle = [ten_by_amp.get(a, {}).get("settling_time_ms") or np.nan for a in all_amps]
 
-        ax.bar(x - width / 2, pd_settle,  width, label="PD (D=20)", color=PD_COLOR,    alpha=0.85)
-        ax.bar(x + width / 2, ten_settle, width, label="Tendon",    color=TENDON_COLOR, alpha=0.85)
+        ax.bar(x - width / 2, pd_settle,  width, label="PD (D=20)", color=pcfg.PD_COLOR,    alpha=0.85)
+        ax.bar(x + width / 2, ten_settle, width, label="Tendon",    color=pcfg.TENDON_COLOR, alpha=0.85)
 
         # Klein target band
         ax.axhline(common.TARGET_SETTLING_S[0] * 1000.0, color="green", linestyle=":",  alpha=0.6, linewidth=1.2)
@@ -349,10 +334,11 @@ def plot_settling_comparison(
         ax.set_title(joint_name.replace("_", " ").title())
         ax.set_xticks(x)
         ax.set_xticklabels([f"{a:.0f}°" for a in all_amps])
-        ax.legend(fontsize=8)
-        ax.grid(axis="y", alpha=0.3)
+        ax.legend(fontsize=7)
+        ax.grid(axis="y")
+        pcfg.annotate_direction(ax, "lower is better", "down")
 
-    _finalise(fig, output_path)
+    pcfg.finalize(fig, output_path, title=_title)
 
 
 # ── Damping sweep ─────────────────────────────────────────────────────────────
@@ -382,15 +368,14 @@ def plot_damping_sweep(
     if n_amps == 0:
         return
 
-    colors_d = plt.cm.get_cmap(SWEEP_CMAP)(np.linspace(0.15, 0.90, len(d_vals)))
+    colors_d = plt.colormaps[pcfg.SEQUENTIAL_CMAP](np.linspace(0.15, 0.90, len(d_vals)))
 
     fig, axes = plt.subplots(2, n_amps, figsize=(5.5 * n_amps, 10))
     if n_amps == 1:
         axes = axes.reshape(2, 1)
-    fig.suptitle(
+    _title = (
         "Arm Damping Sweep — Elbow Joint  (K = 400 N·m/rad fixed)\n"
-        "Confirming D = 20 as near-critical optimum",
-        fontsize=13,
+        "Confirming D = 20 as near-critical optimum"
     )
 
     # Precompute best D per amplitude
@@ -408,7 +393,7 @@ def plot_damping_sweep(
     for col, amp in enumerate(amps):
         # ── Top: overlaid step responses ─────────────────────────────
         ax_top = axes[0, col]
-        ax_top.set_title(f"Step {amp:.0f}°", fontsize=11)
+        ax_top.set_title(f"Step {amp:.0f}°")
 
         for d_idx, d_val in enumerate(d_vals):
             trial = next(
@@ -447,7 +432,7 @@ def plot_damping_sweep(
             settle_vals.append(trial["settling_time_ms"] if trial and trial["settling_time_ms"] is not None else np.nan)
 
         bar_colors = [
-            "#e74c3c" if abs(d - common.VALIDATED_DAMPING) < 0.5 else "#3498db"
+            pcfg.MUTED_RED if abs(d - common.VALIDATED_DAMPING) < 0.5 else pcfg.FAPS_BLUE
             for d in d_vals
         ]
         x_pos = np.arange(len(d_vals))
@@ -469,19 +454,124 @@ def plot_damping_sweep(
                 f"Best\n{best_settle:.0f} ms",
                 xy=(best_idx, best_settle),
                 xytext=(0, 14), textcoords="offset points",
-                ha="center", fontsize=7.5, color="#e74c3c", fontweight="bold",
-                arrowprops=dict(arrowstyle="->", color="#e74c3c", lw=1.2),
+                ha="center", fontsize=7.5, color=pcfg.MUTED_RED, fontweight="bold",
+                arrowprops=dict(arrowstyle="->", color=pcfg.MUTED_RED, lw=1.2),
             )
 
         ax_bot.set_xticks(x_pos)
         ax_bot.set_xticklabels([f"D={d:.0f}" for d in d_vals], fontsize=8)
         ax_bot.set_xlabel("Damping D [N·m·s/rad]")
         ax_bot.set_ylabel("Settling Time [ms]")
-        ax_bot.set_title(f"Settling Time @ {amp:.0f}°", fontsize=11)
-        ax_bot.legend(fontsize=8)
-        ax_bot.grid(axis="y", alpha=0.3)
+        ax_bot.set_title(f"Settling Time @ {amp:.0f}°")
+        ax_bot.legend(fontsize=7)
+        ax_bot.grid(axis="y")
+        pcfg.annotate_direction(ax_bot, "lower is better", "down")
 
-    _finalise(fig, output_path)
+    pcfg.finalize(fig, output_path, title=_title)
+
+
+# ── Base joint step response plots ────────────────────────────────────────────
+
+def plot_base_step_responses(
+    trials: list[dict],
+    output_path: Path,
+) -> None:
+    """Displacement (mm) time series for one base joint.
+
+    Similar to ``plot_step_responses`` but uses millimetres on the y-axis
+    and omits the tendon tension panel (base is driven by ImplicitActuator).
+
+    The NPZ files store values in mm under the ``actual_deg`` / ``setpoint_deg``
+    keys (reusing the arm serialisation routine).
+    """
+    if not trials:
+        return
+
+    joint_name = trials[0]["joint_name"]
+
+    fig, ax = plt.subplots(figsize=(11, 4.5))
+    _title = (
+        f"Step Response — {joint_name.replace('_', ' ').title()}"
+        f"  (ImplicitActuator  K=8000, D=800)"
+    )
+
+    for idx, trial in enumerate(trials):
+        color  = pcfg.CYCLE_COLORS[idx % len(pcfg.CYCLE_COLORS)]
+        amp    = trial["amplitude_deg"]       # actually mm
+        t      = trial["time_s"]
+        y      = trial["actual_deg"]          # actually mm
+        sp     = trial["setpoint_deg"]        # actually mm
+        nrmse  = trial["nrmse_pct"]
+        rise   = trial["rise_time_ms"]
+        settle = trial["settling_time_ms"]
+
+        ax.plot(t, y,  color=color, linewidth=1.5, label=f"{amp:.0f} mm actual")
+        ax.plot(t, sp, color=color, linestyle="--", alpha=0.55, linewidth=1.2,
+                label=f"{amp:.0f} mm setpoint")
+
+        rise_str   = f"{rise:.0f} ms"   if rise   is not None else "—"
+        settle_str = f"{settle:.0f} ms" if settle is not None else "—"
+        ax.annotate(
+            f"NRMSE={nrmse:.1f}%\nrise={rise_str}\nsettle={settle_str}",
+            xy=(common.STEP_HOLD_S * 0.55 + idx * 0.12, amp * (0.72 - 0.05 * idx)),
+            fontsize=7, color=color, alpha=0.85,
+            bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.5, linewidth=0),
+        )
+
+    ax.set_ylabel("Displacement [mm]")
+    ax.set_xlabel("Time [s]")
+    ax.legend(ncol=2, loc="lower right")
+    ax.set_xlim(0, common.STEP_HOLD_S + common.RETURN_HOLD_S)
+    ax.axvline(common.STEP_HOLD_S, color="gray", linestyle=":", alpha=0.5, label="return")
+
+    pcfg.finalize(fig, output_path, title=_title)
+
+
+def plot_base_metrics_table(
+    trials: list[dict],
+    joint_name: str,
+    output_path: Path,
+) -> None:
+    """Metrics table for one base joint (no Klein reference)."""
+    if not trials:
+        return
+
+    trials_sorted = sorted(trials, key=lambda t: t["amplitude_deg"])
+    rows = []
+    for t in trials_sorted:
+        rise   = f"{t['rise_time_ms']:.0f}"    if t["rise_time_ms"]    is not None else "—"
+        over   = f"{t['overshoot_pct']:.1f}%"  if t["overshoot_pct"]  is not None else "—"
+        settle = f"{t['settling_time_ms']:.0f}" if t["settling_time_ms"] is not None else "—"
+        nrmse  = f"{t['nrmse_pct']:.1f}%"
+        ss     = f"{t['steady_state_error_deg']:.3f} mm"
+        rows.append([f"{t['amplitude_deg']:.0f} mm", rise, over, settle, nrmse, ss])
+
+    col_labels = ["Step", "Rise [ms]", "Overshoot", "Settle [ms]", "NRMSE", "SS Error"]
+
+    base_table_h = max(2.5, 1.1 + 0.7 * len(rows))
+    fig, ax = plt.subplots(figsize=(15, base_table_h))
+    ax.axis("off")
+    table = ax.table(
+        cellText=rows,
+        colLabels=col_labels,
+        loc="center",
+        cellLoc="center",
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(9)
+    table.scale(1.0, 1.6)
+
+    for j in range(len(col_labels)):
+        table[0, j].set_facecolor(pcfg.FAPS_LIGHT_GREY)
+        table[0, j].set_text_props(weight="bold")
+
+    pcfg.finalize(
+        fig, output_path,
+        title=(
+            f"Step-Response Metrics — {joint_name.replace('_', ' ').title()}"
+            f"  (Base PD, K=8000 N/m, D=800 N·s/m)"
+        ),
+    )
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -490,35 +580,53 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Plot tensegrity model validation results")
     parser.add_argument("--pd_dir",      type=str, default=str(common.PD_DATA_DIR))
     parser.add_argument("--tendon_dir",  type=str, default=str(common.TENDON_DATA_DIR))
+    parser.add_argument("--tendon_physical_dir", type=str,
+                        default=str(common.PHYSICAL_TENDON_DATA_DIR))
+    parser.add_argument("--base_dir",    type=str, default=str(common.BASE_DATA_DIR))
     parser.add_argument("--output_dir",  type=str, default=str(common.PLOTS_DIR))
     parser.add_argument("--no_pd",       action="store_true", help="Skip PD plots")
     parser.add_argument("--no_tendon",   action="store_true", help="Skip tendon plots")
+    parser.add_argument("--no_tendon_physical", action="store_true",
+                        help="Skip physical tendon plots")
+    parser.add_argument("--no_base",     action="store_true", help="Skip base plots")
     parser.add_argument("--no_comparison", action="store_true", help="Skip comparison plots")
     parser.add_argument("--no_sweep",    action="store_true", help="Skip damping-sweep plot")
     args = parser.parse_args()
 
     pd_dir     = Path(args.pd_dir)
     tendon_dir = Path(args.tendon_dir)
+    tendon_phys_dir = Path(args.tendon_physical_dir)
+    base_dir   = Path(args.base_dir)
     plots_dir  = Path(args.output_dir)
 
     # ── Load data ─────────────────────────────────────────────────────────
     all_pd: list[dict] = []
     all_tendon: list[dict] = []
+    all_tendon_phys: list[dict] = []
+    all_base: list[dict] = []
 
     if not args.no_pd and pd_dir.exists():
         all_pd = common.load_trials(pd_dir, no_sweep=True)
     if not args.no_tendon and tendon_dir.exists():
         all_tendon = common.load_trials(tendon_dir, no_sweep=True)
+    if not args.no_tendon_physical and tendon_phys_dir.exists():
+        all_tendon_phys = common.load_trials(tendon_phys_dir, no_sweep=True)
+    if not args.no_base and base_dir.exists():
+        all_base = common.load_trials(base_dir, no_sweep=True)
 
     pd_by_joint     = _group_by_joint(all_pd)
     tendon_by_joint = _group_by_joint(all_tendon)
+    tendon_phys_by_joint = _group_by_joint(all_tendon_phys)
+    base_by_joint   = _group_by_joint(all_base)
 
     n_pd     = sum(len(v) for v in pd_by_joint.values())
     n_tendon = sum(len(v) for v in tendon_by_joint.values())
-    print(f"Loaded: {n_pd} PD trials,  {n_tendon} tendon trials")
+    n_phys   = sum(len(v) for v in tendon_phys_by_joint.values())
+    n_base   = sum(len(v) for v in base_by_joint.values())
+    print(f"Loaded: {n_pd} PD,  {n_tendon} tendon,  {n_phys} tendon-physical,  {n_base} base trials")
     print(f"Output: {plots_dir}\n")
 
-    if n_pd == 0 and n_tendon == 0:
+    if n_pd == 0 and n_tendon == 0 and n_phys == 0 and n_base == 0:
         print("No data found — run the data-generation scripts first.")
         return
 
@@ -532,7 +640,7 @@ def main() -> None:
                 pd_by_joint[joint_name],
                 model_label="PD  (K=400, D=20  ImplicitActuator)",
                 output_path=plots_dir / fname,
-                show_tensions=True,
+                show_tensions=False,
             )
             generated.append(fname)
 
@@ -556,6 +664,20 @@ def main() -> None:
                 plots_dir / fname,
             )
             generated.append(fname)
+
+    # ── Per-joint plots for physical tendon model ─────────────────────────
+    # Physical elbow test uses spec name "elbow_physical"; wrist tests
+    # reuse the standard names so they end up next to the elbow_approx data.
+    phys_joint_names = sorted(tendon_phys_by_joint.keys())
+    for joint_name in phys_joint_names:
+        fname = f"step_response_tendon_physical_{joint_name}.png"
+        plot_step_responses(
+            tendon_phys_by_joint[joint_name],
+            model_label="Tendon Physical  (body forces + J^T)",
+            output_path=plots_dir / fname,
+            show_tensions=True,
+        )
+        generated.append(fname)
 
     # ── Cross-model comparison plots ──────────────────────────────────────
     if not args.no_comparison and (pd_by_joint or tendon_by_joint):
@@ -584,6 +706,21 @@ def main() -> None:
         else:
             print("  (No gain-sweep data found — re-run with --damping_sweep flag)")
 
+    # ── Base joint plots ──────────────────────────────────────────────────
+    if not args.no_base and base_by_joint:
+        for joint_name in common.BASE_JOINT_NAMES:
+            trials = base_by_joint.get(joint_name, [])
+            if not trials:
+                continue
+
+            fname = f"step_response_base_{joint_name}.png"
+            plot_base_step_responses(trials, plots_dir / fname)
+            generated.append(fname)
+
+            fname = f"metrics_table_base_{joint_name}.png"
+            plot_base_metrics_table(trials, joint_name, plots_dir / fname)
+            generated.append(fname)
+
     # ── Summary ───────────────────────────────────────────────────────────
     print(f"\n{len(generated)} plots written to {plots_dir}/")
 
@@ -608,6 +745,18 @@ def main() -> None:
                 pd  = f"{pd_by_amp[amp]['nrmse_pct']:.1f}%"  if amp in pd_by_amp  else "—"
                 ten = f"{ten_by_amp[amp]['nrmse_pct']:.1f}%" if amp in ten_by_amp else "—"
                 print(f"  {joint_name:<22}  {amp:>4.0f}°  {k:>7}  {pd:>7}  {ten:>8}")
+
+    if base_by_joint:
+        print()
+        print("  Base Joint Metrics (mm)")
+        print(f"  {'Joint':<22}  {'Amp':>7}  {'NRMSE':>7}  {'Settle':>8}  {'SS Err':>8}")
+        print("  " + "─" * 56)
+        for joint_name in common.BASE_JOINT_NAMES:
+            for t in base_by_joint.get(joint_name, []):
+                settle = f"{t['settling_time_ms']:.0f} ms" if t["settling_time_ms"] is not None else "—"
+                print(f"  {joint_name:<22}  {t['amplitude_deg']:>5.0f}mm"
+                      f"  {t['nrmse_pct']:>6.1f}%  {settle:>8}"
+                      f"  {t['steady_state_error_deg']:>6.3f}mm")
 
 
 if __name__ == "__main__":

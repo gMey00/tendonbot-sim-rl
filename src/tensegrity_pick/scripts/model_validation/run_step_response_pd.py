@@ -103,14 +103,21 @@ def _make_robot_cfg(stiffness: float = 400.0, damping: float = 20.0) -> Articula
         actuators={
             "arm": ImplicitActuatorCfg(
                 joint_names_expr=_ARM_JOINTS,
-                # Production limit is 40 N·m, but the 3-DOF arm's 0° config has
-                # ~42 N·m gravity torque, leaving zero headroom for motion.
-                # In the RL environment the policy always keeps the arm away from
-                # high-gravity-torque positions; here we raise the limit to 400 N·m
-                # so the step-response test is not saturated and the true K,D
-                # dynamics are visible (matching Klein 2023 §4.2–§4.3 intent).
+                # ── Validation-only overrides ──────────────────────────────
+                # Production limits (tensegrity_robot_cfg.py):
+                #   elbow:  effort=40 N·m,  velocity=1.0 rad/s
+                #   wrist:  effort=10 N·m,  velocity=0.5 rad/s
+                #
+                # Here we raise both to 400 N·m / 10 rad/s so the PD drives
+                # never saturate during step responses.  This lets us measure
+                # the true K,D dynamics (matching Klein 2023 §4.2–§4.3 intent
+                # where the physical motor was not effort-limited either).
+                #
+                # In RL training, the real per-joint limits apply and the PD
+                # controller WILL saturate for large errors — this is expected
+                # and physically faithful behaviour.
                 effort_limit_sim=400.0,
-                velocity_limit_sim=10.0,  # raised for validation; production=2.0
+                velocity_limit_sim=10.0,
                 stiffness=stiffness,
                 damping=damping,
             ),
@@ -456,9 +463,11 @@ def main() -> None:
                 f"  {m.nrmse_pct:>6.1f}%  {'✓' if m.passes() else '✗':>5}"
             )
     print(f"\n  Data saved to: {output_dir}")
-    sim.stop()
 
 
 if __name__ == "__main__":
     main()
-    simulation_app.close()
+    # simulation_app.close() holds the GIL in C++ and hangs indefinitely.
+    # All data has been written; let the OS clean up GPU/memory on exit.
+    import os
+    os._exit(0)

@@ -15,13 +15,11 @@ the gripper fingers wrap symmetrically around the cube.
 Usage (with rendering)::
 
     cd src/tensegrity_pick
-    conda run -n env_isaaclab python3 scripts/verify_actuation.py \
-        --task Template-Tensegrity-Place-v0 --num_envs 1
+    conda run -n env_isaaclab python3 scripts/verify_actuation.py
 
 Usage (headless)::
 
-    conda run -n env_isaaclab python3 scripts/verify_actuation.py \
-        --task Template-Tensegrity-Cube-Place-v0 --num_envs 1 --headless
+    conda run -n env_isaaclab python3 scripts/verify_actuation.py --headless
 """
 
 from __future__ import annotations
@@ -58,7 +56,7 @@ from isaaclab.utils.math import quat_apply
 # ---------------------------------------------------------------------------
 
 CONVEYOR_SURFACE_HEIGHT_M = 0.80
-GRASP_CENTER_LOCAL_Z = 0.1925
+GRASP_CENTER_LOCAL_Z = -0.1925  # local -Z = toward floor (tool_link_0 +Z points up)
 DRUM_CENTER_Y = 0.850
 DRUM_RIM_HEIGHT_M = 0.880
 

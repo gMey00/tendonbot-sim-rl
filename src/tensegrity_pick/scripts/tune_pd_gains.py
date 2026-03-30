@@ -76,7 +76,7 @@ from isaaclab.utils.math import quat_apply
 # =====================================================================
 
 CONVEYOR_SURFACE_HEIGHT_M = 0.80
-GRASP_CENTER_LOCAL_Z = 0.1925
+GRASP_CENTER_LOCAL_Z = -0.1925  # local -Z = toward floor (tool_link_0 +Z points up)
 
 # Action layout: [base_y, base_z, elbow, wrist_y, wrist_x, gripper]
 IDX_BASE_Y = 0

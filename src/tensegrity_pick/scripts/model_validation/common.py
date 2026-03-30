@@ -29,10 +29,12 @@ _PROJ_ROOT = Path("/home/robot/studentische-arbeiten/src/tensegrity_pick")
 DEFAULT_OUTPUT_ROOT = _PROJ_ROOT / "outputs" / "model_validation"
 PD_DATA_DIR = DEFAULT_OUTPUT_ROOT / "pd" / "data"
 TENDON_DATA_DIR = DEFAULT_OUTPUT_ROOT / "tendon" / "data"
+BASE_DATA_DIR = DEFAULT_OUTPUT_ROOT / "base" / "data"
 PLOTS_DIR = DEFAULT_OUTPUT_ROOT / "plots"
 
 # ── Joint identity ─────────────────────────────────────────────────────────────
 ARM_JOINT_NAMES: list[str] = ["elbow_joint", "wrist_y_joint", "wrist_x_joint"]
+BASE_JOINT_NAMES: list[str] = ["base_y_joint", "base_z_joint"]
 JOINT_INDEX: dict[str, int] = {name: i for i, name in enumerate(ARM_JOINT_NAMES)}
 
 # ── Klein (2023) NRMSE reference — Gazebo simulation vs. real robot ───────────
@@ -103,51 +105,148 @@ class JointTestSpec:
     mass_kg: float               # me — moving link mass
 
 
+# PID gains scaled from Klein (2023) originals (kp=0.3, ki=0.03, kd=0.02)
+# to match the Isaac Sim model's effective rotational inertia (~0.103 kg·m²
+# for the elbow).  ~133× higher gains needed for similar settling behaviour.
+#
+# Wrist gains are lower because wrist lever arms (~0.014 m) limit
+# achievable torque — tensions saturate at 600 N.  The D gain uses
+# derivative-on-measurement (same as elbow) which naturally filters
+# PhysX velocity noise.  Earlier versions used a separate raw-velocity
+# damping term (kd * joint_vel) which caused chattering on wrist_x.
+#
+# Gravity compensation: τ_g = mass_kg · g · gravity_arm_m · sin(θ)
+#   Elbow: moves disc (0.192) + forearm (1.9) + EE (0.4) = 2.49 kg
+#     Combined CoM from elbow axis:
+#       (0.192×0.034 + 1.9×0.237 + 0.4×0.474) / 2.492 ≈ 0.26 m
+#   Wrist: moves end_effector_link only (0.40 kg)
+#     CoM at ~68 mm from wrist axes (half wrist-to-tool distance)
 ELBOW_SPEC = JointTestSpec(
     name="elbow_joint",
     joint_index=0,
-    pid=PIDGains(kp=0.3, ki=0.03, kd=0.02),
+    pid=PIDGains(kp=40.0, ki=4.0, kd=3.0),
     step_amplitudes_deg=(20.0, 30.0, 40.0),
     min_tension_n=6.0,
-    saturation_n=160.0,
-    gravity_arm_m=0.15,   # approximate forearm CoM distance
-    mass_kg=0.80,
+    saturation_n=400.0,
+    gravity_arm_m=0.26,   # combined CoM: disc + forearm + EE (see above)
+    mass_kg=2.49,         # disc 0.192 + forearm 1.9 + EE 0.4
 )
 
 WRIST_Y_SPEC = JointTestSpec(
     name="wrist_y_joint",
     joint_index=1,
-    pid=PIDGains(kp=0.2, ki=0.03, kd=0.03),
+    pid=PIDGains(kp=10.0, ki=2.0, kd=0.3),
     step_amplitudes_deg=(10.0, 20.0, 30.0),
     min_tension_n=5.0,
-    saturation_n=80.0,
-    gravity_arm_m=0.06,   # half end-effector length (0.12 m)
-    mass_kg=0.32,
+    saturation_n=600.0,
+    gravity_arm_m=0.068,  # half wrist-to-tool distance: (0.972 − 0.836) / 2
+    mass_kg=0.40,         # end_effector_link mass from URDF
 )
 
 WRIST_X_SPEC = JointTestSpec(
     name="wrist_x_joint",
     joint_index=2,
-    pid=PIDGains(kp=0.2, ki=0.03, kd=0.03),
+    pid=PIDGains(kp=10.0, ki=2.0, kd=0.3),
     step_amplitudes_deg=(10.0, 20.0, 30.0),
     min_tension_n=5.0,
-    saturation_n=80.0,
-    gravity_arm_m=0.06,
-    mass_kg=0.32,
+    saturation_n=600.0,
+    gravity_arm_m=0.068,  # half wrist-to-tool distance
+    mass_kg=0.40,         # end_effector_link mass from URDF
 )
 
 ALL_JOINT_SPECS: list[JointTestSpec] = [ELBOW_SPEC, WRIST_Y_SPEC, WRIST_X_SPEC]
+
+
+# ── Physical (antiparallelogram) model constants ──────────────────────────────
+#
+# The physical model has no single ``elbow_joint``.  The 4-bar linkage joints
+# visible to the articulation tree are: rod_left_joint, rod_right_joint,
+# coupler_left_joint.  (coupler_right_joint has excludeFromArticulation = True
+# and is invisible to the joint API.)
+#
+# The "elbow angle" (forearm deflection about X relative to root_link) is
+# obtained from the forearm_link body quaternion rather than a joint angle.
+
+PHYSICAL_ARM_JOINT_NAMES: list[str] = [
+    "rod_left_joint", "rod_right_joint", "coupler_left_joint",
+    "wrist_y_joint", "wrist_x_joint",
+]
+"""Tree-branch joint names for the physical model (omitting closure joint)."""
+
+PHYSICAL_JOINT_INDEX: dict[str, int] = {
+    name: i for i, name in enumerate(PHYSICAL_ARM_JOINT_NAMES)
+}
+
+# Output paths for the physical model variant
+PHYSICAL_TENDON_DATA_DIR = DEFAULT_OUTPUT_ROOT / "tendon_physical" / "data"
+
+# Elbow-equivalent PID for the physical model.  The four-bar linkage has
+# slightly higher effective inertia than the single revolute elbow_approx
+# joint (additional rod masses plus geometric coupling), so gains are
+# moderately increased.  Saturation is 500 N (motor max).
+PHYSICAL_ELBOW_SPEC = JointTestSpec(
+    name="elbow_physical",          # virtual joint (measured from body quat)
+    joint_index=-1,                 # not in any joint array — special handling
+    pid=PIDGains(kp=60.0, ki=6.0, kd=4.0),
+    step_amplitudes_deg=(20.0, 30.0, 40.0),
+    min_tension_n=6.0,
+    saturation_n=500.0,
+    gravity_arm_m=0.26,
+    mass_kg=2.49,                   # rod masses ~0.19 total, small moment
+)
+
+# Physical model shares wrist specs with elbow_approx
+PHYSICAL_ALL_JOINT_SPECS: list[JointTestSpec] = [
+    PHYSICAL_ELBOW_SPEC, WRIST_Y_SPEC, WRIST_X_SPEC,
+]
+
+# Tendon attachment offsets in body-local frames (m).
+# Must match tendon_actuator.ELBOW_TENDON_*_OFFSETS exactly.
+PHYSICAL_ROOT_ATTACH = np.array([
+    [0.0, +0.0725, -0.34],   # T0 (left)
+    [0.0, -0.0725, -0.34],   # T1 (right)
+], dtype=np.float64)
+
+PHYSICAL_FOREARM_ATTACH = np.array([
+    [0.0, +0.0725, -0.02],   # T0 (left)
+    [0.0, -0.0725, -0.02],   # T1 (right)
+], dtype=np.float64)
+
+
+def compute_elbow_angle_from_body_quat(forearm_quat_wxyz: np.ndarray) -> float:
+    """Extract the X-axis rotation (elbow angle) from the forearm body quaternion.
+
+    The forearm_link frame is aligned with the root_link frame at zero-config.
+    The elbow deflection is a pure rotation about the X axis, so:
+        θ_elbow = 2 · atan2(q_x, q_w)
+
+    This is exact for the physical model because the 4-bar linkage constrains
+    the forearm to rotate about X only (in the root_link frame).
+
+    Parameters
+    ----------
+    forearm_quat_wxyz : (4,) array — [w, x, y, z] quaternion of forearm_link
+                        in the world frame.
+
+    Returns
+    -------
+    Elbow angle in radians (positive = forearm rotated about +X).
+    """
+    w, x = float(forearm_quat_wxyz[0]), float(forearm_quat_wxyz[1])
+    return 2.0 * math.atan2(x, w)
 
 
 @dataclass
 class PIDState:
     """Mutable PID integrator state (Python floats — no torch dependency)."""
     integral: float = 0.0
-    prev_error: float = 0.0
+    prev_measurement: float = 0.0
+    prev_deriv: float = 0.0
 
-    def reset(self) -> None:
+    def reset(self, initial_measurement: float = 0.0) -> None:
         self.integral = 0.0
-        self.prev_error = 0.0
+        self.prev_measurement = initial_measurement
+        self.prev_deriv = 0.0
 
 
 @dataclass
@@ -181,13 +280,42 @@ def compute_pid_torque(
     gains: PIDGains,
     state: PIDState,
     integral_clamp: float = 50.0,
+    integral_zone_rad: float | None = None,
+    deriv_filter_alpha: float = 0.3,
+    measured_velocity_rad_s: float | None = None,
 ) -> float:
-    """Classic discrete PID with clamped integrator (anti-windup)."""
+    """Classic discrete PID with derivative-on-measurement, EMA-filtered D, and clamped integrator.
+
+    The derivative term uses the process variable (``-d(current)/dt``)
+    instead of ``d(error)/dt`` to avoid the derivative kick that occurs
+    when the setpoint changes as a step.  A first-order exponential
+    moving average (EMA) filter is applied to suppress high-frequency
+    noise from the PhysX solver.
+
+    Parameters
+    ----------
+    integral_zone_rad : float or None
+        If set, the integrator only accumulates when ``|error|`` is below
+        this threshold (conditional integration / anti-windup).  This
+        prevents integral windup during the fast initial transient of
+        low-inertia joints.
+    deriv_filter_alpha : float
+        EMA smoothing coefficient for the derivative term.  Lower values
+        give heavier filtering (``0`` = hold previous, ``1`` = no filter).
+    """
     error = setpoint_rad - current_rad
-    state.integral += error * dt
+    if integral_zone_rad is None or abs(error) < integral_zone_rad:
+        state.integral += error * dt
     state.integral = max(-integral_clamp, min(integral_clamp, state.integral))
-    deriv = (error - state.prev_error) / dt if dt > 1e-9 else 0.0
-    state.prev_error = error
+    if measured_velocity_rad_s is not None:
+        # Use PhysX solver velocity with light EMA to smooth numerical noise
+        deriv_raw = -measured_velocity_rad_s
+        deriv = 0.5 * deriv_raw + 0.5 * state.prev_deriv
+    else:
+        deriv_raw = -(current_rad - state.prev_measurement) / dt if dt > 1e-9 else 0.0
+        deriv = deriv_filter_alpha * deriv_raw + (1.0 - deriv_filter_alpha) * state.prev_deriv
+    state.prev_measurement = current_rad
+    state.prev_deriv = deriv
     return gains.kp * error + gains.ki * state.integral + gains.kd * deriv
 
 
@@ -206,16 +334,72 @@ def torque_to_tensions(
     min_tension: float,
     saturation: float,
 ) -> np.ndarray:
-    """Map a single-joint torque to 5 tendon tensions via pinv(J^T).
+    """Map a single-joint torque to 5 tendon tensions via block-wise redistribution.
 
-    Builds the full 3-joint torque vector (zeros except at joint_index),
-    multiplies by the pseudo-inverse, and clamps to [min_tension, saturation].
+    The Jacobian has natural blocks: elbow uses tendons [0,1], wrists use
+    tendons [2,3,4].  To avoid the global null-space shift inflating
+    inactive tendons (which then clip at saturation and distort cross-
+    coupling torques), we solve each block independently:
+
+    - Elbow (joint 0): 2-tendon antagonistic pair — direct algebraic solution.
+    - Wrist (joint 1 or 2): 3-tendon group — pinv of the 2×3 wrist sub-
+      Jacobian, with tension shift confined to tendons [2,3,4].
+
+    Inactive tendons are set to ``min_tension`` (cable pre-tension).
     Returns shape (5,).
     """
-    full_torque = np.zeros(3, dtype=np.float64)
-    full_torque[joint_index] = desired_torque
-    tensions = get_jacobian_pinv() @ full_torque   # (5,)
-    return np.clip(tensions, min_tension, saturation)
+    tensions = np.full(5, min_tension, dtype=np.float64)
+
+    if joint_index == 0:
+        # Elbow: T0 and T1 are antagonistic with lever arm ±0.0725 m.
+        # τ = 0.0725·(T0 - T1)  →  T0 - T1 = τ / 0.0725
+        lever = abs(JACOBIAN_T[0, 0])  # 0.0725
+        diff = desired_torque / lever
+        # Centre around min_tension so both stay ≥ min_tension
+        t0 = min_tension + max(0.0, diff)
+        t1 = min_tension + max(0.0, -diff)
+        tensions[0] = min(t0, saturation)
+        tensions[1] = min(t1, saturation)
+    else:
+        # Wrist block: tendons [2, 3, 4], Jacobian rows [1, 2]
+        j_wrist = JACOBIAN_T[1:3, 2:5]                      # (2, 3)
+        j_wrist_pinv = np.linalg.pinv(j_wrist)              # (3, 2)
+        tau_wrist = np.zeros(2, dtype=np.float64)
+        tau_wrist[joint_index - 1] = desired_torque          # row 0 = wrist_y, row 1 = wrist_x
+        t_raw = j_wrist_pinv @ tau_wrist                     # (3,)
+        shift = max(0.0, min_tension - float(np.min(t_raw)))
+        t_shifted = np.clip(t_raw + shift, 0.0, saturation)
+        tensions[2:5] = t_shifted
+
+    return tensions
+
+
+def torque_vector_to_tensions(
+    desired_torques: np.ndarray,
+    min_tension: float,
+    saturation: float,
+) -> np.ndarray:
+    """Map a full 3-joint torque vector to 5 tendon tensions via block-wise redistribution.
+
+    Elbow block (tendons 0,1) and wrist block (tendons 2,3,4) are solved
+    independently, mirroring the logic in :func:`torque_to_tensions`.
+    """
+    tensions = np.full(5, min_tension, dtype=np.float64)
+
+    # Elbow block: tendons [0, 1]
+    lever = abs(JACOBIAN_T[0, 0])
+    diff = desired_torques[0] / lever
+    tensions[0] = min(min_tension + max(0.0, diff), saturation)
+    tensions[1] = min(min_tension + max(0.0, -diff), saturation)
+
+    # Wrist block: tendons [2, 3, 4]
+    j_wrist = JACOBIAN_T[1:3, 2:5]
+    j_wrist_pinv = np.linalg.pinv(j_wrist)
+    t_raw = j_wrist_pinv @ desired_torques[1:3]
+    shift = max(0.0, min_tension - float(np.min(t_raw)))
+    tensions[2:5] = np.clip(t_raw + shift, 0.0, saturation)
+
+    return tensions
 
 
 def tensions_to_torques(tensions: np.ndarray) -> np.ndarray:

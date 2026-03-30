@@ -15,6 +15,11 @@ import numpy as np
 import plotly.graph_objects as go
 from IPython.display import HTML, display
 
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parents[4] / ".config"))
+import plot_config as pcfg  # noqa: E402
+pcfg.apply_style()
+
 from workspace_config import (
     AXIS_LABELS,
     DEFAULT_VOXEL_SIZE,
@@ -338,7 +343,8 @@ def draw_cross_section_figure(
         1, 3, figsize=(18, 5),
         gridspec_kw={"wspace": 0.30},
     )
-    fig.suptitle(title, fontsize=13, fontweight="bold")
+    if pcfg.SHOW_TITLES and title:
+        fig.suptitle(title)
 
     last_im = None
     for ax, view in zip(axes, VIEW_CONFIGS):

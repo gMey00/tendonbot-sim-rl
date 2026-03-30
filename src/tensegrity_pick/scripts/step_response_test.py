@@ -50,6 +50,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
+import sys
+from pathlib import Path as _Path
+sys.path.insert(0, str(_Path(__file__).resolve().parents[3] / ".config"))
+import plot_config as pcfg
+pcfg.apply_style()
+
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import IdealPDActuatorCfg
 from isaaclab.assets import Articulation, ArticulationCfg
@@ -325,7 +331,6 @@ def compute_metrics(
 
 # ── Plotting (thesis style) ──────────────────────────────────────────────
 
-THESIS_COLORS = ["#1f77b4", "#ff7f0e", "#2ca02c"]
 
 
 def plot_step_responses(
@@ -341,13 +346,13 @@ def plot_step_responses(
     """Generate thesis-style plots for a single joint's step responses."""
     num_steps = len(amplitudes_deg)
 
-    fig, axes = plt.subplots(2, 1, figsize=(10, 7), sharex=False)
-    fig.suptitle(f"Step Response — {joint_name}", fontsize=14)
+    fig, axes = plt.subplots(2, 1, figsize=pcfg.scaled(10, 7), sharex=False)
+    _title = f"Step Response — {joint_name}"
 
     # ── Top: angle time series ────────────────────────────────────────────
     ax_angle = axes[0]
     for idx in range(num_steps):
-        color = THESIS_COLORS[idx % len(THESIS_COLORS)]
+        color = pcfg.CYCLE_COLORS[idx % len(pcfg.CYCLE_COLORS)]
         label_actual = f"{amplitudes_deg[idx]:.0f}° actual"
         label_setpoint = f"{amplitudes_deg[idx]:.0f}° setpoint"
         ax_angle.plot(time_per_step[idx], actual_per_step[idx], color=color, label=label_actual)
@@ -355,10 +360,9 @@ def plot_step_responses(
             time_per_step[idx], setpoint_per_step[idx],
             color=color, linestyle="--", alpha=0.6, label=label_setpoint,
         )
+    ax_angle.legend(ncol=3, loc="upper center", bbox_to_anchor=(0.5, -0.15))
     ax_angle.set_ylabel("Angle [°]")
     ax_angle.set_xlabel("Time [s]")
-    ax_angle.legend(fontsize=8, ncol=2)
-    ax_angle.grid(True, alpha=0.3)
 
     # ── Bottom: tendon tensions ───────────────────────────────────────────
     ax_tension = axes[1]
@@ -374,15 +378,12 @@ def plot_step_responses(
             )
     ax_tension.set_ylabel("Tendon Tension [N]")
     ax_tension.set_xlabel("Time [s]")
-    ax_tension.legend(fontsize=7, ncol=3, loc="upper right")
-    ax_tension.grid(True, alpha=0.3)
+    ax_tension.legend(ncol=5, loc="upper center", bbox_to_anchor=(0.5, -0.15))
 
-    plt.tight_layout()
-    fig.savefig(output_dir / f"step_response_{joint_name}.png", dpi=150)
-    plt.close(fig)
+    pcfg.finalize(fig, output_dir / f"step_response_{joint_name}.png", title=_title)
 
     # ── Metrics summary plot ──────────────────────────────────────────────
-    fig2, ax_table = plt.subplots(figsize=(8, 2.5))
+    fig2, ax_table = plt.subplots(figsize=pcfg.scaled(8, 2.5))
     ax_table.axis("off")
     table_data = []
     for m in metrics:
@@ -400,12 +401,10 @@ def plot_step_responses(
         cellLoc="center",
     )
     table.auto_set_font_size(False)
-    table.set_fontsize(10)
+    table.set_fontsize(9)
     table.scale(1.0, 1.5)
-    fig2.suptitle(f"Metrics — {joint_name}  (cf. Klein 2023, Table 4.2)", fontsize=11)
-    plt.tight_layout()
-    fig2.savefig(output_dir / f"metrics_{joint_name}.png", dpi=150)
-    plt.close(fig2)
+    pcfg.finalize(fig2, output_dir / f"metrics_{joint_name}.png",
+                  title=f"Metrics — {joint_name}  (cf. Klein 2023, Table 4.2)")
 
 
 def plot_comparison_with_thesis(all_metrics: dict[str, list[StepMetrics]], output_dir: Path) -> None:
@@ -417,8 +416,8 @@ def plot_comparison_with_thesis(all_metrics: dict[str, list[StepMetrics]], outpu
         "elbow_joint":   [39.1, 11.7, 12.1],    # 20°, 30°, 40°
     }
 
-    fig, axes = plt.subplots(1, 3, figsize=(14, 4.5))
-    fig.suptitle("NRMSE Comparison: Isaac Sim vs. Klein (2023) Gazebo Simulation", fontsize=12)
+    fig, axes = plt.subplots(1, 3, figsize=pcfg.scaled(14, 4.5))
+    _title = "NRMSE Comparison: Isaac Sim vs. Klein (2023) Gazebo Simulation"
 
     for ax, joint_name in zip(axes, ["wrist_y_joint", "wrist_x_joint", "elbow_joint"]):
         our_metrics = all_metrics.get(joint_name, [])
@@ -429,20 +428,19 @@ def plot_comparison_with_thesis(all_metrics: dict[str, list[StepMetrics]], outpu
         x = np.arange(len(amplitudes))
         width = 0.35
 
-        ax.bar(x - width / 2, thesis_vals[:len(x)], width, label="Klein 2023 (Gazebo)", color="#ff7f0e", alpha=0.8)
-        ax.bar(x + width / 2, our_nrmse[:len(x)], width, label="Isaac Sim (ours)", color="#1f77b4", alpha=0.8)
+        ax.bar(x - width / 2, thesis_vals[:len(x)], width, label="Klein 2023 (Gazebo)", color=pcfg.KLEIN_COLOR, alpha=0.8)
+        ax.bar(x + width / 2, our_nrmse[:len(x)], width, label="Isaac Sim (ours)", color=pcfg.PD_COLOR, alpha=0.8)
 
         ax.set_xlabel("Step Amplitude")
         ax.set_ylabel("NRMSE [%]")
         ax.set_title(joint_name.replace("_", " ").title())
         ax.set_xticks(x)
         ax.set_xticklabels([f"{a:.0f}°" for a in amplitudes])
-        ax.legend(fontsize=8)
-        ax.grid(axis="y", alpha=0.3)
+        ax.legend(fontsize=7)
+        ax.grid(axis="y")
+        pcfg.annotate_direction(ax, "lower is better", "down")
 
-    plt.tight_layout()
-    fig.savefig(output_dir / "nrmse_comparison.png", dpi=150)
-    plt.close(fig)
+    pcfg.finalize(fig, output_dir / "nrmse_comparison.png", title=_title)
 
 
 # ── Main simulation loop ─────────────────────────────────────────────────

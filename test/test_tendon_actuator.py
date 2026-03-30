@@ -228,3 +228,77 @@ class TestPhysicalPlausibility:
         expected_separation = 2 * math.pi / 3  # 120°
         for diff in angle_diffs:
             assert diff == pytest.approx(expected_separation, rel=0.01)
+
+
+# ── Physical model body-force geometry ────────────────────────────────────
+
+# Attachment offsets exported by the physical tendon action module
+ELBOW_ROOT_OFFSETS = [
+    [0.0, +0.0725, -0.34],
+    [0.0, -0.0725, -0.34],
+]
+ELBOW_FOREARM_OFFSETS = [
+    [0.0, +0.0725, -0.02],
+    [0.0, -0.0725, -0.02],
+]
+
+# Wrist Jacobian sub-block used by PhysicalTendonEffortAction
+WRIST_J_T = np.array([
+    [-0.013856, 0.0, +0.013856],
+    [+0.008,   -0.016, +0.008],
+], dtype=np.float64)
+
+
+class TestPhysicalBodyForceGeometry:
+
+    def test_that_root_offsets_are_symmetric(self) -> None:
+        """Left and right offsets should be mirror images across the XZ plane."""
+        left = np.array(ELBOW_ROOT_OFFSETS[0])
+        right = np.array(ELBOW_ROOT_OFFSETS[1])
+        np.testing.assert_allclose(left[0], right[0])
+        np.testing.assert_allclose(left[1], -right[1])
+        np.testing.assert_allclose(left[2], right[2])
+
+    def test_that_forearm_offsets_are_symmetric(self) -> None:
+        left = np.array(ELBOW_FOREARM_OFFSETS[0])
+        right = np.array(ELBOW_FOREARM_OFFSETS[1])
+        np.testing.assert_allclose(left[0], right[0])
+        np.testing.assert_allclose(left[1], -right[1])
+        np.testing.assert_allclose(left[2], right[2])
+
+    def test_that_root_lever_arm_matches_jacobian(self) -> None:
+        """Y-offset at root should equal the elbow Jacobian lever arm."""
+        y_lever = abs(ELBOW_ROOT_OFFSETS[0][1])
+        assert y_lever == pytest.approx(0.0725, rel=1e-6)
+
+    def test_that_forearm_lever_arm_matches_root(self) -> None:
+        """Y-offset at forearm should equal root Y-offset (same cable lateral distance)."""
+        y_root = abs(ELBOW_ROOT_OFFSETS[0][1])
+        y_forearm = abs(ELBOW_FOREARM_OFFSETS[0][1])
+        assert y_forearm == pytest.approx(y_root, rel=1e-6)
+
+    def test_that_zero_config_body_torque_matches_jacobian(self) -> None:
+        """At zero-configuration, the cross product r_forearm × F should recover
+        the constant-Jacobian elbow lever arm for a unit cable tension."""
+        # At zero config: cable direction ≈ (0, 0, +1) (forearm to root)
+        root = np.array(ELBOW_ROOT_OFFSETS[0])
+        forearm = np.array(ELBOW_FOREARM_OFFSETS[0])
+        cable_dir = root - forearm
+        cable_dir /= np.linalg.norm(cable_dir)
+        # Force = tension * cable_dir
+        tension = 1.0
+        force = tension * cable_dir
+        # Torque = r_forearm × F (about forearm body origin)
+        torque = np.cross(forearm, force)
+        # Magnitude of X-component should match the elbow lever arm
+        assert abs(torque[0]) == pytest.approx(0.0725, abs=0.005)
+
+    def test_that_wrist_jacobian_sub_block_matches_full_jacobian(self) -> None:
+        """Wrist J^T sub-block should be rows 1:3, cols 2:5 of the full Jacobian."""
+        np.testing.assert_allclose(WRIST_J_T, JACOBIAN_NP[1:3, 2:5], atol=1e-10)
+
+    def test_that_wrist_jacobian_equal_tensions_cancel_wrist_y(self) -> None:
+        """Equal tensions T2=T4 and T3=0 should produce zero wrist_y torque."""
+        tensions = np.array([10.0, 0.0, 10.0])
+        torques = WRIST_J_T @ tensions
+        assert torques[0] == pytest.approx(0.0, abs=1e-12)

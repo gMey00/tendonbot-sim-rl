@@ -14,6 +14,7 @@ a more user-friendly way.
 
 import argparse
 import sys
+from pathlib import Path
 
 from isaaclab.app import AppLauncher
 
@@ -78,6 +79,7 @@ import gymnasium as gym
 import logging
 import os
 import random
+import json
 from datetime import datetime
 
 import skrl
@@ -161,8 +163,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     agent_cfg["seed"] = args_cli.seed if args_cli.seed is not None else agent_cfg["seed"]
     env_cfg.seed = agent_cfg["seed"]
 
+    experiment_directory = agent_cfg["agent"]["experiment"]["directory"]
+    task_slug = args_cli.task.lower().replace("-play", "") if args_cli.task else "default"
+    if "reach" in task_slug and not experiment_directory.startswith("reach/"):
+        experiment_directory = str(Path("reach") / Path(experiment_directory).name)
+        agent_cfg["agent"]["experiment"]["directory"] = experiment_directory
+
     # specify directory for logging experiments
-    log_root_path = os.path.join("logs", "skrl", agent_cfg["agent"]["experiment"]["directory"])
+    log_root_path = os.path.join("logs", "skrl", experiment_directory)
     log_root_path = os.path.abspath(log_root_path)
     print(f"[INFO] Logging experiment in directory: {log_root_path}")
     # specify directory for logging runs: {time-stamp}_{run_name}
@@ -177,9 +185,26 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # update log_dir
     log_dir = os.path.join(log_root_path, log_dir)
 
+    status_file = os.path.join(log_dir, "run_status.json")
+
+    def write_run_status(status: str, extra: dict | None = None) -> None:
+        payload = {
+            "status": status,
+            "task": args_cli.task,
+            "target_timesteps": int(agent_cfg["trainer"]["timesteps"]),
+            "run_dir": log_dir,
+            "algorithm": algorithm,
+            "framework": args_cli.ml_framework,
+        }
+        if extra:
+            payload.update(extra)
+        with open(status_file, "w") as file:
+            json.dump(payload, file, indent=2)
+
     # dump the configuration into log-directory
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
     dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
+    write_run_status("running")
 
     # get checkpoint path (to resume training)
     resume_path = retrieve_file_path(args_cli.checkpoint) if args_cli.checkpoint else None
@@ -195,42 +220,52 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # set the log directory for the environment (works for all environment types)
     env_cfg.log_dir = log_dir
 
-    # create isaac environment
-    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
+    env = None
+    try:
+        # create isaac environment
+        env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
 
-    # convert to single-agent instance if required by the RL algorithm
-    if isinstance(env.unwrapped, DirectMARLEnv) and algorithm in ["ppo"]:
-        env = multi_agent_to_single_agent(env)
+        # convert to single-agent instance if required by the RL algorithm
+        if isinstance(env.unwrapped, DirectMARLEnv) and algorithm in ["ppo"]:
+            env = multi_agent_to_single_agent(env)
 
-    # wrap for video recording
-    if args_cli.video:
-        video_kwargs = {
-            "video_folder": os.path.join(log_dir, "videos", "train"),
-            "step_trigger": lambda step: step % args_cli.video_interval == 0,
-            "video_length": args_cli.video_length,
-            "disable_logger": True,
-        }
-        print("[INFO] Recording videos during training.")
-        print_dict(video_kwargs, nesting=4)
-        env = gym.wrappers.RecordVideo(env, **video_kwargs)
+        # wrap for video recording
+        if args_cli.video:
+            video_kwargs = {
+                "video_folder": os.path.join(log_dir, "videos", "train"),
+                "step_trigger": lambda step: step % args_cli.video_interval == 0,
+                "video_length": args_cli.video_length,
+                "disable_logger": True,
+            }
+            print("[INFO] Recording videos during training.")
+            print_dict(video_kwargs, nesting=4)
+            env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
-    # wrap around environment for skrl
-    env = SkrlVecEnvWrapper(env, ml_framework=args_cli.ml_framework)  # same as: `wrap_env(env, wrapper="auto")`
+        # wrap around environment for skrl
+        env = SkrlVecEnvWrapper(env, ml_framework=args_cli.ml_framework)  # same as: `wrap_env(env, wrapper="auto")`
 
-    # configure and instantiate the skrl runner
-    # https://skrl.readthedocs.io/en/latest/api/utils/runner.html
-    runner = Runner(env, agent_cfg)
+        # configure and instantiate the skrl runner
+        # https://skrl.readthedocs.io/en/latest/api/utils/runner.html
+        runner = Runner(env, agent_cfg)
 
-    # load checkpoint (if specified)
-    if resume_path:
-        print(f"[INFO] Loading model checkpoint from: {resume_path}")
-        runner.agent.load(resume_path)
+        # load checkpoint (if specified)
+        if resume_path:
+            print(f"[INFO] Loading model checkpoint from: {resume_path}")
+            runner.agent.load(resume_path)
 
-    # run training
-    runner.run()
-
-    # close the simulator
-    env.close()
+        # run training
+        runner.run()
+        write_run_status("completed")
+    except KeyboardInterrupt:
+        write_run_status("interrupted")
+        raise
+    except Exception as exc:
+        write_run_status("failed", {"error": str(exc)})
+        raise
+    finally:
+        # close the simulator
+        if env is not None:
+            env.close()
 
 
 if __name__ == "__main__":

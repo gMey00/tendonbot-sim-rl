@@ -37,7 +37,7 @@ ROBOTS: dict[str, RobotConfig] = {
             "elbow_joint", "wrist_y_joint", "wrist_x_joint",
         ),
         mount_height=2.30,
-        output_directory="outputs/workspace_analysis",
+        output_directory="outputs/workspace_analysis_tensegrity",
         mount_rotations={
             "down": (1.0, 0.0, 0.0, 0.0),
             "up": (0.0, 0.0, 1.0, 0.0),
@@ -80,7 +80,9 @@ DESIRED_WS_MIN = np.array([-0.05, -0.40, 0.80])
 DESIRED_WS_MAX = np.array([0.35, 0.95, 1.30])
 
 # Gripper tip offset along the EE body's local Z axis (metres).
-GRIPPER_TIP_OFFSET = (0.0, 0.0, 0.225)
+# Negative Z: tool_link_0's local +Z points toward the ceiling mount, so the
+# Robotiq fingertip (below the arm's TCP) is in the local -Z direction.
+GRIPPER_TIP_OFFSET = (0.0, 0.0, -0.225)
 
 
 # ── Sampling defaults ─────────────────────────────────────────────────────
@@ -91,7 +93,7 @@ DEFAULT_VOXEL_SIZE = 0.02
 DEFAULT_SLICE_THICKNESS = 0.05
 
 COLLISION_MIN_DISTANCE = 0.05
-COLLISION_ADJACENCY_SKIP = 1
+COLLISION_ADJACENCY_SKIP = 2
 
 
 # ── Visualisation metadata ────────────────────────────────────────────────

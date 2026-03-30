@@ -46,6 +46,11 @@ import numpy as np  # noqa: E402
 from matplotlib.colors import Normalize  # noqa: E402
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection  # noqa: E402
 
+import sys as _sys  # noqa: E402
+_sys.path.insert(0, str(Path(__file__).resolve().parents[4] / ".config"))
+import plot_config as pcfg  # noqa: E402
+pcfg.apply_style()
+
 from workspace_analysis_helper import (  # noqa: E402
     DESIRED_WS_MAX,
     DESIRED_WS_MIN,
@@ -176,7 +181,6 @@ def _add_heatmap(
     ax.set_ylabel(view.ylabel)
     ax.set_title(view.title)
     ax.set_aspect("equal", adjustable="box")
-    ax.grid(True, alpha=0.2)
 
 
 # ── Unified figure creation ──────────────────────────────────────────────
@@ -248,7 +252,8 @@ def create_workspace_figure(
 
     # ── Layout ────────────────────────────────────────────────────────
     fig = plt.figure(figsize=(20, 12))
-    fig.suptitle(figure_title, fontsize=14, fontweight="bold", y=0.98)
+    if pcfg.SHOW_TITLES and figure_title:
+        fig.suptitle(figure_title, y=0.98)
     gs = gridspec.GridSpec(
         2, 3, figure=fig,
         width_ratios=[1.3, 0.5, 0.5],
@@ -322,9 +327,7 @@ def create_workspace_figure(
         label=colorbar_label, location="right",
     )
 
-    plt.savefig(output_path, dpi=200, bbox_inches="tight")
-    plt.close()
-    print(f"  Saved {output_path}")
+    pcfg.finalize(fig, output_path, tight=False)
 
 
 # ── Main ──────────────────────────────────────────────────────────────────

@@ -339,6 +339,7 @@ def sample_workspace(
     sim: SimulationContext,
     scene: InteractiveScene,
     device: str,
+    mount_height: float = 2.30,
     filter_self_collisions: bool = True,
     collision_min_distance: float = 0.05,
     collision_adjacency_skip: int = 1,
@@ -347,6 +348,10 @@ def sample_workspace(
 
     Parameters
     ----------
+    mount_height : float
+        Height of the robot mount in env-local Z (metres).  The arm always
+        hangs below the mount, so any sample with Z >= mount_height is a
+        physics-solver artefact and is rejected.
     filter_self_collisions : bool
         When True, post-FK geometric body-distance checks discard
         samples where non-adjacent links are closer than
@@ -397,16 +402,21 @@ def sample_workspace(
         scene.update(dt)
 
         # ── Self-collision mask (geometric body-distance check) ─────
-        if filter_self_collisions:
-            collision_free = compute_self_collision_mask(
-                robot.data.body_pos_w,
-                adjacency_skip=collision_adjacency_skip,
-                min_distance=collision_min_distance,
-            )
-            collision_free_np = collision_free.cpu().numpy()
-            total_collision_filtered += int((~collision_free).sum().item())
-        else:
-            collision_free_np = np.ones(num_envs, dtype=bool)
+        # NOTE: disabled — the geometric body-distance check does not work
+        # reliably for the reworked tensegrity model; PhysX articulation
+        # self-collision is handled via the USD articulation settings instead.
+        # if filter_self_collisions:
+        #     arm_body_pos = robot.data.body_pos_w[:, :ee_body_index + 1, :]
+        #     collision_free = compute_self_collision_mask(
+        #         arm_body_pos,
+        #         adjacency_skip=collision_adjacency_skip,
+        #         min_distance=collision_min_distance,
+        #     )
+        #     collision_free_np = collision_free.cpu().numpy()
+        #     total_collision_filtered += int((~collision_free).sum().item())
+        # else:
+        #     collision_free_np = np.ones(num_envs, dtype=bool)
+        collision_free_np = np.ones(num_envs, dtype=bool)
 
         ee_world = robot.data.body_pos_w[:, ee_body_index, :3]
         ee_quat = robot.data.body_quat_w[:, ee_body_index, :]
@@ -415,6 +425,34 @@ def sample_workspace(
         )
         tip_world = ee_world + tip_offset_world
         batch_positions = (tip_world - env_origins).cpu().numpy()
+
+        # Reject physics-divergent samples using physically motivated bounds.
+        #
+        # Three independent constraints, each derived from the kinematic chain:
+        #
+        #  1. dist_from_mount < 2.2 m
+        #     Triangle-inequality bound: arm_root_travel(≤0.707) + arm_length(1.197)
+        #     = 1.904 m max reach from mount; 2.2 m provides 15% margin.
+        #
+        #  2. Z < mount_height
+        #     Arm always hangs BELOW the ceiling mount.  Any sample at or above
+        #     mount height is a solver-convergence artefact.
+        #
+        #  3. |Y| < base_y_max + arm_length = 0.5 + 1.197 = 1.70 m
+        #     The base Y axis is the only source of lateral motion; the arm can
+        #     add at most arm_length further in Y.  This catches artefacts that
+        #     sit close to mount height in Z (making dist_from_mount plausible)
+        #     but at impossible Y displacements (e.g. Y=2 m with arm only 1.2 m).
+        #
+        # mount_pos in env-local frame = (0.15, 0.0, mount_height)
+        mount_local = np.array([0.15, 0.0, mount_height], dtype=np.float32)
+        dist_from_mount = np.linalg.norm(batch_positions - mount_local, axis=1)
+        physics_valid = (
+            (dist_from_mount < 2.2)
+            & (batch_positions[:, 2] < mount_height)
+            & (np.abs(batch_positions[:, 1]) < 1.7)
+        )
+        collision_free_np &= physics_valid
 
         batch_yoshikawa: np.ndarray
         batch_condition: np.ndarray
@@ -514,6 +552,9 @@ def print_statistics(
     _log("WORKSPACE ANALYSIS RESULTS")
     _log(f"{'=' * 70}")
     _log(f"  Total FK samples : {len(positions):,}")
+    if len(positions) == 0:
+        _log("  WARNING: No samples survived filtering. Cannot compute statistics.")
+        return
     _log(f"  X range          : [{positions[:, 0].min():.4f}, {positions[:, 0].max():.4f}] m")
     _log(f"  Y range          : [{positions[:, 1].min():.4f}, {positions[:, 1].max():.4f}] m")
     _log(f"  Z range          : [{positions[:, 2].min():.4f}, {positions[:, 2].max():.4f}] m")
@@ -641,7 +682,14 @@ def main() -> None:
         pos=(0.15, 0.0, mount_height),
         rot=mount_rotation,
     )
-    if robot_choice == "ur10e":
+    if robot_choice == "tensegrity":
+        from tensegrity_pick.robots import TENS_5DOF_GRIPPER_CFG
+
+        scene_cfg.robot = TENS_5DOF_GRIPPER_CFG.replace(
+            prim_path="{ENV_REGEX_NS}/Robot",
+            init_state=init_state,
+        )
+    elif robot_choice == "ur10e":
         from tensegrity_pick.robots import UR10E_GRIPPER_CFG
 
         scene_cfg.robot = UR10E_GRIPPER_CFG.replace(
@@ -656,7 +704,7 @@ def main() -> None:
             init_state=init_state,
         )
     else:
-        scene_cfg.robot = scene_cfg.robot.replace(init_state=init_state)
+        raise ValueError(f"Unknown robot: {robot_choice!r}")
 
     scene = InteractiveScene(scene_cfg)
 
@@ -696,6 +744,7 @@ def main() -> None:
     positions, yoshikawa, condition = sample_workspace(
         robot, ee_body_index, joint_ids, env_origins,
         num_samples, num_envs, sim, scene, device,
+        mount_height=mount_height,
         collision_min_distance=COLLISION_MIN_DISTANCE,
         collision_adjacency_skip=COLLISION_ADJACENCY_SKIP,
     )

@@ -38,6 +38,30 @@ import tensegrity_pick.tasks  # noqa: F401
 
 from isaaclab.utils.math import quat_apply
 
+# ── Reference data from res/Tensegrity/README.md ────────────────────────
+# Body-frame Z-offsets from root_link (CAD Z-down convention).
+# Expected world-Z of a link = mount_z + base_z_value + arm_offset.
+#
+# Note: forearm_link body frame sits at the elbow_joint (−0.430 m),
+#       NOT at the forearm mesh origin (−0.4975 m).
+# Note: In the 5-DOF model, "tool_link" is the linear-base output frame
+#       (at root level).  The arm TCP is tool_link_0 (gripper base).
+ARM_REFERENCE_LINKS: dict[str, float] = {
+    "root_link":                0.000,    # LO 0
+    "forearm_link":            -0.430,    # elbow_joint (LO 1)
+    "wrist_intermediate_link": -0.836,    # wrist joints (LO 3)
+    "wrist_link":              -0.836,    # wrist joints (LO 3)
+    "tool_link_0":             -0.972,    # arm TCP / gripper base (LO 4)
+}
+# Gripper offsets from tool_link_0 (README § Gripper Offsets).
+# Sign: NEGATIVE local Z projects world-downward (toward cube) because
+# tool_link_0 has identity quaternion in the new model (local +Z = world +Z).
+GRASP_CENTER_LOCAL_Z = -0.1925
+FINGER_TIP_OPEN_Z = -0.215
+FINGER_TIP_CLOSED_Z = -0.235
+# Total arm length root → TCP (README § Key Dimensions)
+ARM_LENGTH_ROOT_TO_TCP_M = 0.972
+
 
 def main() -> None:
     env_cfg = parse_env_cfg(
@@ -78,6 +102,31 @@ def main() -> None:
                   f"  local=({local[0]:.4f}, {local[1]:.4f}, {local[2]:.4f})",
                   flush=True)
 
+        # ── Reference validation ─────────────────────────────────────
+        # Compare measured link Z-positions against the design values
+        # from res/Tensegrity/README.md.
+        # Expected world-Z = mount_z + base_z_value + arm_local_z_offset
+        mount_z = robot.data.root_pos_w[0][2].item()
+        base_z_val = 0.0
+        if "base_z_joint" in joint_names:
+            base_z_val = joint_pos[joint_names.index("base_z_joint")].item()
+
+        print("\n=== REFERENCE vs MEASURED (README link origins) ===", flush=True)
+        print(f"  mount_z={mount_z:.4f}  base_z_joint={base_z_val:.6f}", flush=True)
+        print(f"  {'Link':<30s}  {'Expected Z':>10s}  {'Measured Z':>10s}  {'Delta':>10s}",
+              flush=True)
+        for ref_name, arm_z in ARM_REFERENCE_LINKS.items():
+            expected_z = mount_z + base_z_val + arm_z
+            if ref_name in body_names:
+                idx = body_names.index(ref_name)
+                measured_z = (body_pos[idx] - env_origin)[2].item()
+                delta = measured_z - expected_z
+                print(f"  {ref_name:<30s}  {expected_z:>10.4f}  {measured_z:>10.4f}  {delta:>+10.4f}",
+                      flush=True)
+            else:
+                print(f"  {ref_name:<30s}  {expected_z:>10.4f}  {'(missing)':>10s}  {'n/a':>10s}",
+                      flush=True)
+
         # ── tool_link_0 with projected offsets ───────────────────────
         tool_idx = (body_names.index("tool_link_0")
                     if "tool_link_0" in body_names else None)
@@ -93,12 +142,7 @@ def main() -> None:
             print(f"  quat  : ({tool_quat[0]:.4f}, {tool_quat[1]:.4f},"
                   f" {tool_quat[2]:.4f}, {tool_quat[3]:.4f})", flush=True)
 
-            # Positive offsets → world-downward for ceiling mount
-            GRASP_CENTER_LOCAL_Z = 0.1925
-            FINGER_TIP_OPEN_Z = 0.215
-            FINGER_TIP_CLOSED_Z = 0.235
-
-            print("  --- projected offsets (positive = world-downward) ---",
+            print("  --- projected offsets (negative local Z = world-downward) ---",
                   flush=True)
             for label, offset_z in [
                 ("grasp_center", GRASP_CENTER_LOCAL_Z),

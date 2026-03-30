@@ -1,0 +1,97 @@
+<?xml version="1.0" ?>
+
+<robot name="twodof_wrist">
+
+  <link name="root_link">
+    <visual>
+      <geometry>
+        <mesh filename="/home/robot/studentische-arbeiten/res/Tensegrity/meshes/mini_wrist_upper.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="grey">
+        <color rgba="0.5 0.5 0.5 0.9"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <mesh filename="/home/robot/studentische-arbeiten/res/Tensegrity/meshes/mini_wrist_upper.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.589141"/>
+      <origin rpy="0 0 0" xyz="-0.000612 0.001936 -0.026808"/>
+      <inertia ixx="0.000548" ixy="1.5668697e-05" ixz="-5.67882e-06"
+               iyy="0.0004876" iyz="1.7411879e-05"
+               izz="0.0007464"/>
+    </inertial>
+  </link>
+
+   <joint name="wrist_x_joint" type="revolute">
+    <parent link="root_link"/>
+    <child link="wrist_intermediate_link"/>
+    <axis xyz="1 0 0"/>
+    <origin rpy="0 0 3.14" xyz="0 0 -0.042"/>
+    <limit effort="10.0" lower="-0.8" upper="0.8" velocity="0.5"/>
+    <dynamics damping="0.01" friction="0.04"/>
+    <!-- damping="0.0036" friction="0.002"-->
+  </joint> 
+
+  <link name="wrist_intermediate_link">
+    <inertial>
+      <mass value="0.0001"/>
+      <inertia ixx="1e-6" ixy="0" ixz="0"
+               iyy="1e-6" iyz="0"
+               izz="1e-6"/>
+    </inertial>
+  </link>
+
+  <joint name="wrist_y_joint" type="revolute">
+    <parent link="wrist_intermediate_link"/>
+    <child link="wrist_lower_link"/>
+    <axis xyz="0 1 0"/>
+    <origin rpy="0 0 0" xyz="0 0 0"/>
+    <limit effort="10.0" lower="-0.8" upper="0.8" velocity="0.5"/>
+    <dynamics damping="0.01" friction="0.04"/>
+    <!-- damping="0.0036" friction="0.002"-->
+  </joint>  
+
+  <link name="wrist_lower_link">
+<visual>
+      <geometry>
+        <mesh filename="/home/robot/studentische-arbeiten/res/Tensegrity/meshes/mini_wrist_lower.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="grey">
+        <color rgba="0.5 0.5 0.5 1"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <mesh filename="/home/robot/studentische-arbeiten/res/Tensegrity/meshes/mini_wrist_lower.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.13176"/>
+      <origin rpy="0 0 0" xyz="-0.000339 -0.000211 -0.048536"/>
+      <inertia ixx="6.7706532e-05" ixy="-2.11421e-07" ixz="1.69809e-07"
+               iyy="6.7942812e-05" iyz="2.28913e-07"
+               izz="6.6394356e-05"/>
+    </inertial>
+  </link>
+
+  <joint name="wrist_tool_fixed_joint" type="fixed">
+    <origin rpy="3.14 0 2.616" xyz="0 0 -0.062"/>
+    <parent link="wrist_lower_link"/>
+    <child link="tool_link"/>
+  </joint>  
+
+ <link name="tool_link">
+    <inertial>
+      <mass value="0.0001"/>
+      <inertia ixx="1e-6" ixy="0" ixz="0"
+               iyy="1e-6" iyz="0"
+               izz="1e-6"/>
+    </inertial>
+    <!-- no <visual>, no <collision> -->
+  </link>
+
+</robot>
+

@@ -16,7 +16,6 @@ directory under ``logs/skrl/cube_sort/``.
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
@@ -27,6 +26,12 @@ import numpy as np
 from tensorboard.backend.event_processing.event_accumulator import (
     EventAccumulator,
 )
+
+import sys
+from pathlib import Path as _Path
+sys.path.insert(0, str(_Path(__file__).resolve().parents[3] / ".config"))
+import plot_config as pcfg
+pcfg.apply_style()
 
 
 # ---------------------------------------------------------------------------
@@ -42,28 +47,20 @@ FIGURES_DIR: Final = Path(
 CURRICULUM_REGULARISATION_STEP: Final = 200_000
 
 SMOOTHING_WEIGHT: Final = 0.92  # EMA smoothing factor for noisy curves
-DPI: Final = 180
+
+
+# Semantic colour aliases for this task
+_C_BLUE = pcfg.FAPS_BLUE
+_C_GREEN = pcfg.FAPS_GREEN
+_C_AMBER = pcfg.AMBER
+_C_RED = pcfg.MUTED_RED
+_C_PURPLE = pcfg.PURPLE
+_C_TEAL = pcfg.TEAL
+_C_GREY = pcfg.FAPS_DARK_GREY
+_C_ORANGE = pcfg.DARK_ORANGE
+_C_DARK = "#333333"
+
 FIGSIZE_WIDE: Final = (11, 4.5)
-
-
-# ---------------------------------------------------------------------------
-# Colour palette (colourblind-friendly, adapted from Tol Bright)
-# ---------------------------------------------------------------------------
-
-@dataclass(frozen=True)
-class Palette:
-    blue: str = "#4477AA"
-    cyan: str = "#66CCEE"
-    green: str = "#228833"
-    yellow: str = "#CCBB44"
-    red: str = "#EE6677"
-    purple: str = "#AA3377"
-    grey: str = "#BBBBBB"
-    orange: str = "#EE8866"
-    dark: str = "#333333"
-
-
-PALETTE = Palette()
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +103,7 @@ def add_curriculum_markers(axis: plt.Axes) -> None:
     """Add vertical dashed lines for curriculum events."""
     axis.axvline(
         steps_to_k(CURRICULUM_REGULARISATION_STEP),
-        color=PALETTE.grey,
+        color=_C_GREY,
         linestyle="--",
         linewidth=0.9,
         alpha=0.7,
@@ -123,7 +120,7 @@ def annotate_curriculum(axis: plt.Axes, y_frac: float = 0.95) -> None:
         " Reg. ramp",
         transform=transform,
         fontsize=7.5,
-        color=PALETTE.grey,
+        color=_C_GREY,
         va="top",
         ha="left",
         alpha=0.85,
@@ -139,13 +136,11 @@ def finalise(
     figure: plt.Figure,
     path: Path,
     tight: bool = True,
+    *,
+    title: str | None = None,
 ) -> None:
     """Save figure and close."""
-    if tight:
-        figure.tight_layout()
-    figure.savefig(path, dpi=DPI, bbox_inches="tight", facecolor="white")
-    plt.close(figure)
-    print(f"  ✓ {path.name}")
+    pcfg.finalize(figure, path, title=title, tight=tight)
 
 
 # ---------------------------------------------------------------------------
@@ -169,21 +164,21 @@ def plot_total_reward(
         smooth(values_min, 0.85),
         smooth(values_max, 0.85),
         alpha=0.15,
-        color=PALETTE.blue,
+        color=_C_BLUE,
         linewidth=0,
     )
-    ax.plot(x, smooth(values_mean), color=PALETTE.blue, linewidth=1.8, label="Mean")
-    ax.plot(x, smooth(values_max, 0.85), color=PALETTE.blue, linewidth=0.6, alpha=0.5, linestyle="--", label="Max")
-    ax.plot(x, smooth(values_min, 0.85), color=PALETTE.blue, linewidth=0.6, alpha=0.5, linestyle=":", label="Min")
+    ax.plot(x, smooth(values_mean), color=_C_BLUE, linewidth=1.8, label="Mean")
+    ax.plot(x, smooth(values_max, 0.85), color=_C_BLUE, linewidth=0.6, alpha=0.5, linestyle="--", label="Max")
+    ax.plot(x, smooth(values_min, 0.85), color=_C_BLUE, linewidth=0.6, alpha=0.5, linestyle=":", label="Min")
 
     add_curriculum_markers(ax)
     annotate_curriculum(ax)
 
-    ax.set_xlabel("Training Steps (×1 000)", fontsize=10)
-    ax.set_ylabel("Episode Return", fontsize=10)
-    ax.set_title("Total Episode Reward", fontsize=12, fontweight="bold")
-    ax.legend(loc="lower right", fontsize=9, framealpha=0.9)
-    ax.grid(True, alpha=0.3)
+    ax.set_xlabel("Training Steps (×1 000)")
+    ax.set_ylabel("Episode Return")
+    ax.set_title("Total Episode Reward", )
+    ax.legend(loc="lower right", framealpha=0.9)
+    # grid from style
     ax.set_xlim(left=0)
 
     finalise(fig, output)
@@ -205,12 +200,12 @@ def plot_task_success(
     ax_left.plot(
         steps_to_k(steps_grasp),
         smooth(values_grasp * 100),
-        color=PALETTE.green,
+        color=_C_GREEN,
         linewidth=1.8,
         label="Grasp Rate (%)",
     )
-    ax_left.set_ylabel("Grasp Rate (%)", fontsize=10, color=PALETTE.green)
-    ax_left.tick_params(axis="y", labelcolor=PALETTE.green)
+    ax_left.set_ylabel("Grasp Rate (%)", fontsize=10, color=_C_GREEN)
+    ax_left.tick_params(axis="y", labelcolor=_C_GREEN)
     ax_left.set_ylim(-5, 105)
 
     # Placed count (right axis)
@@ -218,7 +213,7 @@ def plot_task_success(
         ax_right.plot(
             steps_to_k(steps_placed),
             smooth(values_placed),
-            color=PALETTE.blue,
+            color=_C_BLUE,
             linewidth=1.8,
             label="Mean Targets Placed",
         )
@@ -226,13 +221,13 @@ def plot_task_success(
         ax_right.plot(
             steps_to_k(steps_missed),
             smooth(values_missed),
-            color=PALETTE.red,
+            color=_C_RED,
             linewidth=1.8,
             linestyle="--",
             label="Mean Targets Missed",
         )
-    ax_right.set_ylabel("Count per Episode", fontsize=10, color=PALETTE.blue)
-    ax_right.tick_params(axis="y", labelcolor=PALETTE.blue)
+    ax_right.set_ylabel("Count per Episode", fontsize=10, color=_C_BLUE)
+    ax_right.tick_params(axis="y", labelcolor=_C_BLUE)
 
     add_curriculum_markers(ax_left)
     annotate_curriculum(ax_left)
@@ -248,9 +243,9 @@ def plot_task_success(
         framealpha=0.9,
     )
 
-    ax_left.set_xlabel("Training Steps (×1 000)", fontsize=10)
-    ax_left.set_title("Task Success Metrics", fontsize=12, fontweight="bold")
-    ax_left.grid(True, alpha=0.3)
+    ax_left.set_xlabel("Training Steps (×1 000)")
+    ax_left.set_title("Task Success Metrics", )
+    # grid from style
     ax_left.set_xlim(left=0)
 
     finalise(fig, output)
@@ -262,14 +257,14 @@ def plot_reward_decomposition(
 ) -> None:
     """Fig 3 — Sequential skill acquisition shown through reward components."""
     reward_terms: list[tuple[str, str, str]] = [
-        ("Info / Episode_Reward/reaching_object", "Reach (coarse)", PALETTE.cyan),
-        ("Info / Episode_Reward/reaching_object_fine", "Reach (fine)", PALETTE.blue),
-        ("Info / Episode_Reward/grasping", "Grasp", PALETTE.yellow),
-        ("Info / Episode_Reward/lifting_object", "Lift", PALETTE.orange),
-        ("Info / Episode_Reward/height_bonus", "Height", PALETTE.red),
-        ("Info / Episode_Reward/goal_tracking", "Transport", PALETTE.green),
-        ("Info / Episode_Reward/goal_tracking_fine", "Transport (fine)", PALETTE.dark),
-        ("Info / Episode_Reward/release", "Release", PALETTE.purple),
+        ("Info / Episode_Reward/reaching_object", "Reach (coarse)", _C_TEAL),
+        ("Info / Episode_Reward/reaching_object_fine", "Reach (fine)", _C_BLUE),
+        ("Info / Episode_Reward/grasping", "Grasp", _C_AMBER),
+        ("Info / Episode_Reward/lifting_object", "Lift", _C_ORANGE),
+        ("Info / Episode_Reward/height_bonus", "Height", _C_RED),
+        ("Info / Episode_Reward/goal_tracking", "Transport", _C_GREEN),
+        ("Info / Episode_Reward/goal_tracking_fine", "Transport (fine)", _C_DARK),
+        ("Info / Episode_Reward/release", "Release", _C_PURPLE),
     ]
 
     fig, axes = plt.subplots(
@@ -291,21 +286,16 @@ def plot_reward_decomposition(
 
         ax.set_ylabel(label, fontsize=9, fontweight="bold", rotation=0, labelpad=70, ha="right")
         ax.tick_params(axis="y", labelsize=8)
-        ax.grid(True, alpha=0.2)
+        # grid from style
         ax.set_xlim(left=0)
 
         ax.yaxis.set_major_locator(plt.MaxNLocator(3))
 
-    axes[-1].set_xlabel("Training Steps (×1 000)", fontsize=10)
-    fig.suptitle(
-        "Reward Decomposition — Sequential Skill Acquisition",
-        fontsize=12,
-        fontweight="bold",
-        y=0.98,
-    )
+    axes[-1].set_xlabel("Training Steps (×1 000)")
     fig.subplots_adjust(hspace=0.15)
 
-    finalise(fig, output, tight=False)
+    finalise(fig, output, tight=False,
+             title="Reward Decomposition — Sequential Skill Acquisition")
 
 
 def plot_penalties(
@@ -314,12 +304,12 @@ def plot_penalties(
 ) -> None:
     """Fig 4 — Penalty and regularisation terms with curriculum markers."""
     penalty_terms: list[tuple[str, str, str]] = [
-        ("Info / Episode_Reward/base_velocity", "Base Velocity", PALETTE.blue),
-        ("Info / Episode_Reward/cube_off_conveyor", "Cube Off Conveyor", PALETTE.red),
-        ("Info / Episode_Reward/belt_contact", "Belt Contact", PALETTE.purple),
-        ("Info / Episode_Reward/action_rate", "Action Rate", PALETTE.cyan),
-        ("Info / Episode_Reward/joint_vel", "Joint Velocity", PALETTE.grey),
-        ("Info / Episode_Reward/joint_torque", "Joint Torque", PALETTE.yellow),
+        ("Info / Episode_Reward/base_velocity", "Base Velocity", _C_BLUE),
+        ("Info / Episode_Reward/cube_off_conveyor", "Cube Off Conveyor", _C_RED),
+        ("Info / Episode_Reward/belt_contact", "Belt Contact", _C_PURPLE),
+        ("Info / Episode_Reward/action_rate", "Action Rate", _C_TEAL),
+        ("Info / Episode_Reward/joint_vel", "Joint Velocity", _C_GREY),
+        ("Info / Episode_Reward/joint_torque", "Joint Torque", _C_AMBER),
     ]
 
     fig, ax = plt.subplots(figsize=FIGSIZE_WIDE)
@@ -333,11 +323,11 @@ def plot_penalties(
     add_curriculum_markers(ax)
     annotate_curriculum(ax, y_frac=0.08)
 
-    ax.set_xlabel("Training Steps (×1 000)", fontsize=10)
-    ax.set_ylabel("Episode Penalty", fontsize=10)
-    ax.set_title("Penalties & Regularisation", fontsize=12, fontweight="bold")
+    ax.set_xlabel("Training Steps (×1 000)")
+    ax.set_ylabel("Episode Penalty")
+    ax.set_title("Penalties & Regularisation", )
     ax.legend(loc="lower left", fontsize=8, framealpha=0.9, ncol=2)
-    ax.grid(True, alpha=0.3)
+    # grid from style
     ax.set_xlim(left=0)
 
     finalise(fig, output)
@@ -353,51 +343,44 @@ def plot_policy_diagnostics(
     # (a) Policy std
     ax = axes[0, 0]
     steps, values = load_scalars(accumulator, "Policy / Standard deviation")
-    ax.plot(steps_to_k(steps), smooth(values), color=PALETTE.blue, linewidth=1.4)
+    ax.plot(steps_to_k(steps), smooth(values), color=_C_BLUE, linewidth=1.4)
     add_curriculum_markers(ax)
-    ax.set_title("Policy Std. Deviation", fontsize=10, fontweight="bold")
-    ax.set_ylabel("σ", fontsize=10)
-    ax.grid(True, alpha=0.3)
+    ax.set_title("Policy Std. Deviation", )
+    ax.set_ylabel("σ")
+    # grid from style
 
     # (b) Policy loss
     ax = axes[0, 1]
     steps, values = load_scalars(accumulator, "Loss / Policy loss")
-    ax.plot(steps_to_k(steps), smooth(values), color=PALETTE.green, linewidth=1.4)
+    ax.plot(steps_to_k(steps), smooth(values), color=_C_GREEN, linewidth=1.4)
     add_curriculum_markers(ax)
-    ax.set_title("Policy (Surrogate) Loss", fontsize=10, fontweight="bold")
-    ax.grid(True, alpha=0.3)
+    ax.set_title("Policy (Surrogate) Loss", )
+    # grid from style
 
     # (c) Value loss
     ax = axes[1, 0]
     steps, values = load_scalars(accumulator, "Loss / Value loss")
-    ax.plot(steps_to_k(steps), smooth(values), color=PALETTE.orange, linewidth=1.4)
+    ax.plot(steps_to_k(steps), smooth(values), color=_C_ORANGE, linewidth=1.4)
     add_curriculum_markers(ax)
-    ax.set_title("Value Function Loss", fontsize=10, fontweight="bold")
-    ax.set_xlabel("Steps (×1 000)", fontsize=10)
-    ax.set_ylabel("MSE", fontsize=10)
-    ax.grid(True, alpha=0.3)
+    ax.set_title("Value Function Loss", )
+    ax.set_xlabel("Steps (×1 000)")
+    ax.set_ylabel("MSE")
+    # grid from style
 
     # (d) Learning rate
     ax = axes[1, 1]
     steps, values = load_scalars(accumulator, "Learning / Learning rate")
-    ax.plot(steps_to_k(steps), values, color=PALETTE.purple, linewidth=1.4)
+    ax.plot(steps_to_k(steps), values, color=_C_PURPLE, linewidth=1.4)
     add_curriculum_markers(ax)
-    ax.set_title("Learning Rate (KL-adaptive)", fontsize=10, fontweight="bold")
-    ax.set_xlabel("Steps (×1 000)", fontsize=10)
-    ax.grid(True, alpha=0.3)
+    ax.set_title("Learning Rate (KL-adaptive)", )
+    ax.set_xlabel("Steps (×1 000)")
+    # grid from style
 
     for row in axes:
         for a in row:
             a.set_xlim(left=0)
 
-    fig.suptitle(
-        "Policy & Training Diagnostics",
-        fontsize=12,
-        fontweight="bold",
-        y=1.01,
-    )
-
-    finalise(fig, output)
+    finalise(fig, output, title="Policy & Training Diagnostics")
 
 
 def plot_converged_summary(
@@ -446,11 +429,11 @@ def plot_converged_summary(
 
     # Positive rewards
     y_pos = np.arange(len(reward_labels))
-    bars_r = ax_r.barh(y_pos, reward_values, color=PALETTE.green, alpha=0.8, height=0.65)
+    bars_r = ax_r.barh(y_pos, reward_values, color=_C_GREEN, alpha=0.8, height=0.65)
     ax_r.set_yticks(y_pos)
-    ax_r.set_yticklabels(reward_labels, fontsize=9)
-    ax_r.set_xlabel("Mean Episode Reward (last 10%)", fontsize=9)
-    ax_r.set_title("Reward Components", fontsize=10, fontweight="bold")
+    ax_r.set_yticklabels(reward_labels)
+    ax_r.set_xlabel("Mean Episode Reward (last 10%)")
+    ax_r.set_title("Reward Components", )
     ax_r.grid(True, alpha=0.3, axis="x")
     ax_r.invert_yaxis()
 
@@ -461,16 +444,16 @@ def plot_converged_summary(
             f"{val:.2f}",
             va="center",
             fontsize=8,
-            color=PALETTE.dark,
+            color=_C_DARK,
         )
 
     # Penalties (negative values)
     y_neg = np.arange(len(penalty_labels))
-    bars_p = ax_p.barh(y_neg, penalty_values, color=PALETTE.red, alpha=0.8, height=0.65)
+    bars_p = ax_p.barh(y_neg, penalty_values, color=_C_RED, alpha=0.8, height=0.65)
     ax_p.set_yticks(y_neg)
-    ax_p.set_yticklabels(penalty_labels, fontsize=9)
-    ax_p.set_xlabel("Mean Episode Penalty (last 10%)", fontsize=9)
-    ax_p.set_title("Penalty Components", fontsize=10, fontweight="bold")
+    ax_p.set_yticklabels(penalty_labels)
+    ax_p.set_xlabel("Mean Episode Penalty (last 10%)")
+    ax_p.set_title("Penalty Components", )
     ax_p.grid(True, alpha=0.3, axis="x")
     ax_p.invert_yaxis()
 
@@ -483,16 +466,10 @@ def plot_converged_summary(
             va="center",
             ha="left" if val >= 0 else "right",
             fontsize=8,
-            color=PALETTE.dark,
+            color=_C_DARK,
         )
 
-    fig.suptitle(
-        "Converged Reward Breakdown",
-        fontsize=12,
-        fontweight="bold",
-    )
-
-    finalise(fig, output)
+    finalise(fig, output, title="Converged Reward Breakdown")
 
 
 # ---------------------------------------------------------------------------

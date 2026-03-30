@@ -1,21 +1,23 @@
 """Tendon model step-response validation for the tensegrity arm.
 
-Replicates the Klein (2023) §4.2–§4.3 experimental methodology using
-the ``TENS_3DOF_TENDON_CFG`` (IdealPDActuator with K=0, D=0):
+Supports two model variants (``--variant``):
+
+* **elbow_approx** (original) — single revolute elbow joint, Jacobian-
+  transpose tension mapping, ``TENS_3DOF_TENDON_CFG``.
+* **physical** (default) — antiparallelogram 4-bar linkage, elbow tendons
+  applied as body forces at cable attachment points,
+  ``TENS_3DOF_PHYSICAL_TENDON_CFG``.
+
+Control loop for both variants:
 
 1. A PID position controller converts angle set-points to desired torques.
 2. Gravity compensation is added (Mukherjee et al., thesis [85]).
-3. The Jacobian transpose maps torques to 5 tendon tensions.
-4. Tensions are converted back to joint torques (τ = J^T · T) and
-   applied via ``set_joint_effort_target``.
-5. Joint angles and tendon tensions are recorded and compared against
-   Klein's Gazebo simulation NRMSE reference values (Table 4.2).
-
-Reported metrics (per joint, per step amplitude):
-  - Rise time  (10 % → 90 % of target)
-  - Overshoot  (% above target)
-  - Settling time  (last exit from 2 % band)
-  - RMSE / NRMSE
+3. Torques are distributed to tendon tensions.
+4. Tensions are applied to the simulation:
+   - elbow_approx: J^T → ``set_joint_effort_target``
+   - physical: body forces on root_link / forearm_link for elbow,
+     wrist J^T → ``set_joint_effort_target`` for wrist
+5. Joint angles / tendon tensions are recorded and evaluated.
 
 Usage
 -----
@@ -23,7 +25,7 @@ Usage
 
     cd /path/to/tensegrity_pick
     conda run -n env_isaaclab python3 scripts/model_validation/run_step_response_tendon.py \\
-        --headless [--num_envs 1]
+        --variant physical --headless [--num_envs 1]
 
 References
 ----------
@@ -49,7 +51,12 @@ parser = argparse.ArgumentParser(description="Tendon model step-response validat
 parser.add_argument("--num_envs", type=int, default=1)
 parser.add_argument(
     "--output_dir", type=str, default=None,
-    help="Override output directory (default: outputs/model_validation/tendon/data)",
+    help="Override output directory (default depends on --variant)",
+)
+parser.add_argument(
+    "--variant", type=str, default="physical",
+    choices=["physical", "elbow_approx"],
+    help="Model variant to validate (default: physical)",
 )
 AppLauncher.add_app_launcher_args(parser)
 args_cli, _unknown = parser.parse_known_args()
@@ -68,31 +75,49 @@ from isaaclab.sim import SimulationContext                                   # n
 from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg  # noqa: E402
 from isaaclab.utils import configclass                                       # noqa: E402
 
-from tensegrity_pick.robots.tendon_robot_cfg import TENS_3DOF_TENDON_CFG    # noqa: E402
+from tensegrity_pick.robots.tendon_robot_cfg import (                        # noqa: E402
+    TENS_3DOF_TENDON_CFG,
+    TENS_3DOF_PHYSICAL_TENDON_CFG,
+)
+from isaaclab.utils.math import quat_apply                                   # noqa: E402
+
+# ── Variant flag ───────────────────────────────────────────────────────────────
+_IS_PHYSICAL = args_cli.variant == "physical"
 
 # ── Scene configuration ────────────────────────────────────────────────────────
 
-_ARM_JOINTS = ["elbow_joint", "wrist_y_joint", "wrist_x_joint"]
+_ELBOW_APPROX_ARM_JOINTS = ["elbow_joint", "wrist_y_joint", "wrist_x_joint"]
+_PHYSICAL_ARM_JOINTS = [
+    "rod_left_joint", "rod_right_joint", "coupler_left_joint",
+    "wrist_y_joint", "wrist_x_joint",
+]
+_WRIST_JOINTS = ["wrist_y_joint", "wrist_x_joint"]
 
-# Override init_state to mount the arm at z = 1.0 m (above ground plane).
-# Uses TENS_3DOF_TENDON_CFG which has IdealPDActuatorCfg(K=0, D=0) —
-# i.e. effort passthrough: joint torques are set externally each step.
-# fix_root_link=True is required: threedof_manipulator.usd has no baked fixed joint,
-# so without it the base floats and falls under gravity in a standalone scene.
-_TENDON_ROBOT_CFG = TENS_3DOF_TENDON_CFG.replace(
-    init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 1.0),
-        joint_pos={j: 0.0 for j in _ARM_JOINTS},
-    ),
-    spawn=TENS_3DOF_TENDON_CFG.spawn.replace(
-        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-            enabled_self_collisions=False,
-            solver_position_iteration_count=16,
-            solver_velocity_iteration_count=4,
-            fix_root_link=True,
+
+def _make_validation_robot_cfg(base_cfg: ArticulationCfg, arm_joints: list[str]) -> ArticulationCfg:
+    """Mount the arm at z = 1.0 m with fix_root_link=True for standalone scenes."""
+    return base_cfg.replace(
+        init_state=ArticulationCfg.InitialStateCfg(
+            pos=(0.0, 0.0, 1.0),
+            joint_pos={j: 0.0 for j in arm_joints},
         ),
-    ),
-)
+        spawn=base_cfg.spawn.replace(
+            articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+                enabled_self_collisions=False,
+                solver_position_iteration_count=16,
+                solver_velocity_iteration_count=4,
+                fix_root_link=True,
+            ),
+        ),
+    )
+
+
+if _IS_PHYSICAL:
+    _ROBOT_CFG = _make_validation_robot_cfg(TENS_3DOF_PHYSICAL_TENDON_CFG, _PHYSICAL_ARM_JOINTS)
+    _ARM_JOINTS = _PHYSICAL_ARM_JOINTS
+else:
+    _ROBOT_CFG = _make_validation_robot_cfg(TENS_3DOF_TENDON_CFG, _ELBOW_APPROX_ARM_JOINTS)
+    _ARM_JOINTS = _ELBOW_APPROX_ARM_JOINTS
 
 
 @configclass
@@ -103,8 +128,98 @@ class TendonValidationSceneCfg(InteractiveSceneCfg):
         prim_path="/World/GroundPlane",
         spawn=GroundPlaneCfg(),
     )
-    robot: ArticulationCfg = _TENDON_ROBOT_CFG.replace(
+    robot: ArticulationCfg = _ROBOT_CFG.replace(
         prim_path="{ENV_REGEX_NS}/Robot",
+    )
+
+
+# ── Physical-model body-force helpers ──────────────────────────────────────────
+
+def _setup_physical_bodies(robot: Articulation, device: str):
+    """Pre-compute body indices and attachment offsets for body-force tendons."""
+    root_idx = robot.find_bodies("root_link")[0][0]
+    forearm_idx = robot.find_bodies("forearm_link")[0][0]
+    root_offsets = torch.tensor(
+        common.PHYSICAL_ROOT_ATTACH.tolist(), dtype=torch.float32, device=device,
+    )  # (2, 3)
+    forearm_offsets = torch.tensor(
+        common.PHYSICAL_FOREARM_ATTACH.tolist(), dtype=torch.float32, device=device,
+    )  # (2, 3)
+    wrist_ids, _ = robot.find_joints(_WRIST_JOINTS, preserve_order=True)
+    linkage_joints = ["rod_left_joint", "rod_right_joint", "coupler_left_joint"]
+    linkage_ids, _ = robot.find_joints(linkage_joints, preserve_order=True)
+    return root_idx, forearm_idx, root_offsets, forearm_offsets, wrist_ids, linkage_ids
+
+
+def _apply_physical_forces(
+    robot: Articulation,
+    elbow_tensions: np.ndarray,
+    wrist_torques: np.ndarray,
+    root_idx: int,
+    forearm_idx: int,
+    root_offsets: torch.Tensor,
+    forearm_offsets: torch.Tensor,
+    wrist_ids: list[int],
+    num_envs: int,
+    device: str,
+) -> None:
+    """Apply elbow tensions as body forces and wrist torques as joint efforts."""
+    B = num_envs
+    # Body transforms
+    root_pos_w = robot.data.body_pos_w[:, root_idx]          # (B, 3)
+    root_quat_w = robot.data.body_quat_w[:, root_idx]        # (B, 4)
+    forearm_pos_w = robot.data.body_pos_w[:, forearm_idx]     # (B, 3)
+    forearm_quat_w = robot.data.body_quat_w[:, forearm_idx]   # (B, 4)
+
+    # Rotate local offsets to world frame
+    root_q_exp = root_quat_w.unsqueeze(1).expand(-1, 2, -1)
+    forearm_q_exp = forearm_quat_w.unsqueeze(1).expand(-1, 2, -1)
+    root_off_local = root_offsets.unsqueeze(0).expand(B, -1, -1)
+    forearm_off_local = forearm_offsets.unsqueeze(0).expand(B, -1, -1)
+
+    root_off_w = quat_apply(root_q_exp, root_off_local)
+    forearm_off_w = quat_apply(forearm_q_exp, forearm_off_local)
+
+    root_attach_w = root_pos_w.unsqueeze(1) + root_off_w
+    forearm_attach_w = forearm_pos_w.unsqueeze(1) + forearm_off_w
+
+    # Cable directions
+    cable_vec_w = root_attach_w - forearm_attach_w
+    cable_len = cable_vec_w.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+    cable_dir_w = cable_vec_w / cable_len
+
+    # Per-tendon forces (world frame)
+    T = torch.tensor(elbow_tensions, dtype=torch.float32, device=device)
+    T = T.view(1, 2, 1).expand(B, -1, -1)
+    F_forearm_w = T * cable_dir_w
+    F_root_w = -F_forearm_w
+
+    # Per-tendon torques (world frame)
+    tau_forearm_w = torch.cross(forearm_off_w, F_forearm_w, dim=-1)
+    tau_root_w = torch.cross(root_off_w, F_root_w, dim=-1)
+
+    # Sum over tendons
+    body_forces = torch.zeros(B, 2, 3, device=device)
+    body_torques = torch.zeros(B, 2, 3, device=device)
+    body_forces[:, 0] = F_root_w.sum(dim=1)
+    body_forces[:, 1] = F_forearm_w.sum(dim=1)
+    body_torques[:, 0] = tau_root_w.sum(dim=1)
+    body_torques[:, 1] = tau_forearm_w.sum(dim=1)
+
+    # Invalidate the wrench composer's cached link poses so the global→local
+    # frame conversion uses up-to-date body orientations (not the stale ones
+    # from the first call).
+    robot._permanent_wrench_composer._link_poses_updated = False
+
+    robot.set_external_force_and_torque(
+        forces=body_forces, torques=body_torques,
+        body_ids=[root_idx, forearm_idx], is_global=True,
+    )
+
+    # Wrist joint efforts
+    wrist_t = torch.tensor(wrist_torques, dtype=torch.float32, device=device)
+    robot.set_joint_effort_target(
+        wrist_t.unsqueeze(0).expand(B, -1), joint_ids=wrist_ids,
     )
 
 
@@ -144,19 +259,16 @@ def run_one_trial(
     device: str,
     spec: common.JointTestSpec,
     amplitude_deg: float,
+    physical_ctx: dict | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Run one PID + Jacobian step-response trial.
 
-    Replicates Klein (2023) §4.2–§4.3 exactly:
-      - PID torque for the target joint
-      - Gravity compensation
-      - Jacobian pseudo-inverse: desired torque → 5 tendon tensions
-      - J^T back-multiplication: tensions → full 3-joint torque vector
-      - set_joint_effort_target applied to all three arm joints
-
-    Cross-joint coupling (from the Jacobian) is present: moving the elbow
-    introduces small wrist torques and vice versa, matching the physical
-    cable routing geometry.
+    Parameters
+    ----------
+    physical_ctx : dict or None
+        If not None, the physical model is used.  Must contain keys:
+        ``root_idx``, ``forearm_idx``, ``root_offsets``, ``forearm_offsets``,
+        ``wrist_ids``, ``forearm_body_name_idx`` (body index of forearm_link).
 
     Returns
     -------
@@ -165,6 +277,8 @@ def run_one_trial(
     """
     amplitude_rad = math.radians(amplitude_deg)
     dt = common.SIM_DT
+    is_physical = physical_ctx is not None
+    is_elbow = (spec.joint_index == 0) if not is_physical else (spec.joint_index == -1)
 
     _reset_and_warmup(robot, scene, sim, joint_ids, num_envs, device)
 
@@ -185,29 +299,79 @@ def run_one_trial(
         sp_rad = amplitude_rad if i < step_steps else 0.0
         sp_deg = math.degrees(sp_rad)
 
-        # Read actual joint angle for the test joint
-        pos_all = robot.data.joint_pos[:, joint_ids]  # (B, 3)
-        cur_rad = float(pos_all[0, spec.joint_index].item())
+        # ── Read current angle ────────────────────────────────────────────
+        if is_elbow and is_physical:
+            # Physical model: extract elbow angle from forearm body quaternion
+            forearm_quat = robot.data.body_quat_w[0, physical_ctx["forearm_idx"]].cpu().numpy()
+            cur_rad = common.compute_elbow_angle_from_body_quat(forearm_quat)
+        elif is_elbow:
+            # Elbow-approx: read joint_pos directly
+            pos_all = robot.data.joint_pos[:, joint_ids]
+            cur_rad = float(pos_all[0, spec.joint_index].item())
+        else:
+            # Wrist joint: same for both variants
+            pos_all = robot.data.joint_pos[:, joint_ids]
+            # For physical model, wrist joints are at indices 3,4 in _PHYSICAL_ARM_JOINTS
+            if is_physical:
+                wrist_name = spec.name
+                wrist_local_idx = _PHYSICAL_ARM_JOINTS.index(wrist_name)
+            else:
+                wrist_local_idx = spec.joint_index
+            cur_rad = float(pos_all[0, wrist_local_idx].item())
+            # Read solver velocity for wrist D-term (bypasses EMA phase lag)
+            vel_all = robot.data.joint_vel[:, joint_ids]
+            cur_vel = float(vel_all[0, wrist_local_idx].item())
 
-        # ── PID torque + gravity compensation (Klein §3.2.3) ─────────────
-        pid_tau  = common.compute_pid_torque(sp_rad, cur_rad, dt, spec.pid, pid_state)
-        grav_tau = common.gravity_compensation_torque(cur_rad, spec.mass_kg, spec.gravity_arm_m)
+        # ── PID torque + gravity compensation ─────────────────────────────
+        # Both elbow and wrist use the same derivative-on-measurement PID.
+        # Wrist adds integral_zone_rad to prevent windup during fast transients.
+        izone = None if is_elbow else 0.175
+        wrist_vel = cur_vel if not is_elbow else None
+        pid_tau = common.compute_pid_torque(
+            sp_rad, cur_rad, dt, spec.pid, pid_state,
+            integral_zone_rad=izone,
+            measured_velocity_rad_s=wrist_vel,
+        )
+
+        grav_tau  = common.gravity_compensation_torque(cur_rad, spec.mass_kg, spec.gravity_arm_m)
         total_tau = pid_tau + grav_tau
 
-        # ── Tension distribution via Jacobian pseudo-inverse (§3.2.4) ────
-        # Only the test joint contributes to the desired torque vector;
-        # the pseudo-inverse still yields physically valid tensions.
-        tens_np = common.torque_to_tensions(
-            total_tau, spec.joint_index, spec.min_tension_n, spec.saturation_n,
-        )  # (5,)
+        # ── Tension distribution ──────────────────────────────────────────
+        if is_elbow:
+            tens_np = common.torque_to_tensions(
+                total_tau, 0, spec.min_tension_n, spec.saturation_n,
+            )
+        else:
+            # Wrist: use joint_index 1 or 2 (within elbow_approx ordering)
+            ea_joint_idx = common.JOINT_INDEX[spec.name]
+            tens_np = common.torque_to_tensions(
+                total_tau, ea_joint_idx, spec.min_tension_n, spec.saturation_n,
+            )
 
-        # ── Back-compute full 3-joint torques via J^T ─────────────────────
-        # This includes realistic cross-joint coupling from the cable geometry.
-        torques_np = common.tensions_to_torques(tens_np)  # (3,)
-        torques_t  = torch.tensor(torques_np, dtype=torch.float32, device=device)
-        effort_batch = torques_t.unsqueeze(0).expand(num_envs, -1)  # (B, 3)
+        # ── Apply forces ──────────────────────────────────────────────────
+        if is_physical:
+            # Elbow tensions → body forces, wrist tensions → J^T efforts
+            elbow_tens = tens_np[:2]
+            # Wrist torques from wrist J^T sub-block
+            j_wrist = common.JACOBIAN_T[1:3, 2:5]  # (2, 3)
+            wrist_torques = j_wrist @ tens_np[2:5]  # (2,)
+            _apply_physical_forces(
+                robot, elbow_tens, wrist_torques,
+                physical_ctx["root_idx"], physical_ctx["forearm_idx"],
+                physical_ctx["root_offsets"], physical_ctx["forearm_offsets"],
+                physical_ctx["wrist_ids"], num_envs, device,
+            )
+            # Zero only linkage joints so passthrough actuators don't fight
+            # (must NOT zero wrist joints — their efforts were just set above)
+            linkage_ids = physical_ctx["linkage_ids"]
+            linkage_zero = torch.zeros(num_envs, len(linkage_ids), device=device)
+            robot.set_joint_effort_target(linkage_zero, joint_ids=linkage_ids)
+        else:
+            torques_np = common.tensions_to_torques(tens_np)  # (3,)
+            torques_t  = torch.tensor(torques_np, dtype=torch.float32, device=device)
+            effort_batch = torques_t.unsqueeze(0).expand(num_envs, -1)
+            robot.set_joint_effort_target(effort_batch, joint_ids=joint_ids)
 
-        robot.set_joint_effort_target(effort_batch, joint_ids=joint_ids)
         scene.write_data_to_sim()
         sim.step()
         scene.update(dt)
@@ -235,11 +399,14 @@ def run_all_trials(
     num_envs: int,
     device: str,
     output_dir: Path,
+    physical_ctx: dict | None = None,
 ) -> dict[str, list[common.StepMetrics]]:
     """Run step responses for all joints and amplitudes; save NPZ per trial."""
     all_metrics: dict[str, list[common.StepMetrics]] = {}
+    specs = common.PHYSICAL_ALL_JOINT_SPECS if _IS_PHYSICAL else common.ALL_JOINT_SPECS
+    model_label = "tendon_physical" if _IS_PHYSICAL else "tendon"
 
-    for spec in common.ALL_JOINT_SPECS:
+    for spec in specs:
         metrics_list: list[common.StepMetrics] = []
 
         for amp_deg in spec.step_amplitudes_deg:
@@ -247,6 +414,7 @@ def run_all_trials(
 
             time_s, actual_deg, setpoint_arr, tensions_n = run_one_trial(
                 robot, scene, sim, joint_ids, num_envs, device, spec, amp_deg,
+                physical_ctx=physical_ctx,
             )
             metrics = common.compute_step_metrics(
                 time_s, actual_deg, amp_deg,
@@ -260,7 +428,7 @@ def run_all_trials(
             common.save_trial(
                 path, spec.name, amp_deg,
                 time_s, actual_deg, setpoint_arr, tensions_n,
-                metrics, model_type="tendon",
+                metrics, model_type=model_label,
             )
 
             rise_s   = f"{metrics.rise_time_ms:.0f} ms"    if metrics.rise_time_ms    else "—"
@@ -278,7 +446,8 @@ def run_all_trials(
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    output_dir = Path(args_cli.output_dir) if args_cli.output_dir else common.TENDON_DATA_DIR
+    default_dir = common.PHYSICAL_TENDON_DATA_DIR if _IS_PHYSICAL else common.TENDON_DATA_DIR
+    output_dir = Path(args_cli.output_dir) if args_cli.output_dir else default_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # ── Simulation setup ──────────────────────────────────────────────────
@@ -298,41 +467,70 @@ def main() -> None:
     scene.reset()
 
     robot: Articulation = scene["robot"]
-    joint_ids, _ = robot.find_joints(common.ARM_JOINT_NAMES, preserve_order=True)
+    joint_names = _PHYSICAL_ARM_JOINTS if _IS_PHYSICAL else common.ARM_JOINT_NAMES
+    joint_ids, _ = robot.find_joints(joint_names, preserve_order=True)
     device = robot.device
     num_envs = args_cli.num_envs
 
+    # Setup physical body-force context if needed
+    physical_ctx: dict | None = None
+    if _IS_PHYSICAL:
+        root_idx, forearm_idx, root_off, forearm_off, wrist_ids, linkage_ids = _setup_physical_bodies(robot, device)
+        physical_ctx = dict(
+            root_idx=root_idx,
+            forearm_idx=forearm_idx,
+            root_offsets=root_off,
+            forearm_offsets=forearm_off,
+            wrist_ids=wrist_ids,
+            linkage_ids=linkage_ids,
+        )
+
+    variant_label = args_cli.variant.upper().replace("_", "-")
+    if _IS_PHYSICAL:
+        elbow_spec = common.PHYSICAL_ELBOW_SPEC
+        robot_label = "TENS_3DOF_PHYSICAL_TENDON_CFG (physical four-bar linkage)"
+        usd_label = "tensegrity_threedof_arm_physical.usd"
+        control_label = "PID → body forces (elbow) + J^T (wrist)"
+    else:
+        elbow_spec = common.ELBOW_SPEC
+        robot_label = "TENS_3DOF_TENDON_CFG (IdealPDActuatorCfg, K=0, D=0)"
+        usd_label = "threedof_manipulator.usd"
+        control_label = "PID position ctrl + gravity comp + Jacobian transpose"
+
     print("\n" + "=" * 65)
-    print("  TENDON MODEL STEP-RESPONSE VALIDATION")
-    print("  Robot:   TENS_3DOF_TENDON_CFG  (IdealPDActuatorCfg, K=0, D=0)")
-    print("  Control: PID + gravity comp + Jacobian transpose  (Klein 2023 §3.2)")
+    print(f"  TENDON MODEL STEP-RESPONSE VALIDATION  [{variant_label}]")
+    print(f"  Robot:   {robot_label}")
+    print(f"  Control: {control_label}")
     print(f"  Output:  {output_dir}")
     print("=" * 65)
     print()
-    print("  Klein PID gains:")
+    print("  PID gains (scaled from Klein 2023 for simulated inertia):")
     print(f"    Wrist (Y/X): kp={common.WRIST_Y_SPEC.pid.kp}  ki={common.WRIST_Y_SPEC.pid.ki}"
           f"  kd={common.WRIST_Y_SPEC.pid.kd}")
-    print(f"    Elbow:       kp={common.ELBOW_SPEC.pid.kp}  ki={common.ELBOW_SPEC.pid.ki}"
-          f"  kd={common.ELBOW_SPEC.pid.kd}")
+    print(f"    Elbow:       kp={elbow_spec.pid.kp}  ki={elbow_spec.pid.ki}"
+          f"  kd={elbow_spec.pid.kd}")
     print()
 
     all_metrics = run_all_trials(
         robot, scene, sim, joint_ids, num_envs, device, output_dir,
+        physical_ctx=physical_ctx,
     )
 
     # ── Log file ─────────────────────────────────────────────────────────
+    model_label = "tendon_physical" if _IS_PHYSICAL else "tendon"
     cfg_summary = {
-        "Model":          "TENS_3DOF_TENDON_CFG (3-DOF arm only)",
-        "USD":            "threedof_manipulator.usd",
+        "Variant":        args_cli.variant,
+        "Model":          robot_label,
+        "USD":            usd_label,
         "Actuator type":  "IdealPDActuatorCfg (K=0, D=0 — effort passthrough)",
-        "Control law":    "PID position ctrl + gravity comp + Jacobian transpose",
-        "Elbow PID":      f"kp={common.ELBOW_SPEC.pid.kp}, ki={common.ELBOW_SPEC.pid.ki}, kd={common.ELBOW_SPEC.pid.kd}",
+        "Control law":    control_label,
+        "Elbow PID":      f"kp={elbow_spec.pid.kp}, ki={elbow_spec.pid.ki}, kd={elbow_spec.pid.kd}",
         "Wrist PID":      f"kp={common.WRIST_Y_SPEC.pid.kp}, ki={common.WRIST_Y_SPEC.pid.ki}, kd={common.WRIST_Y_SPEC.pid.kd}",
         "Jacobian":       "3×5 constant (zero-config approximation, Klein §3.2.4)",
         "Mount position": "(0.0, 0.0, 1.0) m",
         "Num envs":       str(num_envs),
     }
-    common.write_log(output_dir.parent, "tendon", cfg_summary, all_metrics)
+    common.write_log(output_dir.parent, model_label, cfg_summary, all_metrics)
 
     # ── Console summary ───────────────────────────────────────────────────
     print(f"\n{'=' * 65}")
@@ -352,9 +550,11 @@ def main() -> None:
             )
 
     print(f"\n  Data saved to: {output_dir}")
-    sim.stop()
 
 
 if __name__ == "__main__":
     main()
-    simulation_app.close()
+    # simulation_app.close() holds the GIL in C++ and hangs indefinitely.
+    # All data has been written; let the OS clean up GPU/memory on exit.
+    import os
+    os._exit(0)

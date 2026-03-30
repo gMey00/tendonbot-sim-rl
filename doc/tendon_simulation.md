@@ -52,7 +52,52 @@ approximation** — the actual moment arms change slightly with joint angle due
 to the geometric cable routing, but the error is small for the operating range
 (±55° wrist, ±70° elbow) per Klein (2023, §3.2).
 
-### 1.3  Why Not PhysX Spatial Tendons?
+### 1.3  Physical Model (Antiparallelogram Linkage)
+
+An alternative *physical* model replaces the single `elbow_joint` with a
+four-bar **antiparallelogram linkage** — the mechanism actually present on the
+hardware.  The linkage introduces three revolute joints (`rod_left_joint`,
+`rod_right_joint`, `coupler_left_joint`) whose geometry constrains elbow
+motion to a single degree of freedom.
+
+**Elbow actuation — body forces:**  Instead of applying elbow torque via J^T,
+the two elbow tendons are modelled as cable segments pulling between physical
+attachment points on the `root_link` and `forearm_link`.  At each physics step
+the force direction is computed from the current body poses, making the
+torque mapping configuration-dependent (no zero-config approximation).
+
+**Wrist actuation — constant J^T:**  The 3 wrist tendons continue to use the
+constant Jacobian-transpose mapping because the wrist geometry does not change
+appreciably within the operating range (±55°).
+
+| Elbow tendon | Root offset (body-local m) | Forearm offset (body-local m) |
+|-------------|---------------------------|------------------------------|
+| T₀ (positive) | (0, +0.0725, −0.34) | (0, +0.0725, −0.02) |
+| T₁ (negative) | (0, −0.0725, −0.34) | (0, −0.0725, −0.02) |
+
+The physical model is implemented in `PhysicalTendonEffortAction` and
+configured via `PhysicalTendonEffortActionCfg`.
+
+### 1.4  Motor and Cable Specifications
+
+The manipulator uses **5 × Maxon EC60** BLDC motors (one per tendon):
+
+| Parameter | Value | Source |
+|-----------|-------|--------|
+| Continuous torque | 0.401 N·m | Motor datasheet |
+| Power | 150 W | Motor datasheet |
+| Voltage | 24 V | Motor datasheet |
+| Mass per motor | 350 g | Motor datasheet |
+| Cable wrapping (elbow) | 3× around rollers | Klein (2023) hardware section |
+| Effective mechanical advantage | 3:1 (elbow) | 3 wraps around roller pair |
+| max_tension (code) | 500 N | `TendonEffortActionCfg` |
+
+> **Open questions:** The spool radius and wrist motor wrapping are not yet
+> confirmed from the thesis hardware section.  See
+> [`doc/open_questions.md`](open_questions.md) for details and the derivation
+> formula linking motor torque, wrapping, and spool radius to max cable tension.
+
+### 1.5  Why Not PhysX Spatial Tendons?
 
 Isaac Sim / PhysX 5.x provides spatial and fixed tendon primitives.  We chose
 **not** to use them for two reasons:
@@ -97,8 +142,12 @@ tensegrity_pick/
 |-------|--------|------|
 | `TendonEffortAction` | `robots.tendon_actuator` | `ActionTerm` subclass: maps tendon tensions → joint torques via J^T |
 | `TendonEffortActionCfg` | `robots.tendon_actuator` | Configclass for the above; specifies joint names, J^T, max tension |
+| `PhysicalTendonEffortAction` | `robots.tendon_actuator` | Body-force elbow tendons + J^T wrist; replaces elbow_joint with linkage |
+| `PhysicalTendonEffortActionCfg` | `robots.tendon_actuator` | Configclass for the physical model; specifies attachment offsets |
 | `TENS_3DOF_TENDON_CFG` | `robots.tendon_robot_cfg` | 3-DOF arm with `IdealPDActuator(stiffness=0, damping=0)` |
 | `TENS_5DOF_GRIPPER_TENDON_CFG` | `robots.tendon_robot_cfg` | 5-DOF + gripper; arm is tendon-driven, base + gripper are PD |
+| `TENS_3DOF_PHYSICAL_TENDON_CFG` | `robots.tendon_robot_cfg` | 3-DOF arm with antiparallelogram linkage + effort passthrough |
+| `TENS_5DOF_GRIPPER_PHYSICAL_TENDON_CFG` | `robots.tendon_robot_cfg` | 5-DOF physical + gripper; linkage elbow, J^T wrist |
 
 ### 2.3  How It Works (Data Flow)
 
@@ -174,9 +223,11 @@ curriculum) can remain unchanged.
 | Environment ID | Drive | Task |
 |---------------|-------|------|
 | `Template-Tensegrity-Reach-v0` | PD position | Reach |
-| `Template-Tensegrity-Reach-Tendon-v0` | Tendon effort | Reach |
+| `Template-Reach-Tensegrity-Tendon-v0` | Tendon effort (J^T) | Reach |
+| `Template-Reach-Tensegrity-Physical-Tendon-v0` | Tendon effort (body-force) | Reach |
 | `Template-Tensegrity-Cube-Place-v0` | PD position | Cube Place |
-| `Template-Tensegrity-Cube-Place-Tendon-v0` | Tendon effort | Cube Place |
+| `Template-Tensegrity-Cube-Place-Tendon-v0` | Tendon effort (J^T) | Cube Place |
+| `Template-Tensegrity-Cube-Place-Physical-Tendon-v0` | Tendon effort (body-force) | Cube Place |
 
 Play variants (`*-Play-v0`) use 50 envs for evaluation.
 
@@ -184,10 +235,31 @@ Play variants (`*-Play-v0`) use 50 envs for evaluation.
 
 ## 5  Step Response Validation
 
-The script `scripts/step_response_test.py` replicates the testing methodology
-from Klein (2023, §3.5 and §4.2–4.3):
+The `scripts/model_validation/` directory contains a comprehensive validation
+pipeline for **both** tendon models.  See
+[`scripts/model_validation/README.md`](../src/tensegrity_pick/scripts/model_validation/README.md)
+for full usage details.
 
-### 5.1  Test Protocol
+### 5.1  Variants
+
+| Variant | CLI flag | Elbow actuation | Wrist actuation | Data dir |
+|---------|----------|----------------|----------------|----------|
+| `elbow_approx` | `--variant elbow_approx` | J^T (constant) | J^T (constant) | `tendon/data/` |
+| `physical` | `--variant physical` | Body forces | J^T (constant) | `tendon_physical/data/` |
+
+Both variants share the same PID controller gains and wrist J^T mapping;
+they differ only in how elbow torque is applied.  The pipeline script
+`run_validation.sh` runs both by default.
+
+```bash
+# Run full pipeline (PD + both tendon variants + base + plots)
+bash scripts/model_validation/run_validation.sh
+
+# Physical tendon only
+bash scripts/model_validation/run_validation.sh --tendon-physical-only
+```
+
+### 5.2  Test Protocol
 
 1. **PID controller** converts angle set-points to desired torques
    (thesis-identical gains: wrist Kp=0.2/Ki=0.03/Kd=0.03,
