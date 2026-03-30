@@ -4,34 +4,26 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 from isaaclab.utils import configclass
+from isaaclab.managers import SceneEntityCfg
+from isaaclab.actuators import ImplicitActuatorCfg
 
+from isaaclab.assets.articulation import ArticulationCfg
 from tensegrity_pick.robots import TendonEffortActionCfg
 from tensegrity_pick.robots.tendon_actuator import DEFAULT_JACOBIAN_TRANSPOSE
 from tensegrity_pick.robots.tendon_robot_cfg import TENS_5DOF_GRIPPER_TENDON_CFG
 from tensegrity_pick.robots.tendon_robot_cfg import TARGET_LINK_NAME_5DOF as TARGET_LINK_NAME
 from tensegrity_pick.robots.tendon_robot_cfg import CONTROLLED_JOINT_NAMES_5DOF as CONTROLLED_JOINT_NAMES
+from tensegrity_pick.tasks.manager_based.shared.proj_base_scene_cfg import TENSEGRITY_MOUNT_HEIGHT_M
 from tensegrity_pick.tasks.manager_based.reach import mdp
 from tensegrity_pick.tasks.manager_based.reach.reach_env_cfg import ReachEnvCfg
 # from tensegrity_pick.tasks.manager_based.shared.proj_base_scene_cfg import ROBOT_MOUNT_HEIGHT_M
 
 
-# @configclass
-# class TensegrityReachTendonSceneCfg(ReachSceneCfg):
-#     robot = TENS_5DOF_GRIPPER_TENDON_CFG.replace(
-#         prim_path="{ENV_REGEX_NS}/Robot",
-#         init_state=ArticulationCfg.InitialStateCfg(
-#             pos=(0.15, 0.0, ROBOT_MOUNT_HEIGHT_M),
-#         ),
-#     )
-
-
 @configclass
 class TendonReachActionsCfg:
-    base_action = mdp.JointPositionActionCfg(
+    base_action = mdp.JointPositionToLimitsActionCfg(
         asset_name="robot",
         joint_names=["base_y_joint", "base_z_joint"],
-        scale=0.5,
-        use_default_offset=True,
     )
 
     arm_tendon = TendonEffortActionCfg(
@@ -43,45 +35,51 @@ class TendonReachActionsCfg:
     )
 
 
-# @configclass
-# class TendonReachObservationsCfg:
-#     @configclass
-#     class PolicyCfg(ObsGroup):
-#         joint_pos = ObsTerm(
-#             func=mdp.joint_pos_rel,
-#             noise=Unoise(n_min=-0.002, n_max=0.002),
-#             params={"asset_cfg": SceneEntityCfg("robot", joint_names=CONTROLLED_JOINT_NAMES)},
-#         )
-#         joint_vel = ObsTerm(
-#             func=mdp.joint_vel_rel,
-#             noise=Unoise(n_min=-0.002, n_max=0.002),
-#             params={"asset_cfg": SceneEntityCfg("robot", joint_names=CONTROLLED_JOINT_NAMES)},
-#         )
-#         current_ee_pose = ObsTerm(
-#             func=mdp.current_end_effector_pose,
-#             params={"asset_cfg": SceneEntityCfg("robot", body_names=[TARGET_LINK_NAME])},
-#         )
-#         pose_error = ObsTerm(
-#             func=mdp.pose_command_error,
-#             params={"asset_cfg": SceneEntityCfg("robot", body_names=[TARGET_LINK_NAME]), "command_name": "ee_pose"},
-#         )
-#         pose_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "ee_pose"})
-#         actions = ObsTerm(func=mdp.last_action)
-
-#         def __post_init__(self) -> None:
-#             self.enable_corruption = True
-#             self.concatenate_terms = True
-
-#     policy: PolicyCfg = PolicyCfg()
-
-
 @configclass
 class TensegrityReachTendonEnvCfg(ReachEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
         # switch robot asset to the tendon-driven version of the 5-DOF arm
-        self.scene.robot = TENS_5DOF_GRIPPER_TENDON_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot = TENS_5DOF_GRIPPER_TENDON_CFG.replace(
+            prim_path="{ENV_REGEX_NS}/Robot",
+            init_state=ArticulationCfg.InitialStateCfg(
+                pos=(0.15, 0.0, TENSEGRITY_MOUNT_HEIGHT_M)  # 0.15m from conveyor center
+            )
+        )
+        # Stabilize ALL gripper joints for reach task (no grasping needed).
+        # Default gripper has near-zero damping causing velocity divergence that
+        # corrupts the PhysX solver and produces NaN across all joints.
+        self.scene.robot.actuators["gripper_drive"] = ImplicitActuatorCfg(
+            joint_names_expr=["finger_joint"],
+            effort_limit_sim=1000.0,
+            velocity_limit_sim=1.0,
+            stiffness=100.0,
+            damping=100.0,
+            armature=10.0,
+        )
+        self.scene.robot.actuators["gripper_finger"] = ImplicitActuatorCfg(
+            joint_names_expr=["left_inner_finger_joint", "right_inner_finger_joint"],
+            effort_limit_sim=1000.0,
+            velocity_limit_sim=1.0,
+            stiffness=100.0,
+            damping=100.0,
+            armature=10.0,
+        )
+        self.scene.robot.actuators["gripper_passive"] = ImplicitActuatorCfg(
+            joint_names_expr=[
+                "left_inner_finger_pad_joint",
+                "right_inner_finger_pad_joint",
+                "left_outer_finger_joint",
+                "right_outer_finger_joint",
+                "right_outer_knuckle_joint",
+            ],
+            effort_limit_sim=1000.0,
+            velocity_limit_sim=1.0,
+            stiffness=100.0,
+            damping=100.0,
+            armature=10.0,
+        )
         # override commands
         self.commands.ee_pose.body_name = TARGET_LINK_NAME
         self.commands.ee_pose.joint_names = CONTROLLED_JOINT_NAMES
@@ -90,9 +88,17 @@ class TensegrityReachTendonEnvCfg(ReachEnvCfg):
         # override rewards
         self.rewards.end_effector_position_tracking.params["asset_cfg"].body_names = [TARGET_LINK_NAME]
         self.rewards.end_effector_position_tracking_fine_grained.params["asset_cfg"].body_names = [TARGET_LINK_NAME]
-        self.rewards.end_effector_position_tracking_proximity.params["asset_cfg"].body_names = [TARGET_LINK_NAME]
         self.rewards.end_effector_orientation_tracking.params["asset_cfg"].body_names = [TARGET_LINK_NAME]
-        self.rewards.goal_reached.params["asset_cfg"].body_names = [TARGET_LINK_NAME]
+        self.rewards.position_reached.params["asset_cfg"].body_names = [TARGET_LINK_NAME]
+        self.rewards.orientation_reached.params["asset_cfg"].body_names = [TARGET_LINK_NAME]
+        self.rewards.pose_reached.params["asset_cfg"].body_names = [TARGET_LINK_NAME]
+        # Restrict joint velocity penalty to controlled arm joints (exclude passive gripper joints)
+        self.rewards.joint_vel.params["asset_cfg"] = SceneEntityCfg("robot", joint_names=CONTROLLED_JOINT_NAMES)
+        # Filter observations to controlled joints only (passive gripper joints explode)
+        self.observations.policy.joint_pos.params = {"asset_cfg": SceneEntityCfg("robot", joint_names=CONTROLLED_JOINT_NAMES)}
+        self.observations.policy.joint_vel.params = {"asset_cfg": SceneEntityCfg("robot", joint_names=CONTROLLED_JOINT_NAMES)}
+        # Filter termination velocity check to controlled joints only
+        self.terminations.joint_vel_diverged.params["asset_cfg"] = SceneEntityCfg("robot", joint_names=CONTROLLED_JOINT_NAMES)
         # override events
         self.events.reset_robot_joints.params["asset_cfg"].joint_names = CONTROLLED_JOINT_NAMES
 

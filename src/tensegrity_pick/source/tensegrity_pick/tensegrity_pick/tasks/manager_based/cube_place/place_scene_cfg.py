@@ -1,28 +1,24 @@
 # place_scene_cfg.py
 #
-# Scene for the simplified cube-placement task.
-# Extends ProjBaseSceneCfg (ground, lights, robot, conveyor, drum) and adds
+# Robot-independent scene for the cube-placement task.
+# Extends ProjBaseSceneCfg (ground, lights, conveyor, drum) and adds
 # exactly one green and one red cube as individual RigidObjects placed
 # directly below the robot arm.
+#
+# The ``robot`` field is left as ``MISSING`` — each robot variant
+# config fills it in via ``__post_init__``, following the same
+# pattern as the reach task.
 
 from __future__ import annotations
 
 import isaaclab.sim as sim_utils
-from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
+from isaaclab.assets import RigidObjectCfg
 from isaaclab.utils import configclass
 
 from ..shared.proj_base_scene_cfg import (
     ProjBaseSceneCfg,
     CONVEYOR_SURFACE_HEIGHT_M,
-    ROBOT_MOUNT_HEIGHT_M,
-    PROJ_ASSETS_PATH,
-    DRUM_USD_DIAMETER_SCALE,
-    DRUM_USD_HEIGHT_SCALE,
 )
-from tensegrity_pick.robots import TENS_5DOF_GRIPPER_CFG, TENS_5DOF_GRIPPER_TENDON_CFG
-
-# Use the original project mount height
-PLACE_MOUNT_HEIGHT_M = ROBOT_MOUNT_HEIGHT_M
 
 # ---------------------------------------------------------------------------
 # Cube parameters
@@ -33,28 +29,6 @@ CUBE_MASS_KG = 0.05
 SPAWN_HEIGHT_M = CONVEYOR_SURFACE_HEIGHT_M + 0.03
 
 ENV_NS = "/World/envs/env_.*/"
-
-# ---------------------------------------------------------------------------
-# Task-specific initial joint positions
-# ---------------------------------------------------------------------------
-# base_z=-0.25 places the grasp centre ~1.5 cm above the cube centre
-# (gc z ≈ 0.840 vs cube z ≈ 0.825) and the open finger tips ~0.8 cm
-# below cube centre (z ≈ 0.817).
-_PLACE_INITIAL_JOINT_POS = {
-    "base_y_joint": 0.0,
-    "base_z_joint": -0.25,
-    "elbow_joint": 0.0,
-    "wrist_y_joint": 0.0,
-    "wrist_x_joint": 0.0,
-    "finger_joint": 0.0,
-    "right_outer_knuckle_joint": 0.0,
-    "left_outer_finger_joint": 0.0,
-    "right_outer_finger_joint": 0.0,
-    "left_inner_finger_joint": 0.0,
-    "right_inner_finger_joint": 0.0,
-    "left_inner_finger_pad_joint": 0.0,
-    "right_inner_finger_pad_joint": 0.0,
-}
 
 
 def _make_colored_cube(
@@ -98,22 +72,14 @@ def _make_colored_cube(
 
 @configclass
 class PlaceSceneCfg(ProjBaseSceneCfg):
-    """Base scene + one green cube + one red cube for the place task.
+    """Robot-independent base scene + one green cube + one red cube.
 
-    Robot actuators are defined in ``tensegrity_pick.robots`` and NOT
-    overridden here.  Only the initial state (mount position + default
-    joint angles) is task-specific.
+    The ``robot`` field is inherited as ``MISSING`` from
+    ``ProjBaseSceneCfg``.  Each robot variant fills it in via
+    ``__post_init__`` in its own ``joint_pos_env_cfg.py``.
+
+    Drum position is inherited from ProjBaseSceneCfg (Y=0.85).
     """
-
-    robot = TENS_5DOF_GRIPPER_CFG.replace(
-        prim_path="{ENV_REGEX_NS}/Robot",
-        init_state=ArticulationCfg.InitialStateCfg(
-            pos=(0.15, 0.0, PLACE_MOUNT_HEIGHT_M),
-            joint_pos=_PLACE_INITIAL_JOINT_POS,
-        ),
-    )
-
-    # Drum position inherited from ProjBaseSceneCfg (Y=0.85)
 
     green_cube: RigidObjectCfg = _make_colored_cube(
         prim_name="GreenCube",
@@ -126,22 +92,4 @@ class PlaceSceneCfg(ProjBaseSceneCfg):
         prim_name="RedCube",
         color_rgb=(1.0, 0.0, 0.0),
         spawn_pos=(0.15, 0.04, SPAWN_HEIGHT_M),
-    )
-
-
-@configclass
-class PlaceTendonSceneCfg(PlaceSceneCfg):
-    """Place scene with tendon-driven arm actuator.
-
-    Swaps the PD-driven arm for an effort-passthrough arm from
-    ``TENS_5DOF_GRIPPER_TENDON_CFG``.  Base and gripper actuators
-    are inherited from the canonical robot config.
-    """
-
-    robot = TENS_5DOF_GRIPPER_TENDON_CFG.replace(
-        prim_path="{ENV_REGEX_NS}/Robot",
-        init_state=ArticulationCfg.InitialStateCfg(
-            pos=(0.15, 0.0, PLACE_MOUNT_HEIGHT_M),
-            joint_pos=_PLACE_INITIAL_JOINT_POS,
-        ),
     )

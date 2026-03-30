@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Base environment configuration for the cube-placement task.
+"""Robot-agnostic base environment configuration for the cube-placement task.
 
 Sequential pick-and-place reward structure:
   1. Reach → 2. Grasp → 3. Lift → 4. Transport → 5. Release → 6. Success
@@ -18,9 +18,18 @@ Critical reward balance:
 
 Scene: 1 green + 1 red cube on a belt, target drum 0.85 m away in Y.
 Conveyor is inactive.  Goal: place the green cube into the target drum.
+
+Robot-specific parameters (EE body, joint names, arm action) are filled
+in by each variant config via ``PlaceEnvCfg._set_robot_params()`` in
+``__post_init__``, following the same pattern as the reach task.
 """
 
+from __future__ import annotations
+
+from dataclasses import MISSING
+
 from isaaclab.envs import ManagerBasedRLEnvCfg
+from isaaclab.managers import ActionTermCfg as ActionTerm
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
@@ -34,14 +43,7 @@ from . import mdp
 from .place_scene_cfg import PlaceSceneCfg, CONVEYOR_SURFACE_HEIGHT_M
 from .mdp import rewards as task_rew
 
-# ── Constants ─────────────────────────────────────────────────────────────
-CONTROLLED_JOINT_NAMES = [
-    "base_y_joint", "base_z_joint",
-    "elbow_joint", "wrist_y_joint", "wrist_x_joint",
-    "finger_joint",
-]
-EE_LINK = "tool_link_0"
-GRASP_BODIES = [EE_LINK]
+# ── Scene-level constants (shared by all robot variants) ──────────────────
 
 # Spawn box: cubes appear on a narrow line directly below the robot mount
 # so the arm can always reach every spawn position.
@@ -67,39 +69,21 @@ _CONVEYOR_BOUNDS = task_rew.ConveyorBounds(y_min=-0.4, y_max=0.4, z_min=0.70)
 
 @configclass
 class ActionsCfg:
-    """Joint-position delta actions (base + arm + gripper)."""
+    """Robot-agnostic action specification.
 
-    base_delta = mdp.JointPositionActionCfg(
-        asset_name="robot",
-        joint_names=["base_y_joint", "base_z_joint"],
-        scale=0.50,
-        use_default_offset=True,
-        clip={"base_y_joint": (-0.5, 0.5), "base_z_joint": (-0.50, 0.0)},
-    )
-    # scale=1.0 gives elbow ∈ [−1.0, 1.0] rad (within ±1.5 clip)
-    # and wrist ∈ [−0.8, 0.8] rad (full range).  The arm must bridge
-    # the 0.35 m gap from base_y_max (0.5) to drum (Y=0.85),
-    # requiring at least elbow=-0.50 rad (see verify_actuation.py).
-    arm_delta = mdp.JointPositionActionCfg(
-        asset_name="robot",
-        joint_names=["elbow_joint", "wrist_y_joint", "wrist_x_joint"],
-        scale=1.0,
-        use_default_offset=True,
-        clip={
-            "elbow_joint": (-1.5, 1.5),
-            "wrist_y_joint": (-0.8, 0.8),
-            "wrist_x_joint": (-0.8, 0.8),
-        },
-    )
-    # Only the drive joint (finger_joint) is actively commanded.
-    # All other gripper joints follow through the physical four-bar
-    # linkage and mimic constraints defined in the Robotiq 2F-140 USD.
-    # Commanding passive/auxiliary joints directly causes them to fight
-    # the linkage mechanism and break the gripper.
-    # BinaryJointPositionActionCfg already handles continuous tanh
-    # outputs from SKRL PPO: negative → close (0.7854), positive/zero →
-    # open (0.0).  This ensures the gripper defaults to open on reset
-    # (raw_actions reset to 0.0 → open_command).
+    ``arm_action`` is ``MISSING`` — each variant fills it with the
+    appropriate action term (JointPositionActionCfg for PD arms,
+    TendonEffortActionCfg for tendon arms, etc.).
+
+    Variants with a prismatic base (tensegrity) add ``base_delta``
+    in their own ``__post_init__``.
+    """
+
+    arm_action: ActionTerm = MISSING
+
+    # Shared across all robots: only the drive joint (finger_joint) is
+    # actively commanded.  All other gripper joints follow through the
+    # physical four-bar linkage and mimic constraints in the USD.
     gripper_action = mdp.BinaryJointPositionActionCfg(
         asset_name="robot",
         joint_names=["finger_joint"],
@@ -110,42 +94,46 @@ class ActionsCfg:
 
 @configclass
 class ObservationsCfg:
-    """Observation specification — only controlled joints are observed."""
+    """Observation specification.
+
+    ``body_names`` and ``joint_names`` that vary per robot are set to
+    ``MISSING`` and filled by ``PlaceEnvCfg._set_robot_params()``.
+    """
 
     @configclass
     class PolicyCfg(ObsGroup):
         # Proprioception (controlled joints only)
         joint_pos_rel = ObsTerm(
             func=mdp.joint_pos_rel,
-            params={"asset_cfg": SceneEntityCfg("robot", joint_names=CONTROLLED_JOINT_NAMES)},
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=MISSING)},
         )
         joint_vel_rel = ObsTerm(
             func=mdp.joint_vel_rel,
-            params={"asset_cfg": SceneEntityCfg("robot", joint_names=CONTROLLED_JOINT_NAMES)},
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=MISSING)},
         )
 
         # EE kinematics
         ee_pos_w = ObsTerm(
             func=task_rew.ee_pos_w,
-            params={"asset_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES)},
+            params={"asset_cfg": SceneEntityCfg("robot", body_names=MISSING)},
         )
         ee_vel_w = ObsTerm(
             func=task_rew.ee_lin_vel_w,
-            params={"asset_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES)},
+            params={"asset_cfg": SceneEntityCfg("robot", body_names=MISSING)},
         )
 
         # Cube-relative positions
         green_rel = ObsTerm(
             func=task_rew.cube_rel_pos,
             params={
-                "ee_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES),
+                "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
                 "cube_name": "green_cube",
             },
         )
         red_rel = ObsTerm(
             func=task_rew.cube_rel_pos,
             params={
-                "ee_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES),
+                "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
                 "cube_name": "red_cube",
             },
         )
@@ -155,7 +143,7 @@ class ObservationsCfg:
         fingertip_green_rel = ObsTerm(
             func=task_rew.fingertip_rel_cube,
             params={
-                "ee_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES),
+                "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
                 "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
                 "cube_name": "green_cube",
             },
@@ -163,7 +151,7 @@ class ObservationsCfg:
         fingertip_red_rel = ObsTerm(
             func=task_rew.fingertip_rel_cube,
             params={
-                "ee_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES),
+                "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
                 "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
                 "cube_name": "red_cube",
             },
@@ -196,7 +184,7 @@ class ObservationsCfg:
         drum_rel = ObsTerm(
             func=task_rew.drum_rel_pos,
             params={
-                "ee_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES),
+                "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
                 "drum_name": "drum_target",
             },
         )
@@ -222,11 +210,7 @@ class EventsCfg:
         func=mdp.reset_joints_by_offset,
         mode="reset",
         params={
-            "asset_cfg": SceneEntityCfg(
-                "robot",
-                joint_names=["base_y_joint", "base_z_joint",
-                             "elbow_joint", "wrist_y_joint", "wrist_x_joint"],
-            ),
+            "asset_cfg": SceneEntityCfg("robot", joint_names=MISSING),
             "position_range": (-0.10, 0.10),
             "velocity_range": (0.0, 0.0),
         },
@@ -257,44 +241,59 @@ class EventsCfg:
 
 @configclass
 class RewardsCfg:
-    """Reward terms for the tensegrity pick-and-place task.
+    """Reward terms for the cube pick-and-place task.
 
     Sequential structure: reach → grasp → lift → transport → release → success.
 
-    Weight hierarchy (effective per-step after ×dt=0.02):
-      Transport (50×0.02=1.00 max) > Success (100×0.02=2.00) >
-      Release (10×0.02=0.20) > Lift (8×0.02=0.16) =
-      Height (8×0.02=0.16) > Grasp (5×0.02=0.10) > Reach (1×0.02=0.02)
+    Weight hierarchy (aligned with cube_sort):
+      Success (100) > Goal tracking (40) > Release (25) >
+      Goal fine (10) > Reach fine (5) = Lift (5) = Height (5) >
+      Grasp (3) > Reach coarse (2) > Arm util (0.5)
 
-    The transport reward dominates lift/height once the cube is grasped,
-    preventing a "hold high and stay still" local optimum.
+    Reaching is gated on !grasp_active so it turns off once holding a
+    cube, freeing reward budget for transport. Coarse std=2.0 provides
+    gradient from the top-start position; fine std=0.5 guides final
+    approach.
+
+    Robot-specific ``body_names`` / ``joint_names`` are ``MISSING`` and
+    filled by ``PlaceEnvCfg._set_robot_params()``.
     """
 
-    # ── 1. Reach: tanh proximity (fingertip → nearest cube) ────────
-    # Uses dynamic fingertip (not grasp centre) so the robot
-    # approaches from above.  Targets the nearest active cube.
+    # ── 1a. Reach coarse: long-range gradient (std=2.0) ─────────────
+    # Large std provides gradient even from the top position (0.25 m away).
+    # Gated on !grasp_active so it turns off once holding a cube.
     reaching_object = RewTerm(
         func=task_rew.object_ee_distance,
-        weight=1.0,
+        weight=2.0,
         params={
-            "ee_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES),
+            "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
             "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
             "green_name": "green_cube",
             "red_name": "red_cube",
-            "std": 0.1,
+            "std": 2.0,
+        },
+    )
+
+    # ── 1b. Reach fine: mid-range gradient (std=0.5) ─────────────────
+    # Tighter gradient kicks in once close, guiding final approach.
+    reaching_object_fine = RewTerm(
+        func=task_rew.object_ee_distance,
+        weight=5.0,
+        params={
+            "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
+            "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
+            "green_name": "green_cube",
+            "red_name": "red_cube",
+            "std": 0.5,
         },
     )
 
     # ── 2. Grasp: closure × proximity ────────────────────────────────
-    # Explicit reward for closing the gripper when positioned near the
-    # cube.  Creates the gradient: approach → position → close fingers.
-    # Fires at belt level (before any lift), teaching the agent to grasp
-    # the cube while it is lying still.
     grasping = RewTerm(
         func=task_rew.grasp_reward,
-        weight=5.0,
+        weight=3.0,
         params={
-            "ee_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES),
+            "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
             "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
             "green_name": "green_cube",
             "red_name": "red_cube",
@@ -303,15 +302,11 @@ class RewardsCfg:
     )
 
     # ── 3. Lift: binary bonus when cube is grasped and lifted ────────
-    # max_velocity=1.0 rejects bounced cubes (high velocity at bounce
-    # peak).  Only a genuinely grasped, controlled lift satisfies all
-    # gates: above belt, near gripper, closed fingers, low velocity.
-    # Weight balanced against transport to avoid hold-in-place optimum.
     lifting_object = RewTerm(
         func=task_rew.object_is_lifted,
-        weight=8.0,
+        weight=5.0,
         params={
-            "ee_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES),
+            "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
             "green_name": "green_cube",
             "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
             "minimal_height": 0.06,
@@ -322,15 +317,11 @@ class RewardsCfg:
     )
 
     # ── 3b. Height bonus: smooth gradient to lift above drum rim ─────
-    # Bridges the binary lift and the approach gate so the agent has
-    # gradient to keep lifting.  Weight balanced against transport to
-    # prevent over-optimising vertical hold at the expense of lateral
-    # movement toward the drum.
     height_bonus = RewTerm(
         func=task_rew.cube_height_bonus,
-        weight=8.0,
+        weight=5.0,
         params={
-            "ee_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES),
+            "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
             "green_name": "green_cube",
             "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
             "max_height": 0.30,
@@ -341,16 +332,9 @@ class RewardsCfg:
     )
 
     # ── 4. Goal tracking: coarse (std=1.0) — drives toward drum ──────
-    # std=1.0 gives ~0.31 proximity at d_xy=0.85 m.
-    # Transport signal (0.31/step) must dominate the hold-in-place
-    # reward from lift+height (0.21/step combined).
-    # lift_threshold=0.02: z>0.82 is trivially easy to maintain during
-    # arm extension, preventing the "dip below gate" problem where the
-    # cube temporarily drops during lateral motion and zeros out the
-    # transport reward.
     goal_tracking = RewTerm(
         func=task_rew.approach_target_tanh,
-        weight=50.0,
+        weight=40.0,
         params={
             "green_name": "green_cube",
             "drum_name": "drum_target",
@@ -361,12 +345,9 @@ class RewardsCfg:
     )
 
     # ── 4b. Goal tracking: fine (std=0.20) — precision near drum ─────
-    # At d=0.27 m (drum edge) gives 0.24 proximity — a useful
-    # fine-positioning signal that helps centre the cube above the
-    # drum opening.
     goal_tracking_fine = RewTerm(
         func=task_rew.approach_target_tanh,
-        weight=5.0,
+        weight=10.0,
         params={
             "green_name": "green_cube",
             "drum_name": "drum_target",
@@ -377,12 +358,9 @@ class RewardsCfg:
     )
 
     # ── 5. Release: reward opening gripper above the drum ────────────
-    # Only fires when cube is within drum radius in XY, above the rim,
-    # and was_grasped is true (preventing random gripper flapping).
-    # Creates the gradient for the final phase: transport → open → drop.
     release = RewTerm(
         func=task_rew.release_above_target,
-        weight=10.0,
+        weight=25.0,
         params={
             "green_name": "green_cube",
             "drum_name": "drum_target",
@@ -394,10 +372,6 @@ class RewardsCfg:
     )
 
     # ── 6. Success: large per-step reward while cube is in drum ──────
-    # Weight=100 gives 2.0 per step (after dt=0.02).  With episode NOT
-    # terminating on success, this accumulates over remaining steps and
-    # clearly dominates holding rewards (~0.8/step).  Gated on
-    # was_grasped to prevent accidental/bumped placements.
     green_in_target = RewTerm(
         func=task_rew.green_cube_in_target,
         weight=100.0,
@@ -419,6 +393,19 @@ class RewardsCfg:
         },
     )
 
+    # ── 7b. Red clearance: reward for red cube being far from drum ───
+    # Active only before green cube is grasped — encourages the agent
+    # to push red aside first, then focus on green.
+    red_clearance = RewTerm(
+        func=task_rew.red_clearance_from_drum,
+        weight=3.0,
+        params={
+            "red_name": "red_cube",
+            "drum_name": "drum_target",
+            "std": 0.4,
+        },
+    )
+
     # ── Regularisation (start small, ramped by curriculum) ───────────
     action_rate = RewTerm(
         func=task_rew.action_rate_l2,
@@ -429,34 +416,18 @@ class RewardsCfg:
         weight=-1e-4,
         params={
             "max_velocity": 10.0,
-            "asset_cfg": SceneEntityCfg(
-                "robot",
-                joint_names=CONTROLLED_JOINT_NAMES,
-            ),
-        },
-    )
-
-    # ── Base velocity: penalty to prefer arm over base ────────────
-    base_velocity = RewTerm(
-        func=task_rew.base_velocity_l2,
-        weight=-1.5,
-        params={
-            "asset_cfg": SceneEntityCfg(
-                "robot",
-                joint_names=["base_y_joint", "base_z_joint"],
-            ),
+            "asset_cfg": SceneEntityCfg("robot", joint_names=MISSING),
         },
     )
 
     # ── Arm utilization: preference for arm movement ─────────────────
+    # joint_names filled per variant (UR10e: 6 rev, Kinova: 7 rev,
+    # tensegrity: 3 rev arm joints).
     arm_utilization = RewTerm(
         func=task_rew.arm_velocity_bonus,
-        weight=1.5,
+        weight=0.5,
         params={
-            "asset_cfg": SceneEntityCfg(
-                "robot",
-                joint_names=["elbow_joint", "wrist_y_joint", "wrist_x_joint"],
-            ),
+            "asset_cfg": SceneEntityCfg("robot", joint_names=MISSING),
             "max_velocity": 5.0,
         },
     )
@@ -466,7 +437,7 @@ class RewardsCfg:
         func=task_rew.belt_contact_penalty,
         weight=-10.0,
         params={
-            "ee_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES),
+            "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
             "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
             "margin": 0.0,
             "max_depth": 0.15,
@@ -478,10 +449,7 @@ class RewardsCfg:
         func=task_rew.joint_torque_penalty,
         weight=-0.05,
         params={
-            "asset_cfg": SceneEntityCfg(
-                "robot",
-                joint_names=["elbow_joint", "wrist_y_joint", "wrist_x_joint"],
-            ),
+            "asset_cfg": SceneEntityCfg("robot", joint_names=MISSING),
         },
     )
 
@@ -499,7 +467,7 @@ class RewardsCfg:
         func=task_rew.green_grasp_metric,
         weight=0.01,
         params={
-            "ee_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES),
+            "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
             "green_name": "green_cube",
             "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
             "lift_threshold": 0.06,
@@ -510,7 +478,7 @@ class RewardsCfg:
         func=task_rew.ee_to_green_distance_metric,
         weight=-0.01,
         params={
-            "ee_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES),
+            "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
             "green_name": "green_cube",
         },
     )
@@ -544,21 +512,15 @@ class TerminationsCfg:
         time_out=True,
         params={
             "max_velocity": 100.0,
-            "asset_cfg": SceneEntityCfg("robot", joint_names=CONTROLLED_JOINT_NAMES),
+            "asset_cfg": SceneEntityCfg("robot", joint_names=MISSING),
         },
     )
 
-    # Terminate when the finger tips penetrate well below the belt.
-    # The default tip z ≈ 0.807 is only 0.007 m above the belt (0.800).
-    # max_penetration=0.20 puts the kill-line at z = 0.60 so early
-    # exploration doesn't terminate most environments immediately.
-    # The belt_contact penalty (weight=-10) provides a softer gradient
-    # above this hard cap.
     belt_collision = DoneTerm(
         func=task_rew.belt_collision_termination,
         time_out=True,
         params={
-            "ee_cfg": SceneEntityCfg("robot", body_names=GRASP_BODIES),
+            "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
             "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
             "max_penetration": 0.20,
         },
@@ -569,15 +531,11 @@ class TerminationsCfg:
 class CurriculumCfg:
     """Curriculum: ramp up regularisation + introduce the red cube."""
 
-    # Red cube introduced at 100k steps to let the green-only policy
-    # master reach→grasp→lift→transport→place before adding the
-    # distractor.  Introducing it too early causes severe reward crash.
     activate_red = CurrTerm(
         func=task_rew.activate_red_cube_curriculum,
         params={"num_steps": 100000},
     )
 
-    # IsaacLab-style: ramp regularisation from near-zero to meaningful
     action_rate = CurrTerm(
         func=mdp.modify_reward_weight,
         params={"term_name": "action_rate", "weight": -2e-3, "num_steps": 200000},
@@ -594,8 +552,13 @@ class CurriculumCfg:
 
 
 @configclass
-class TensegrityPlaceEnvCfg(ManagerBasedRLEnvCfg):
-    """Configuration for the simplified tensegrity cube-placement task."""
+class PlaceEnvCfg(ManagerBasedRLEnvCfg):
+    """Robot-agnostic base configuration for the cube-placement task.
+
+    Each robot variant inherits from this class and calls
+    ``_set_robot_params()`` inside ``__post_init__`` to fill in
+    ``MISSING`` body/joint names and set the arm action term.
+    """
 
     scene: PlaceSceneCfg = PlaceSceneCfg(num_envs=8192, env_spacing=5.0)
     actions: ActionsCfg = ActionsCfg()
@@ -606,7 +569,7 @@ class TensegrityPlaceEnvCfg(ManagerBasedRLEnvCfg):
     curriculum: CurriculumCfg = CurriculumCfg()
 
     def __post_init__(self) -> None:
-        # Match IsaacLab's lift task sim settings
+        # Sim settings (shared by all robots)
         self.decimation = 2
         self.episode_length_s = 5.0
         self.viewer.eye = (3.5, 3.5, 3.5)
@@ -619,13 +582,73 @@ class TensegrityPlaceEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.physx.gpu_max_rigid_contact_count = 2**21
         self.sim.physx.gpu_max_rigid_patch_count = 2**19
         self.sim.physx.gpu_found_lost_aggregate_pairs_capacity = 1024 * 1024 * 4
-        self.sim.physx.gpu_total_aggregate_pairs_capacity = 32 * 1024
+        self.sim.physx.gpu_total_aggregate_pairs_capacity = 64 * 1024  # needs ≥32791; doubled for headroom
         self.sim.physx.friction_correlation_distance = 0.00625
+
+    # ------------------------------------------------------------------
+    # Robot-parameter helper
+    # ------------------------------------------------------------------
+
+    def _set_robot_params(
+        self,
+        ee_body: str,
+        controlled_joints: list[str],
+        arm_joints: list[str],
+    ) -> None:
+        """Fill all ``MISSING`` body/joint names for a specific robot.
+
+        Called from each variant's ``__post_init__`` after ``super().__post_init__()``.
+
+        Args:
+            ee_body: End-effector body name (e.g. ``"tool_link_0"``).
+            controlled_joints: All actively controlled joint names
+                (arm + finger, used for observations and terminations).
+            arm_joints: Arm-only joint names (used for arm_utilization,
+                joint_torque, and reset_arm events).
+        """
+        grasp = [ee_body]
+
+        # -- Observations --
+        obs = self.observations.policy
+        obs.joint_pos_rel.params["asset_cfg"].joint_names = controlled_joints
+        obs.joint_vel_rel.params["asset_cfg"].joint_names = controlled_joints
+        obs.ee_pos_w.params["asset_cfg"].body_names = grasp
+        obs.ee_vel_w.params["asset_cfg"].body_names = grasp
+        obs.green_rel.params["ee_cfg"].body_names = grasp
+        obs.red_rel.params["ee_cfg"].body_names = grasp
+        obs.fingertip_green_rel.params["ee_cfg"].body_names = grasp
+        obs.fingertip_red_rel.params["ee_cfg"].body_names = grasp
+        obs.drum_rel.params["ee_cfg"].body_names = grasp
+
+        # -- Rewards --
+        rew = self.rewards
+        rew.reaching_object.params["ee_cfg"].body_names = grasp
+        rew.reaching_object_fine.params["ee_cfg"].body_names = grasp
+        rew.grasping.params["ee_cfg"].body_names = grasp
+        rew.lifting_object.params["ee_cfg"].body_names = grasp
+        rew.height_bonus.params["ee_cfg"].body_names = grasp
+        rew.belt_contact.params["ee_cfg"].body_names = grasp
+        rew.metric_grasp_rate.params["ee_cfg"].body_names = grasp
+        rew.metric_ee_distance.params["ee_cfg"].body_names = grasp
+        rew.joint_vel.params["asset_cfg"].joint_names = controlled_joints
+        rew.arm_utilization.params["asset_cfg"].joint_names = arm_joints
+        rew.joint_torque.params["asset_cfg"].joint_names = arm_joints
+
+        # -- Events --
+        self.events.reset_arm.params["asset_cfg"].joint_names = arm_joints
+
+        # -- Terminations --
+        self.terminations.joint_vel_diverged.params["asset_cfg"].joint_names = controlled_joints
+        self.terminations.belt_collision.params["ee_cfg"].body_names = grasp
 
 
 @configclass
-class TensegrityPlaceEnvCfg_PLAY(TensegrityPlaceEnvCfg):
-    """Smaller configuration for evaluation / play."""
+class PlaceEnvCfg_PLAY(PlaceEnvCfg):
+    """Smaller base configuration for evaluation / play.
+
+    Variants should inherit from their own train config instead, but
+    this provides shared play-mode defaults.
+    """
 
     def __post_init__(self) -> None:
         super().__post_init__()

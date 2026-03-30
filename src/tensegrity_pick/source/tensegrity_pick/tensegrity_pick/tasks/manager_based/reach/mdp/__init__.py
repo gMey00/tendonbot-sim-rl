@@ -7,5 +7,6 @@
 
 from isaaclab.envs.mdp import *  # noqa: F401, F403
 
+from .events import clamp_infinite_joint_limits  # noqa: F401
 from .fk_sampled_pose_command import FKSampledPoseCommand, FKSampledPoseCommandCfg  # noqa: F401
 from .rewards import *  # noqa: F401, F403

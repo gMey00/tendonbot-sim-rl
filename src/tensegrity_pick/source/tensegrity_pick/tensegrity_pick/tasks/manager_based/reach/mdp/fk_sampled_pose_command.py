@@ -134,9 +134,9 @@ class FKSampledPoseCommand(CommandTerm):
         lower = torch.where(invalid_limit_mask, default_joint_pos - fallback_half_range, lower)
         upper = torch.where(invalid_limit_mask, default_joint_pos + fallback_half_range, upper)
 
-        # Sample from the inner 80 % of each joint range to avoid extreme configurations
-        # that may produce degenerate cable/constraint geometry in the tensegrity model.
-        margin = (upper - lower) * 0.10
+        # Sample from the inner portion of each joint range to avoid extreme
+        # configurations.  The margin is configurable via cfg.joint_range_margin.
+        margin = (upper - lower) * self.cfg.joint_range_margin
         lower = lower + margin
         upper = upper - margin
 
@@ -144,13 +144,23 @@ class FKSampledPoseCommand(CommandTerm):
             len(env_ids), len(self.joint_ids), device=self.device
         )
 
-        saved_joint_positions = self.robot.data.joint_pos[env_ids, :][:, self.joint_ids].clone()
+        saved_joint_positions = self.robot.data.joint_pos[env_ids].clone()
         # Save all-joint velocities so we can flush PhysX's internal state after the restore.
         saved_joint_velocities = self.robot.data.joint_vel[env_ids].clone()
 
         self.robot.write_joint_position_to_sim(random_joint_positions, joint_ids=self.joint_ids, env_ids=env_ids)
 
-        body_pose = self.robot.data.body_link_pose_w[env_ids, self.body_idx]
+        # Force PhysX to recompute kinematics with the newly written joint positions.
+        # write_joint_position_to_sim already invalidates the TimestampedBuffer,
+        # but we also call update_articulations_kinematic() explicitly to ensure
+        # the GPU pipeline has flushed the write before we read back.
+        self.robot.data._physics_sim_view.update_articulations_kinematic()
+        # Bypass the TimestampedBuffer cache entirely: read directly from PhysX.
+        import isaaclab.utils.math as math_utils_il
+        raw_link_transforms = self.robot.data._root_physx_view.get_link_transforms().clone()
+        raw_link_transforms[..., 3:7] = math_utils_il.convert_quat(raw_link_transforms[..., 3:7], to="wxyz")
+        body_pose = raw_link_transforms[env_ids, self.body_idx]
+
         ee_pos_w = body_pose[:, :3]
         ee_quat_w = body_pose[:, 3:7]
 
@@ -161,10 +171,15 @@ class FKSampledPoseCommand(CommandTerm):
         self.pose_command_b[env_ids, :3] = pos_b
         self.pose_command_b[env_ids, 3:] = quat_unique(quat_b) if self.cfg.make_quat_unique else quat_b
 
-        self.robot.write_joint_position_to_sim(saved_joint_positions, joint_ids=self.joint_ids, env_ids=env_ids)
+        self.robot.write_joint_position_to_sim(saved_joint_positions, env_ids=env_ids)
         # Explicitly re-write velocities to flush any residual PhysX constraint state that
         # the intermediate random-position teleport may have left in the solver buffers.
         self.robot.write_joint_velocity_to_sim(saved_joint_velocities, env_ids=env_ids)
+        # Force PhysX to recompute kinematics with restored positions.
+        self.robot.data._physics_sim_view.update_articulations_kinematic()
+        # Invalidate cache again so that subsequent reads in this step see the
+        # restored (original) joint configuration, not the FK-sampled one.
+        self.robot.data._body_link_pose_w.timestamp = -1
 
     def _update_command(self) -> None:
         pass
@@ -202,6 +217,12 @@ class FKSampledPoseCommandCfg(CommandTermCfg):
     joint_names: list[str] | None = None
     make_quat_unique: bool = False
     success_threshold: float = 0.02
+    joint_range_margin: float = 0.10
+    """Fraction of each joint's range to exclude at both ends when sampling.
+
+    A margin of 0.10 (default) samples from the inner 80% of each joint range,
+    avoiding extreme configurations.  Larger values narrow the workspace, which
+    can help robots with large joint ranges (e.g. UR10e ±2π) converge faster."""
 
     goal_pose_visualizer_cfg: VisualizationMarkersCfg = FRAME_MARKER_CFG.replace(
         prim_path="/Visuals/Command/goal_pose"

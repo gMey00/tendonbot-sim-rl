@@ -28,166 +28,54 @@ always (N, 3) for positions.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Tuple
+from typing import TYPE_CHECKING
 
 import torch
 
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
-from isaaclab.utils.math import quat_apply
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
-
 # ---------------------------------------------------------------------------
-# Gripper geometry constants (Robotiq 2F-140, ceiling-mounted)
+# Shared gripper geometry — imported from shared/gripper_cfg.py
 # ---------------------------------------------------------------------------
-# IMPORTANT – CEILING-MOUNT ORIENTATION
-# The robot is mounted upside-down on the ceiling.  In the tool_link_0
-# local frame the +Z axis points DOWNWARD (toward the floor / cube) in
-# world coordinates.  All offsets below are therefore POSITIVE so that
-# ``quat_apply(ee_quat, [0, 0, +offset])`` yields a world position
-# below tool_link_0 where the physical finger pads actually are.
-#
-# Empirical verification (measure_positions.py, 50 zero-action steps,
-# base_z_joint = −0.25):
-#   tool_link_0        z ≈ 1.032 (local)
-#   grasp_center (+0.1925)  z ≈ 0.840   → 1.5 cm above cube centre
-#   finger_tip_open  (+0.215)   z ≈ 0.817   → 0.8 cm below cube centre
-#   finger_tip_closed (+0.235)  z ≈ 0.797   → 2.8 cm below cube centre
-#   green cube centre           z ≈ 0.825
-#   belt surface                z  = 0.800
-#
-# If you ever change the robot mount or gripper, re-run
-# ``scripts/measure_positions.py`` and update these constants.
-# ---------------------------------------------------------------------------
-
-FINGER_TIP_OPEN_Z = 0.215       # tip offset when finger_joint = 0 (fully open)
-FINGER_TIP_CLOSED_Z = 0.235     # tip offset when finger_joint = 0.7854 (closed)
-FINGER_TIP_LOCAL_Z = 0.225      # static average for belt collision checks
-GRASP_CENTER_LOCAL_Z = 0.1925   # average pad centre between open/closed
-FINGER_JOINT_CLOSE_POS = 0.7854 # finger_joint target when fully closed
-
-
-# ---------------------------------------------------------------------------
-# Geometry helpers
-# ---------------------------------------------------------------------------
-
-@dataclass
-class BinCylinder:
-    """Upright cylinder representing the target drum."""
-
-    radius: float
-    height: float
-
-
-@dataclass
-class SpawnBox:
-    """Axis-aligned box in local env coordinates for cube spawning."""
-
-    x_range: Tuple[float, float]
-    y_range: Tuple[float, float]
-    z_range: Tuple[float, float]
-    yaw_range: Tuple[float, float] = (-3.14159, 3.14159)
-
-
-@dataclass
-class ConveyorBounds:
-    """Axis-aligned 2D bounds for the conveyor surface in local env coords."""
-
-    y_min: float
-    y_max: float
-    z_min: float  # below this the cube has fallen off
-
-
-def _project_local_z_offset(
-    robot: Articulation, body_cfg: SceneEntityCfg, local_z: float
-) -> torch.Tensor:
-    """Project a local-z offset from a body frame into world coordinates.
-
-    Returns the world position of a point that sits at (0, 0, local_z)
-    in the frame of the body identified by ``body_cfg.body_ids[0]``.
-
-    For the ceiling-mounted tensegrity robot, positive ``local_z``
-    maps to a world position *below* the body (toward the floor/cube)
-    because tool_link_0's local +Z axis points downward in world frame.
-    """
-    ee_pos = robot.data.body_pos_w[:, body_cfg.body_ids[0], :]
-    ee_quat = robot.data.body_quat_w[:, body_cfg.body_ids[0], :]
-    offset = ee_pos.new_tensor([0.0, 0.0, local_z])
-    return ee_pos + quat_apply(ee_quat, offset.expand_as(ee_pos))
-
-
-def _grasp_center_w(
-    robot: Articulation, body_cfg: SceneEntityCfg
-) -> torch.Tensor:
-    """World position of the grasp centre between the finger pads."""
-    return _project_local_z_offset(robot, body_cfg, GRASP_CENTER_LOCAL_Z)
-
-
-def _finger_tip_w(
-    robot: Articulation, body_cfg: SceneEntityCfg
-) -> torch.Tensor:
-    """World position of the finger tips (lowest point of the gripper)."""
-    return _project_local_z_offset(robot, body_cfg, FINGER_TIP_LOCAL_Z)
-
-
-def _dynamic_finger_tip_w(
-    robot: Articulation,
-    body_cfg: SceneEntityCfg,
-    finger_cfg: SceneEntityCfg,
-) -> torch.Tensor:
-    """World position of finger tips adjusted for actual finger joint state.
-
-    Interpolates between open (-0.215) and closed (-0.235) tip offsets
-    based on the finger_joint reading so the reference point tracks the
-    physical gripper configuration.
-    """
-    finger_pos = robot.data.joint_pos[:, finger_cfg.joint_ids[0]]
-    closure = torch.clamp(finger_pos / FINGER_JOINT_CLOSE_POS, 0.0, 1.0)
-    tip_z = FINGER_TIP_OPEN_Z + closure * (FINGER_TIP_CLOSED_Z - FINGER_TIP_OPEN_Z)
-
-    ee_pos = robot.data.body_pos_w[:, body_cfg.body_ids[0], :]
-    ee_quat = robot.data.body_quat_w[:, body_cfg.body_ids[0], :]
-    offset = torch.stack([
-        torch.zeros_like(tip_z),
-        torch.zeros_like(tip_z),
-        tip_z,
-    ], dim=-1)
-    return ee_pos + quat_apply(ee_quat, offset)
-
-
-def _get_world_pos(
-    obj: object,
-    env: ManagerBasedRLEnv | None = None,
-) -> torch.Tensor:
-    """Get world position (N, 3) from either a RigidObject or XformPrimView.
-
-    ``AssetBaseCfg`` prims produce a single-prim XFormPrimView whose
-    ``get_world_poses()`` returns shape ``(1, 3)`` instead of ``(N, 3)``.
-    When *env* is given we derive the local offset from env-0 and
-    reconstruct the per-env world positions via ``env_origins + offset``.
-    """
-    if hasattr(obj, "data") and hasattr(obj.data, "root_pos_w"):
-        return obj.data.root_pos_w
-    pos, _ = obj.get_world_poses()
-    if env is not None and pos.shape[0] == 1 and env.num_envs > 1:
-        local_offset = pos[0] - env.scene.env_origins[0]
-        pos = env.scene.env_origins + local_offset.unsqueeze(0)
-    return pos
-
-
-def _in_upright_cylinder(
-    point: torch.Tensor, center: torch.Tensor, cyl: BinCylinder
-) -> torch.Tensor:
-    """Check whether points lie inside the cylinder.  Shapes: (N, 3)."""
-    rel = point - center
-    r2 = rel[:, 0] ** 2 + rel[:, 1] ** 2
-    inside_xy = r2 <= cyl.radius ** 2
-    inside_z = (rel[:, 2] >= 0.0) & (rel[:, 2] <= cyl.height)
-    return inside_xy & inside_z
+from tensegrity_pick.tasks.manager_based.shared.gripper_cfg import (
+    # Constants
+    FINGER_TIP_OPEN_Z,
+    FINGER_TIP_CLOSED_Z,
+    FINGER_TIP_LOCAL_Z,
+    GRASP_CENTER_LOCAL_Z,
+    FINGER_JOINT_CLOSE_POS,
+    # Dataclasses
+    BinCylinder,
+    SpawnBox,
+    ConveyorBounds,
+    # Geometry helpers (public names → aliased as private for internal use)
+    project_local_z_offset as _project_local_z_offset,
+    grasp_center_w as _grasp_center_w,
+    finger_tip_w as _finger_tip_w,
+    dynamic_finger_tip_w as _dynamic_finger_tip_w,
+    get_world_pos as _get_world_pos,
+    in_upright_cylinder as _in_upright_cylinder,
+    # Observation functions (re-exported for place_env_cfg.py)
+    ee_pos_w,
+    ee_lin_vel_w,
+    gripper_closure,
+    gripper_torque_residual,
+    drum_rel_pos,
+    # Shared reward / penalty functions
+    action_rate_l2,
+    joint_vel_l2_controlled,
+    base_velocity_l2,
+    arm_velocity_bonus,
+    belt_contact_penalty,
+    joint_torque_penalty,
+    # Shared termination functions
+    joint_vel_out_of_limit,
+    belt_collision_termination,
+)
 
 
 def _cube_is_active(
@@ -228,23 +116,8 @@ def _nearest_active_cube_distance(
 
 
 # ---------------------------------------------------------------------------
-# Observations
+# Observations (task-specific; shared obs imported from gripper_cfg above)
 # ---------------------------------------------------------------------------
-
-def ee_pos_w(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
-    """Grasp-centre position relative to env origin (N, 3).
-
-    Subtracting env_origins removes per-env world offsets so that the
-    observation is invariant to env placement in the simulation grid.
-    """
-    pos_w = _grasp_center_w(env.scene[asset_cfg.name], asset_cfg)
-    return pos_w - env.scene.env_origins
-
-
-def ee_lin_vel_w(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
-    """EE body linear velocity (N, 3)."""
-    robot: Articulation = env.scene[asset_cfg.name]
-    return robot.data.body_lin_vel_w[:, asset_cfg.body_ids[0], :]
 
 
 def cube_rel_pos(
@@ -261,14 +134,6 @@ def cube_rel_pos(
 
     rel = cube.data.root_pos_w - ee
     return torch.where(active[:, None], rel, torch.zeros_like(rel))
-
-
-def drum_rel_pos(
-    env: ManagerBasedRLEnv, ee_cfg: SceneEntityCfg, drum_name: str
-) -> torch.Tensor:
-    """Relative position of the drum target w.r.t. the grasp centre (N, 3)."""
-    ee = _grasp_center_w(env.scene[ee_cfg.name], ee_cfg)
-    return _get_world_pos(env.scene[drum_name], env=env) - ee
 
 
 def fingertip_rel_cube(
@@ -293,30 +158,7 @@ def fingertip_rel_cube(
     return torch.where(active[:, None], rel, torch.zeros_like(rel))
 
 
-def gripper_closure(
-    env: ManagerBasedRLEnv, finger_cfg: SceneEntityCfg
-) -> torch.Tensor:
-    """Normalized gripper closure fraction [0=open, 1=closed] (N, 1)."""
-    robot: Articulation = env.scene[finger_cfg.name]
-    finger_pos = robot.data.joint_pos[:, finger_cfg.joint_ids[0]]
-    closure = torch.clamp(finger_pos / FINGER_JOINT_CLOSE_POS, 0.0, 1.0)
-    return closure.unsqueeze(-1)
-
-
-def gripper_torque_residual(
-    env: ManagerBasedRLEnv, finger_cfg: SceneEntityCfg
-) -> torch.Tensor:
-    """Normalized finger_joint applied torque as fraction of effort limit (N, 1).
-
-    When the gripper is commanded closed but an object blocks it, the PD
-    controller applies near-limit torque.  When closed on air, torque ≈ 0.
-    This lets the policy learn to correlate torque with grasp state.
-    """
-    robot: Articulation = env.scene[finger_cfg.name]
-    applied = robot.data.applied_torque[:, finger_cfg.joint_ids[0]]
-    limit = robot.data.joint_effort_limits[:, finger_cfg.joint_ids[0]]
-    fraction = torch.abs(applied) / (limit + 1e-8)
-    return torch.clamp(fraction, max=1.0).unsqueeze(-1)
+# drum_rel_pos, gripper_closure, gripper_torque_residual imported from shared/gripper_cfg.py
 
 
 # ---------------------------------------------------------------------------
@@ -420,34 +262,7 @@ def green_in_drum(
     return _in_upright_cylinder(green.data.root_pos_w, pos_d, bin_geom)
 
 
-def joint_vel_out_of_limit(
-    env: ManagerBasedRLEnv,
-    max_velocity: float,
-    asset_cfg: SceneEntityCfg,
-) -> torch.Tensor:
-    """Termination: True when any joint velocity exceeds max_velocity."""
-    asset = env.scene[asset_cfg.name]
-    return torch.any(
-        torch.abs(asset.data.joint_vel[:, asset_cfg.joint_ids]) > max_velocity,
-        dim=1,
-    )
-
-
-def belt_collision_termination(
-    env: ManagerBasedRLEnv,
-    ee_cfg: SceneEntityCfg,
-    belt_height: float,
-    max_penetration: float = 0.05,
-) -> torch.Tensor:
-    """Terminate when the finger tips penetrate the belt surface.
-
-    Uses _finger_tip_w (NOT grasp centre) because we want to detect
-    the very bottom of the gripper touching the belt.
-    """
-    robot: Articulation = env.scene[ee_cfg.name]
-    tip_pos = _finger_tip_w(robot, ee_cfg)
-    tip_z = tip_pos[:, 2] - env.scene.env_origins[:, 2]
-    return tip_z < (belt_height - max_penetration)
+# joint_vel_out_of_limit, belt_collision_termination imported from shared/gripper_cfg.py
 
 
 # ---------------------------------------------------------------------------
@@ -467,11 +282,18 @@ def object_ee_distance(
     Uses ``_dynamic_finger_tip_w`` so that the reward guides the robot to
     approach from above (fingertips are the lowest point).  Targets the
     nearest active cube so the policy generalises across colours.
+
+    Gated: only active when gripper is NOT holding a cube (grasp_active=False).
+    This frees the reward budget for transport once a cube is grasped.
     """
     robot: Articulation = env.scene[ee_cfg.name]
     tip = _dynamic_finger_tip_w(robot, ee_cfg, finger_cfg)
     distance = _nearest_active_cube_distance(env, tip, green_name, red_name)
-    return 1.0 - torch.tanh(distance / std)
+    result = 1.0 - torch.tanh(distance / std)
+    # Gate: turn off reach reward once holding a cube
+    if hasattr(env, "grasp_active"):
+        result = result * (~env.grasp_active).float()
+    return result
 
 
 def object_is_lifted(
@@ -622,72 +444,41 @@ def red_cube_in_target(
     return (_in_upright_cylinder(pos_r, pos_d, bin_geom) & active).to(torch.float32)
 
 
-def base_velocity_l2(
+def red_clearance_from_drum(
     env: ManagerBasedRLEnv,
-    asset_cfg: SceneEntityCfg,
+    red_name: str,
+    drum_name: str,
+    std: float = 0.4,
 ) -> torch.Tensor:
-    """L2 norm of base joint velocities.
+    """Reward for the red cube being far from the drum.
 
-    Penalises large/fast movements of the linear base so the policy
-    learns to use the 3-DOF arm for most of the positioning work.
+    Returns ``tanh(d_xy / std)`` — reward increases as the red cube
+    is further from the drum in XY.  Only active when the red cube
+    is not parked (local_x < 50).  Gated on ``!was_grasped`` so it
+    only drives behaviour before the green cube has been grasped —
+    once grasped, the agent should focus on transport + release.
     """
-    robot: Articulation = env.scene[asset_cfg.name]
-    base_vel = robot.data.joint_vel[:, asset_cfg.joint_ids]
-    return torch.sum(base_vel ** 2, dim=1)
+    red: RigidObject = env.scene[red_name]
+    pos_r = red.data.root_pos_w
+    pos_d = _get_world_pos(env.scene[drum_name], env=env)
 
+    local_x = pos_r[:, 0] - env.scene.env_origins[:, 0]
+    active = local_x < 50.0
 
-def action_rate_l2(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """Squared difference between consecutive actions (all dims)."""
-    return torch.sum(
-        (env.action_manager.action - env.action_manager.prev_action) ** 2,
-        dim=1,
+    d_xy = torch.sqrt(
+        (pos_r[:, 0] - pos_d[:, 0]) ** 2 + (pos_r[:, 1] - pos_d[:, 1]) ** 2
     )
+    clearance = torch.tanh(d_xy / std)
+
+    gate = active
+    if hasattr(env, "was_grasped"):
+        gate = gate & (~env.was_grasped)
+
+    return torch.where(gate, clearance, torch.zeros_like(clearance))
 
 
-def joint_vel_l2_controlled(
-    env: ManagerBasedRLEnv,
-    max_velocity: float,
-    asset_cfg: SceneEntityCfg,
-) -> torch.Tensor:
-    """L2 norm of controlled joint velocities, clamped per-joint."""
-    asset = env.scene[asset_cfg.name]
-    clamped = torch.clamp(
-        asset.data.joint_vel[:, asset_cfg.joint_ids], -max_velocity, max_velocity
-    )
-    return torch.sum(clamped ** 2, dim=1)
-
-
-def belt_contact_penalty(
-    env: ManagerBasedRLEnv,
-    ee_cfg: SceneEntityCfg,
-    belt_height: float,
-    margin: float = 0.0,
-    max_depth: float = 0.15,
-) -> torch.Tensor:
-    """Penalty proportional to how far the finger tips go below the belt.
-
-    Uses _finger_tip_w (NOT grasp centre) because we want to penalise
-    the very bottom of the gripper touching the belt.
-    """
-    robot: Articulation = env.scene[ee_cfg.name]
-    tip_pos = _finger_tip_w(robot, ee_cfg)
-    tip_z = tip_pos[:, 2] - env.scene.env_origins[:, 2]
-    return torch.clamp(belt_height + margin - tip_z, min=0.0, max=max_depth)
-
-
-def joint_torque_penalty(
-    env: ManagerBasedRLEnv,
-    asset_cfg: SceneEntityCfg,
-) -> torch.Tensor:
-    """Mean fraction of effort limit used across tracked joints.
-
-    Returns mean(|applied_torque| / effort_limit), clipped to [0, 1].
-    """
-    robot: Articulation = env.scene[asset_cfg.name]
-    applied = robot.data.applied_torque[:, asset_cfg.joint_ids]
-    limits = robot.data.joint_effort_limits[:, asset_cfg.joint_ids]
-    fractions = torch.abs(applied) / (limits + 1e-8)
-    return torch.clamp(fractions, max=1.0).mean(dim=1)
+# base_velocity_l2, action_rate_l2, joint_vel_l2_controlled,
+# belt_contact_penalty, joint_torque_penalty imported from shared/gripper_cfg.py
 
 
 # ---------------------------------------------------------------------------
@@ -726,21 +517,7 @@ def green_grasp_metric(
     return (is_lifted & is_close).to(torch.float32)
 
 
-def arm_velocity_bonus(
-    env: ManagerBasedRLEnv,
-    asset_cfg: SceneEntityCfg,
-    max_velocity: float = 5.0,
-) -> torch.Tensor:
-    """Positive reward for arm joint velocity magnitude.
-
-    Incentivises active use of the 3-DOF arm joints (elbow, wrist_y,
-    wrist_x) for positioning rather than relying on the linear base.
-    Returns the L2 norm of arm joint velocities, normalised by
-    ``max_velocity`` and clamped to [0, 1].
-    """
-    robot: Articulation = env.scene[asset_cfg.name]
-    arm_vel = robot.data.joint_vel[:, asset_cfg.joint_ids]
-    return torch.clamp(torch.norm(arm_vel, dim=1) / max_velocity, max=1.0)
+# arm_velocity_bonus imported from shared/gripper_cfg.py
 
 
 def grasp_reward(

@@ -1,4 +1,4 @@
-"""Standard (position/velocity-controlled) tensegrity robot configurations.
+"""Tensegrity robot configurations with approximated elbow (PD-controlled) .
 
 Provides ready-to-use :class:`ArticulationCfg` instances for the 3-DOF
 manipulator and 5-DOF manipulator-with-gripper.  All joints use
@@ -14,19 +14,23 @@ import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets.articulation import ArticulationCfg
 
+from .robotiq_2f140_gripper_cfg import get_gripper_actuators
+
 
 PROJ_ASSETS_PATH = "/home/robot/studentische-arbeiten/res"
 
 TARGET_LINK_NAME_3DOF = "tool_link"
-CONTROLLED_JOINT_NAMES_3DOF = ["elbow_joint", "wrist_y_joint", "wrist_x_joint"]
+CONTROLLED_JOINT_NAMES_3DOF = ["elbow_joint", "wrist_x_joint", "wrist_y_joint"]
 TARGET_LINK_NAME_5DOF = "tool_link_0"
-CONTROLLED_JOINT_NAMES_5DOF = ["base_y_joint", "base_z_joint", "elbow_joint", "wrist_y_joint", "wrist_x_joint"]
+CONTROLLED_JOINT_NAMES_5DOF = ["base_y_joint", "base_z_joint", "elbow_joint", "wrist_x_joint", "wrist_y_joint"]
 
+
+""" 3DOF arm with PD-controlled elbow and wrist joints"""
 
 TENS_3DOF_CFG = ArticulationCfg(
 
     spawn=sim_utils.UsdFileCfg(
-        usd_path=f"{PROJ_ASSETS_PATH}/Tensegrity/threedof_manipulator/threedof_manipulator.usd",
+        usd_path=f"{PROJ_ASSETS_PATH}/Tensegrity/threedof_arm/tensegrity_threedof_arm_elbow_approx.usd",
         activate_contact_sensors=False,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             rigid_body_enabled=True,
@@ -51,20 +55,43 @@ TENS_3DOF_CFG = ArticulationCfg(
     ),
 
     actuators={
-        "arm": ImplicitActuatorCfg(
-            joint_names_expr=["elbow_joint", "wrist_y_joint", "wrist_x_joint"],
+        # Elbow: cable-derived max torque ≈ 36.25 N·m (500 N × 0.0725 m lever).
+        # 40 N·m provides slight headroom.  Velocity matches physical spec
+        # from Klein (2023) joint table: 1.0 rad/s.
+        "elbow": ImplicitActuatorCfg(
+            joint_names_expr=["elbow_joint"],
             effort_limit_sim=40.0,
-            velocity_limit_sim=2.0,
+            velocity_limit_sim=1.0,
+            stiffness=400.0,
+            damping=20.0,
+        ),
+        # Wrist: cable-derived max torque ≈ 8–14 N·m (500 N × 0.008–0.016 m
+        # levers).  10 N·m matches Klein (2023) joint spec.
+        # Velocity: 0.5 rad/s per Klein (2023).
+        "wrist": ImplicitActuatorCfg(
+            joint_names_expr=["wrist_x_joint", "wrist_y_joint"],
+            effort_limit_sim=10.0,
+            velocity_limit_sim=0.5,
             stiffness=400.0,
             damping=20.0,
         ),
     },
 )
 
+"3DOF arm with PD-controlled elbow and wrist joints (low resolution visualization)"
+
+TENS_3DOF_LO_CFG = TENS_3DOF_CFG.replace(
+    spawn=TENS_3DOF_CFG.spawn.replace(
+        usd_path=f"{PROJ_ASSETS_PATH}/Tensegrity/threedof_arm/tensegrity_threedof_arm_elbow_approx_lo.usd"
+    )
+)
+
+""" 5DOF arm + gripper with PD-controlled base and arm joints, plus Robotiq gripper"""
+
 TENS_5DOF_GRIPPER_CFG = ArticulationCfg(
 
     spawn=sim_utils.UsdFileCfg(
-        usd_path=f"{PROJ_ASSETS_PATH}/Tensegrity/fivedof_gripper.usd",
+        usd_path=f"{PROJ_ASSETS_PATH}/Tensegrity/fivedof_manipulator/fivedof_linear_base_elbow_approx_robotiq2f140.usd",
         activate_contact_sensors=False,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             rigid_body_enabled=True,
@@ -103,63 +130,48 @@ TENS_5DOF_GRIPPER_CFG = ArticulationCfg(
     actuators={
         # Gains validated by tune_pd_gains.py on 2026-02-28.
         # See doc/pd_tuning_results.md for rationale and measurements.
-        "base": ImplicitActuatorCfg(
-            joint_names_expr=["base_y_joint", "base_z_joint"],
-            effort_limit_sim=800.0,
+        # Base per-joint effort limits from Klein (2023) joint spec.
+        "base_y": ImplicitActuatorCfg(
+            joint_names_expr=["base_y_joint"],
+            effort_limit_sim=300.0,
+            velocity_limit_sim=5.0,
+            stiffness=8000.0,
+            damping=800.0,
+        ),
+        "base_z": ImplicitActuatorCfg(
+            joint_names_expr=["base_z_joint"],
+            effort_limit_sim=200.0,
             velocity_limit_sim=5.0,
             stiffness=8000.0,
             damping=800.0,
         ),
         # Arm: D=120→20 (ζ 6.4→1.1, settle 1.66s→0.30s).
         # Klein (2023) target: ζ≈1.0, settle 0.1–0.3s, overshoot<5%.
-        "arm": ImplicitActuatorCfg(
-            joint_names_expr=["elbow_joint", "wrist_y_joint", "wrist_x_joint"],
+        # Elbow effort: cable-derived 36.25 N·m, use 40 for headroom.
+        "elbow": ImplicitActuatorCfg(
+            joint_names_expr=["elbow_joint"],
             effort_limit_sim=40.0,
-            velocity_limit_sim=2.0,
+            velocity_limit_sim=1.0,
             stiffness=400.0,
             damping=20.0,
         ),
-        # Gripper: three-group config matching IsaacLab's reference
-        # Robotiq 2F-140 (isaaclab_assets/robots/universal_robots.py).
-        "gripper_drive": ImplicitActuatorCfg(
-            joint_names_expr=["finger_joint"],
+        # Wrist effort: cable-derived 8–14 N·m, use 10 (Klein joint spec).
+        "wrist": ImplicitActuatorCfg(
+            joint_names_expr=["wrist_x_joint", "wrist_y_joint"],
             effort_limit_sim=10.0,
-            velocity_limit_sim=1.0,
-            stiffness=11.25,
-            damping=0.1,
-            friction=0.0,
-            armature=0.0,
+            velocity_limit_sim=0.5,
+            stiffness=400.0,
+            damping=20.0,
         ),
-        # Inner finger joints: strong spring keeps pads parallel.
-        # K=10, D=0.05 from IsaacLab gear-assembly reference
-        # (default K=0.2 is too weak to resist four-bar linkage forces).
-        "gripper_finger": ImplicitActuatorCfg(
-            joint_names_expr=[
-                "left_inner_finger_joint",
-                "right_inner_finger_joint",
-            ],
-            effort_limit_sim=10.0,
-            velocity_limit_sim=10.0,
-            stiffness=10.0,
-            damping=0.05,
-            friction=0.0,
-            armature=0.0,
-        ),
-        # Passive four-bar linkage: K=0, D=0 — follows drive mechanically.
-        "gripper_passive": ImplicitActuatorCfg(
-            joint_names_expr=[
-                "left_inner_finger_pad_joint",
-                "right_inner_finger_pad_joint",
-                "left_outer_finger_joint",
-                "right_outer_finger_joint",
-                "right_outer_knuckle_joint",
-            ],
-            effort_limit_sim=1.0,
-            velocity_limit_sim=1.0,
-            stiffness=0.0,
-            damping=0.0,
-            friction=0.0,
-            armature=0.0,
-        ),
+        # Gripper: imported from shared centralized config
+        **get_gripper_actuators("original"),
     },
+)
+
+"5DOF arm + gripper with PD-controlled base and arm joints, plus Robotiq gripper (low resolution visualization)"
+
+TENS_5DOF_GRIPPER_LO_CFG = TENS_5DOF_GRIPPER_CFG.replace(
+    spawn=TENS_5DOF_GRIPPER_CFG.spawn.replace(
+        usd_path=f"{PROJ_ASSETS_PATH}/Tensegrity/fivedof_manipulator/fivedof_linear_base_elbow_approx_robotiq2f140_lo.usd"
+    )
 )

@@ -67,6 +67,21 @@ def tendon_configs() -> tuple[object, object]:
 
 
 @pytest.fixture(scope="module")
+def physical_tendon_configs() -> tuple[object, object]:
+    from tensegrity_pick.robots import (
+        TENS_3DOF_PHYSICAL_TENDON_CFG,
+        TENS_5DOF_GRIPPER_PHYSICAL_TENDON_CFG,
+    )
+    return TENS_3DOF_PHYSICAL_TENDON_CFG, TENS_5DOF_GRIPPER_PHYSICAL_TENDON_CFG
+
+
+PHYSICAL_ARM_JOINT_NAMES = [
+    "rod_left_joint", "rod_right_joint", "coupler_left_joint",
+    "wrist_y_joint", "wrist_x_joint",
+]
+
+
+@pytest.fixture(scope="module")
 def all_configs(
     pd_configs: tuple[object, object],
     tendon_configs: tuple[object, object],
@@ -106,25 +121,35 @@ class TestThreeDofConfig:
         for name in ARM_JOINT_NAMES:
             assert name in joint_names
 
-    def test_that_arm_actuator_covers_all_arm_joints(
+    def test_that_arm_actuators_cover_all_arm_joints(
         self, pd_configs: tuple[object, object],
     ) -> None:
         groups = _actuator_joint_exprs(pd_configs[0])
-        assert "arm" in groups
+        assert "elbow" in groups
+        assert "wrist" in groups
+        covered = groups["elbow"] + groups["wrist"]
         for name in ARM_JOINT_NAMES:
-            assert name in groups["arm"]
+            assert name in covered
 
-    def test_that_arm_effort_limit_is_positive(self, pd_configs: tuple[object, object]) -> None:
-        arm = pd_configs[0].actuators["arm"]  # type: ignore[attr-defined]
-        assert arm.effort_limit > 0
+    def test_that_elbow_effort_limit_is_positive(self, pd_configs: tuple[object, object]) -> None:
+        elbow = pd_configs[0].actuators["elbow"]  # type: ignore[attr-defined]
+        assert elbow.effort_limit_sim > 0
+
+    def test_that_wrist_effort_limit_is_positive(self, pd_configs: tuple[object, object]) -> None:
+        wrist = pd_configs[0].actuators["wrist"]  # type: ignore[attr-defined]
+        assert wrist.effort_limit_sim > 0
 
     def test_that_arm_stiffness_is_positive(self, pd_configs: tuple[object, object]) -> None:
-        arm = pd_configs[0].actuators["arm"]  # type: ignore[attr-defined]
-        assert arm.stiffness > 0
+        elbow = pd_configs[0].actuators["elbow"]  # type: ignore[attr-defined]
+        wrist = pd_configs[0].actuators["wrist"]  # type: ignore[attr-defined]
+        assert elbow.stiffness > 0
+        assert wrist.stiffness > 0
 
     def test_that_arm_damping_is_positive(self, pd_configs: tuple[object, object]) -> None:
-        arm = pd_configs[0].actuators["arm"]  # type: ignore[attr-defined]
-        assert arm.damping > 0
+        elbow = pd_configs[0].actuators["elbow"]  # type: ignore[attr-defined]
+        wrist = pd_configs[0].actuators["wrist"]  # type: ignore[attr-defined]
+        assert elbow.damping > 0
+        assert wrist.damping > 0
 
 
 # ── 5-DOF gripper config structure ───────────────────────────────────────
@@ -143,14 +168,15 @@ class TestFiveDofGripperConfig:
         self, pd_configs: tuple[object, object],
     ) -> None:
         groups = _actuator_joint_exprs(pd_configs[1])
-        assert set(groups.keys()) == {"base", "arm", "gripper", "gripper_passive"}
+        assert set(groups.keys()) == {"base_y", "base_z", "elbow", "wrist", "gripper", "gripper_passive"}
 
-    def test_that_base_actuator_covers_base_joints(
+    def test_that_base_actuators_cover_base_joints(
         self, pd_configs: tuple[object, object],
     ) -> None:
         groups = _actuator_joint_exprs(pd_configs[1])
+        covered = groups["base_y"] + groups["base_z"]
         for name in BASE_JOINT_NAMES:
-            assert name in groups["base"]
+            assert name in covered
 
     def test_that_gripper_actuator_covers_finger_joint(
         self, pd_configs: tuple[object, object],
@@ -169,45 +195,71 @@ class TestFiveDofGripperConfig:
         self, pd_configs: tuple[object, object],
     ) -> None:
         actuators = pd_configs[1].actuators  # type: ignore[attr-defined]
-        assert actuators["base"].stiffness > actuators["arm"].stiffness
+        assert actuators["base_y"].stiffness > actuators["elbow"].stiffness
+        assert actuators["base_z"].stiffness > actuators["wrist"].stiffness
 
 
 # ── Tendon config specifics ──────────────────────────────────────────────
 
 class TestTendonConfigs:
 
-    def test_that_3dof_tendon_arm_stiffness_is_zero(
+    def test_that_3dof_tendon_elbow_stiffness_is_zero(
         self, tendon_configs: tuple[object, object],
     ) -> None:
-        arm = tendon_configs[0].actuators["arm"]  # type: ignore[attr-defined]
-        assert arm.stiffness == 0.0
+        elbow = tendon_configs[0].actuators["elbow"]  # type: ignore[attr-defined]
+        assert elbow.stiffness == 0.0
 
-    def test_that_3dof_tendon_arm_damping_is_zero(
+    def test_that_3dof_tendon_wrist_stiffness_is_zero(
         self, tendon_configs: tuple[object, object],
     ) -> None:
-        arm = tendon_configs[0].actuators["arm"]  # type: ignore[attr-defined]
-        assert arm.damping == 0.0
+        wrist = tendon_configs[0].actuators["wrist"]  # type: ignore[attr-defined]
+        assert wrist.stiffness == 0.0
 
-    def test_that_5dof_tendon_arm_stiffness_is_zero(
+    def test_that_3dof_tendon_elbow_damping_is_zero(
         self, tendon_configs: tuple[object, object],
     ) -> None:
-        arm = tendon_configs[1].actuators["arm"]  # type: ignore[attr-defined]
-        assert arm.stiffness == 0.0
+        elbow = tendon_configs[0].actuators["elbow"]  # type: ignore[attr-defined]
+        assert elbow.damping == 0.0
 
-    def test_that_5dof_tendon_arm_damping_is_zero(
+    def test_that_3dof_tendon_wrist_damping_is_zero(
         self, tendon_configs: tuple[object, object],
     ) -> None:
-        arm = tendon_configs[1].actuators["arm"]  # type: ignore[attr-defined]
-        assert arm.damping == 0.0
+        wrist = tendon_configs[0].actuators["wrist"]  # type: ignore[attr-defined]
+        assert wrist.damping == 0.0
+
+    def test_that_5dof_tendon_elbow_stiffness_is_zero(
+        self, tendon_configs: tuple[object, object],
+    ) -> None:
+        elbow = tendon_configs[1].actuators["elbow"]  # type: ignore[attr-defined]
+        assert elbow.stiffness == 0.0
+
+    def test_that_5dof_tendon_wrist_stiffness_is_zero(
+        self, tendon_configs: tuple[object, object],
+    ) -> None:
+        wrist = tendon_configs[1].actuators["wrist"]  # type: ignore[attr-defined]
+        assert wrist.stiffness == 0.0
+
+    def test_that_5dof_tendon_elbow_damping_is_zero(
+        self, tendon_configs: tuple[object, object],
+    ) -> None:
+        elbow = tendon_configs[1].actuators["elbow"]  # type: ignore[attr-defined]
+        assert elbow.damping == 0.0
+
+    def test_that_5dof_tendon_wrist_damping_is_zero(
+        self, tendon_configs: tuple[object, object],
+    ) -> None:
+        wrist = tendon_configs[1].actuators["wrist"]  # type: ignore[attr-defined]
+        assert wrist.damping == 0.0
 
     def test_that_5dof_tendon_base_stiffness_is_unchanged(
         self,
         pd_configs: tuple[object, object],
         tendon_configs: tuple[object, object],
     ) -> None:
-        pd_base = pd_configs[1].actuators["base"]  # type: ignore[attr-defined]
-        tendon_base = tendon_configs[1].actuators["base"]  # type: ignore[attr-defined]
-        assert tendon_base.stiffness == pd_base.stiffness
+        for key in ("base_y", "base_z"):
+            pd_base = pd_configs[1].actuators[key]  # type: ignore[attr-defined]
+            tendon_base = tendon_configs[1].actuators[key]  # type: ignore[attr-defined]
+            assert tendon_base.stiffness == pd_base.stiffness
 
     def test_that_5dof_tendon_gripper_is_unchanged(
         self,
@@ -219,9 +271,85 @@ class TestTendonConfigs:
         assert tendon_gripper.stiffness == pd_gripper.stiffness
         assert tendon_gripper.damping == pd_gripper.damping
 
-    def test_that_tendon_arm_effort_limit_is_positive(
+    def test_that_tendon_arm_effort_limits_are_positive(
         self, tendon_configs: tuple[object, object],
     ) -> None:
         for cfg in tendon_configs:
-            arm = cfg.actuators["arm"]  # type: ignore[attr-defined]
-            assert arm.effort_limit > 0
+            elbow = cfg.actuators["elbow"]  # type: ignore[attr-defined]
+            wrist = cfg.actuators["wrist"]  # type: ignore[attr-defined]
+            assert elbow.effort_limit > 0
+            assert wrist.effort_limit > 0
+
+
+# ── Physical tendon config specifics ─────────────────────────────────────
+
+class TestPhysicalTendonConfigs:
+
+    def test_that_3dof_physical_init_state_contains_linkage_joints(
+        self, physical_tendon_configs: tuple[object, object],
+    ) -> None:
+        joint_names = _joint_names_in_init_state(physical_tendon_configs[0])
+        for name in PHYSICAL_ARM_JOINT_NAMES:
+            assert name in joint_names
+
+    def test_that_3dof_physical_has_linkage_actuator(
+        self, physical_tendon_configs: tuple[object, object],
+    ) -> None:
+        groups = _actuator_joint_exprs(physical_tendon_configs[0])
+        assert "linkage" in groups
+
+    def test_that_3dof_physical_linkage_stiffness_is_zero(
+        self, physical_tendon_configs: tuple[object, object],
+    ) -> None:
+        linkage = physical_tendon_configs[0].actuators["linkage"]  # type: ignore[attr-defined]
+        assert linkage.stiffness == 0.0
+
+    def test_that_3dof_physical_linkage_damping_is_zero(
+        self, physical_tendon_configs: tuple[object, object],
+    ) -> None:
+        linkage = physical_tendon_configs[0].actuators["linkage"]  # type: ignore[attr-defined]
+        assert linkage.damping == 0.0
+
+    def test_that_3dof_physical_wrist_stiffness_is_zero(
+        self, physical_tendon_configs: tuple[object, object],
+    ) -> None:
+        wrist = physical_tendon_configs[0].actuators["wrist"]  # type: ignore[attr-defined]
+        assert wrist.stiffness == 0.0
+
+    def test_that_3dof_physical_wrist_damping_is_zero(
+        self, physical_tendon_configs: tuple[object, object],
+    ) -> None:
+        wrist = physical_tendon_configs[0].actuators["wrist"]  # type: ignore[attr-defined]
+        assert wrist.damping == 0.0
+
+    def test_that_3dof_physical_usd_exists(
+        self, physical_tendon_configs: tuple[object, object],
+    ) -> None:
+        path = _usd_path(physical_tendon_configs[0])
+        assert os.path.isfile(path), f"Missing USD: {path}"
+
+    def test_that_5dof_physical_has_all_actuator_groups(
+        self, physical_tendon_configs: tuple[object, object],
+    ) -> None:
+        groups = _actuator_joint_exprs(physical_tendon_configs[1])
+        assert "linkage" in groups
+        assert "wrist" in groups
+        assert "base_y" in groups
+        assert "base_z" in groups
+
+    def test_that_5dof_physical_init_state_contains_all_joints(
+        self, physical_tendon_configs: tuple[object, object],
+    ) -> None:
+        joint_names = _joint_names_in_init_state(physical_tendon_configs[1])
+        expected = BASE_JOINT_NAMES + PHYSICAL_ARM_JOINT_NAMES + [GRIPPER_ACTIVE_JOINT]
+        for name in expected:
+            assert name in joint_names
+
+    def test_that_physical_arm_effort_limits_are_positive(
+        self, physical_tendon_configs: tuple[object, object],
+    ) -> None:
+        for cfg in physical_tendon_configs:
+            linkage = cfg.actuators["linkage"]  # type: ignore[attr-defined]
+            wrist = cfg.actuators["wrist"]  # type: ignore[attr-defined]
+            assert linkage.effort_limit > 0
+            assert wrist.effort_limit > 0

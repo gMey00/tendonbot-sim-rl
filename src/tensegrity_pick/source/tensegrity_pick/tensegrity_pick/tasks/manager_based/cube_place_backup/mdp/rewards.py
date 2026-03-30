@@ -46,28 +46,31 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 # IMPORTANT – CEILING-MOUNT ORIENTATION
 # The robot is mounted upside-down on the ceiling.  In the tool_link_0
-# local frame the +Z axis points DOWNWARD (toward the floor / cube) in
-# world coordinates.  All offsets below are therefore POSITIVE so that
-# ``quat_apply(ee_quat, [0, 0, +offset])`` yields a world position
-# below tool_link_0 where the physical finger pads actually are.
+# local frame the +Z axis points UPWARD (toward the ceiling mount) in
+# world coordinates.  All offsets below are therefore NEGATIVE so that
+# ``quat_apply(ee_quat, [0, 0, -offset])`` yields a world position
+# BELOW tool_link_0 where the physical finger pads actually are.
 #
-# Empirical verification (measure_positions.py, 50 zero-action steps,
-# base_z_joint = −0.25):
-#   tool_link_0        z ≈ 1.032 (local)
-#   grasp_center (+0.1925)  z ≈ 0.840   → 1.5 cm above cube centre
-#   finger_tip_open  (+0.215)   z ≈ 0.817   → 0.8 cm below cube centre
-#   finger_tip_closed (+0.235)  z ≈ 0.797   → 2.8 cm below cube centre
-#   green cube centre           z ≈ 0.825
-#   belt surface                z  = 0.800
+# Verified by diagnose_reach.py: applying +0.225 to tool_link_0 at any
+# base_z gives a world-z ~22.5 cm ABOVE the TCP (wrong direction).
+# scripts/measure_positions.py also uses -0.1925 / -0.215 (correct).
+#
+# Empirical positions at base_z_joint = -0.25 (measure_positions.py):
+#   tool_link_0          z ≈ 1.032
+#   grasp_center (-0.1925) z ≈ 0.840   → 1.5 cm above cube centre
+#   finger_tip_open (-0.215)  z ≈ 0.817   → 0.8 cm below cube centre
+#   finger_tip_closed (-0.235) z ≈ 0.797  → 2.8 cm below cube centre
+#   green cube centre          z ≈ 0.825
+#   belt surface               z  = 0.800
 #
 # If you ever change the robot mount or gripper, re-run
 # ``scripts/measure_positions.py`` and update these constants.
 # ---------------------------------------------------------------------------
 
-FINGER_TIP_OPEN_Z = 0.215       # tip offset when finger_joint = 0 (fully open)
-FINGER_TIP_CLOSED_Z = 0.235     # tip offset when finger_joint = 0.7854 (closed)
-FINGER_TIP_LOCAL_Z = 0.225      # static average for belt collision checks
-GRASP_CENTER_LOCAL_Z = 0.1925   # average pad centre between open/closed
+FINGER_TIP_OPEN_Z = -0.215      # tip offset when finger_joint = 0 (fully open)
+FINGER_TIP_CLOSED_Z = -0.235    # tip offset when finger_joint = 0.7854 (closed)
+FINGER_TIP_LOCAL_Z = -0.225     # static average for belt collision checks
+GRASP_CENTER_LOCAL_Z = -0.1925  # average pad centre between open/closed
 FINGER_JOINT_CLOSE_POS = 0.7854 # finger_joint target when fully closed
 
 

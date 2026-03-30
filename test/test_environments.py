@@ -27,6 +27,15 @@ ALL_ENV_IDS: list[str] = [
     "Template-Tensegrity-Reach-Tendon-Play-v0",
 ]
 
+# Physical tendon envs require the 5-DOF physical USD (Robot Assembler).
+# Add them to the smoke test list once the USD is assembled.
+PHYSICAL_ENV_IDS: list[str] = [
+    "Template-Reach-Tensegrity-Physical-Tendon-v0",
+    "Template-Reach-Tensegrity-Physical-Tendon-Play-v0",
+    "Template-Tensegrity-Cube-Place-Physical-Tendon-v0",
+    "Template-Tensegrity-Cube-Place-Physical-Tendon-Play-v0",
+]
+
 NUM_ENVS = 2
 NUM_STEPS = 10
 

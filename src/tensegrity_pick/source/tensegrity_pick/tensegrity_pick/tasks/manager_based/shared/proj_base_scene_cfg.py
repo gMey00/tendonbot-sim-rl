@@ -6,8 +6,7 @@
 from dataclasses import MISSING
 
 import isaaclab.sim as sim_utils
-from isaaclab.assets import AssetBaseCfg
-from isaaclab.assets.articulation import ArticulationCfg
+from isaaclab.assets import AssetBaseCfg, ArticulationCfg
 from isaaclab.assets import RigidObjectCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdFileCfg
@@ -33,11 +32,14 @@ DRUM_USD_HEIGHT_SCALE = 0.01115 * DRUM_HEIGHT_M
 
 DRUM_CENTER_TO_CONVEYOR_EDGE_M = 0.450
 ROBOT_TO_CONVEYOR_GAP_M = 0.040
-ROBOT_MOUNT_HEIGHT_M = 2.30
 
 # Per-robot optimal mount heights (determined by workspace coverage sweep).
+TENSEGRITY_MOUNT_HEIGHT_M = 2.30
 UR10E_MOUNT_HEIGHT_M = 1.40
 KINOVA_MOUNT_HEIGHT_M = 1.40
+
+# Default robot mount height (can be overridden per task)
+ROBOT_MOUNT_HEIGHT_M = TENSEGRITY_MOUNT_HEIGHT_M
 
 CONVEYOR_LENGTH_M = 2.0
 CONVEYOR_USD_ORIGIN_TO_BELT_SURFACE_M = 1.78056  # from USD geometry analysis
@@ -73,12 +75,7 @@ class ProjBaseSceneCfg(InteractiveSceneCfg):
     )
 
     # ---- robot (from separate robot cfg file) ----
-    robot = TENS_5DOF_GRIPPER_CFG.replace(
-        prim_path="{ENV_REGEX_NS}/Robot",
-        init_state=ArticulationCfg.InitialStateCfg(
-            pos=(0.15, 0.0, ROBOT_MOUNT_HEIGHT_M)  # 0.15m from conveyor center
-        )
-    )
+    robot: ArticulationCfg = MISSING  # to be specified by individual task env configs; different tasks may use different robot assets and mounts
 
     # ---- conveyor belts (two identical conveyors end-to-end along +X) ----
     # Note: Using AssetBaseCfg instead of RigidObjectCfg since the conveyor USD has its own physics prim

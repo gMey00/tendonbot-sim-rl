@@ -107,7 +107,7 @@ class EventCfg:
         func=mdp.reset_joints_by_scale,
         mode="reset",
         params={
-            "position_range": (0.75, 1.25),
+            "position_range": (0.5, 1.5),
             "velocity_range": (0.0, 0.0),
             "asset_cfg": SceneEntityCfg("robot", joint_names=MISSING),
         },
@@ -129,32 +129,42 @@ class RewardsCfg:
         weight=0.1,
         params={"asset_cfg": SceneEntityCfg("robot", body_names=MISSING), "std": 0.1, "command_name": "ee_pose"},
     )
-    end_effector_position_tracking_proximity = RewTerm(
-        func=mdp.position_command_error_tanh,
-        weight=0.2,
-        params={"asset_cfg": SceneEntityCfg("robot", body_names=MISSING), "std": 0.03, "command_name": "ee_pose"},
-    )
     end_effector_orientation_tracking = RewTerm(
         func=mdp.orientation_command_error,
         weight=-0.1,
         params={"asset_cfg": SceneEntityCfg("robot", body_names=MISSING), "command_name": "ee_pose"},
     )
-    goal_reached = RewTerm(
+
+    # -- success metrics (tiny weight → logged to TensorBoard, negligible effect on reward) --
+    position_reached = RewTerm(
         func=mdp.goal_reached,
-        weight=0.5,
+        weight=1e-6,
+        params={"asset_cfg": SceneEntityCfg("robot", body_names=MISSING), "command_name": "ee_pose", "threshold": 0.05},
+    )
+    orientation_reached = RewTerm(
+        func=mdp.orientation_reached,
+        weight=1e-6,
+        params={"asset_cfg": SceneEntityCfg("robot", body_names=MISSING), "command_name": "ee_pose", "threshold": 0.3},
+    )
+    pose_reached = RewTerm(
+        func=mdp.pose_goal_reached,
+        weight=1e-6,
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=MISSING),
-            "threshold": 0.05,
             "command_name": "ee_pose",
+            "position_threshold": 0.05,
+            "orientation_threshold": 0.3,
         },
     )
 
     # -- regularisation terms --
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.001)
+    # Initial weights match Isaac Lab reference (-0.0001); curriculum ramps them up.
+    # Ref: IsaacLab source/isaaclab_tasks/.../manipulation/reach/reach_env_cfg.py
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.0001)
     joint_vel = RewTerm(
-        func=mdp.joint_vel_l2_clamped,
-        weight=-0.0005,
-        params={"max_velocity": 10.0, "asset_cfg": SceneEntityCfg("robot")},
+        func=mdp.joint_vel_l2,
+        weight=-0.0001,
+        params={"asset_cfg": SceneEntityCfg("robot")},
     )
 
 
@@ -174,13 +184,15 @@ class TerminationsCfg:
 class CurriculumCfg:
     """Curriculum terms that ramp up regularisation over training."""
 
+    # Final weights and ramp duration match Isaac Lab reference.
+    # Ref: IsaacLab source/isaaclab_tasks/.../manipulation/reach/reach_env_cfg.py
     action_rate = CurrTerm(
         func=mdp.modify_reward_weight,
-        params={"term_name": "action_rate", "weight": -0.01, "num_steps": 12000},
+        params={"term_name": "action_rate", "weight": -0.005, "num_steps": 4500},
     )
     joint_vel = CurrTerm(
         func=mdp.modify_reward_weight,
-        params={"term_name": "joint_vel", "weight": -0.005, "num_steps": 12000},
+        params={"term_name": "joint_vel", "weight": -0.001, "num_steps": 4500},
     )
 
 

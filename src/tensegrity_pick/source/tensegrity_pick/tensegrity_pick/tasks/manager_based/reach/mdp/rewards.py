@@ -154,6 +154,23 @@ def pose_goal_reached(
     return reached.float()
 
 
+def orientation_reached(
+    env: ManagerBasedRLEnv, threshold: float, command_name: str, asset_cfg: SceneEntityCfg
+) -> torch.Tensor:
+    """Binary reward: 1.0 when the end-effector orientation is within *threshold* radians of the target.
+
+    Orientation-only check (no position constraint).
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    command = env.command_manager.get_command(command_name)
+
+    des_quat_b = command[:, 3:7]
+    des_quat_w = quat_mul(asset.data.root_state_w[:, 3:7], des_quat_b)
+    curr_quat_w = asset.data.body_state_w[:, asset_cfg.body_ids[0], 3:7]
+    error = quat_error_magnitude(curr_quat_w, des_quat_w)
+    return (error < threshold).float()
+
+
 def goal_reached(
     env: ManagerBasedRLEnv, threshold: float, command_name: str, asset_cfg: SceneEntityCfg
 ) -> torch.Tensor:

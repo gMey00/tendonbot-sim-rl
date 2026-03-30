@@ -3,9 +3,13 @@
 Constants and functions shared across all tasks using the ceiling-mounted
 5-DOF tensegrity robot with Robotiq 2F-140 gripper.
 
-All local-z offsets are POSITIVE because tool_link_0's +Z axis points
-downward in world frame (ceiling mount).  See GEOMETRY.md in cube_place
-for empirical measurements.
+All local-z offsets are NEGATIVE because tool_link_0's local +Z axis points
+UPWARD (toward the ceiling mount) in world frame.  A negative offset along
+local Z therefore projects downward toward the conveyor / cube.
+Verified by diagnostic: applying +0.225 to tool_link_0 at any base_z gives a
+world position ~22.5 cm above the TCP (wrong); -0.225 gives ~22.5 cm below
+the TCP (correct).  See also scripts/measure_positions.py for per-config
+measurements.
 """
 
 from __future__ import annotations
@@ -27,10 +31,10 @@ if TYPE_CHECKING:
 # Gripper geometry constants
 # ---------------------------------------------------------------------------
 
-FINGER_TIP_OPEN_Z = 0.215
-FINGER_TIP_CLOSED_Z = 0.235
-FINGER_TIP_LOCAL_Z = 0.225
-GRASP_CENTER_LOCAL_Z = 0.1925
+FINGER_TIP_OPEN_Z = -0.215    # local -Z = toward floor (tool_link_0 +Z points up)
+FINGER_TIP_CLOSED_Z = -0.235
+FINGER_TIP_LOCAL_Z = -0.225   # static average for belt-collision checks
+GRASP_CENTER_LOCAL_Z = -0.1925  # centre between finger pads
 FINGER_JOINT_CLOSE_POS = 0.7854
 
 

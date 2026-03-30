@@ -14,6 +14,8 @@ from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets.articulation import ArticulationCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
+from .robotiq_2f140_gripper_cfg import get_gripper_actuators
+
 TARGET_LINK_NAME = "robotiq_base_link"
 CONTROLLED_JOINT_NAMES = [
     "shoulder_pan_joint",
@@ -38,16 +40,19 @@ UR10E_GRIPPER_CFG = ArticulationCfg(
             enabled_self_collisions=False,
             solver_position_iteration_count=16,
             solver_velocity_iteration_count=4,
+            fix_root_link=True,
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
         joint_pos={
-            # Arm joints — straight-down home pose for ceiling mount.
+            # Arm joints — "ready" pose (arm forward, elbow bent).
+            # Non-zero defaults ensure reset_joints_by_scale produces
+            # diverse starting configurations.
             "shoulder_pan_joint": 0.0,
-            "shoulder_lift_joint": 0.0,
-            "elbow_joint": 0.0,
-            "wrist_1_joint": 0.0,
-            "wrist_2_joint": 0.0,
+            "shoulder_lift_joint": -1.5708,
+            "elbow_joint": 1.5708,
+            "wrist_1_joint": -1.5708,
+            "wrist_2_joint": 1.5708,
             "wrist_3_joint": 0.0,
             # Gripper — open state (same joint names as tensegrity Robotiq).
             "finger_joint": 0.0,
@@ -84,42 +89,7 @@ UR10E_GRIPPER_CFG = ArticulationCfg(
             friction=0.0,
             armature=0.0,
         ),
-        # Gripper: three-group config matching the tensegrity robot's Robotiq.
-        "gripper_drive": ImplicitActuatorCfg(
-            joint_names_expr=["finger_joint"],
-            effort_limit_sim=10.0,
-            velocity_limit_sim=1.0,
-            stiffness=11.25,
-            damping=0.1,
-            friction=0.0,
-            armature=0.0,
-        ),
-        "gripper_finger": ImplicitActuatorCfg(
-            joint_names_expr=[
-                "left_inner_finger_joint",
-                "right_inner_finger_joint",
-            ],
-            effort_limit_sim=10.0,
-            velocity_limit_sim=10.0,
-            stiffness=10.0,
-            damping=0.05,
-            friction=0.0,
-            armature=0.0,
-        ),
-        "gripper_passive": ImplicitActuatorCfg(
-            joint_names_expr=[
-                "left_inner_finger_pad_joint",
-                "right_inner_finger_pad_joint",
-                "left_outer_finger_joint",
-                "right_outer_finger_joint",
-                "right_outer_knuckle_joint",
-            ],
-            effort_limit_sim=1.0,
-            velocity_limit_sim=1.0,
-            stiffness=0.0,
-            damping=0.0,
-            friction=0.0,
-            armature=0.0,
-        ),
+        # Gripper: imported from shared centralized config
+        **get_gripper_actuators("original"),
     },
 )

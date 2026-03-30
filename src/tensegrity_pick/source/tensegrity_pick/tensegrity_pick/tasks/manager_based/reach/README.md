@@ -195,20 +195,25 @@ Where N = DOF count and M = action dimension for that variant.
 |---|---|---|
 | `end_effector_position_tracking` | −0.2 | L2 position error (unbounded penalty) |
 | `end_effector_position_tracking_fine_grained` | +0.1 | `1 − tanh(d / 0.1)` — medium-range dense reward |
-| `end_effector_position_tracking_proximity` | +0.2 | `1 − tanh(d / 0.03)` — tight proximity reward |
 | `end_effector_orientation_tracking` | −0.1 | Quaternion error magnitude |
-| `goal_reached` | +0.5 | Binary: 1.0 when `d < 0.05` m (position only) |
+
+### Success metrics (logging only)
+
+These terms have near-zero weight (1×10⁻⁶) so they appear in TensorBoard
+without affecting the reward signal.
+
+| Term | Threshold | Function |
+|---|---|---|
+| `position_reached` | 0.02 m (2 cm) | Binary 1.0 when position error < threshold |
+| `orientation_reached` | 0.1 rad (5.7°) | Binary 1.0 when orientation error < threshold |
+| `pose_reached` | both | Binary 1.0 when both position **and** orientation thresholds are met |
 
 ### Regularisation
 
 | Term | Initial Weight | Final Weight | Notes |
 |---|---|---|---|
-| `action_rate` | −0.001 | −0.01 | L2 action delta (curriculum ramp over 12 000 steps) |
-| `joint_vel` | −0.0005 | −0.005 | Clamped L2 joint velocity (curriculum ramp over 12 000 steps) |
-
-`joint_vel` uses `joint_vel_l2_clamped(max_velocity=10.0)` which clamps each joint to
-`[−10, 10] rad/s` before squaring, preventing physics divergence spikes from dominating
-the loss signal.
+| `action_rate` | −0.0001 | −0.005 | L2 action delta (curriculum ramp over 4 500 steps) |
+| `joint_vel` | −0.0001 | −0.001 | L2 joint velocity (curriculum ramp over 4 500 steps) |
 
 ## Terminations
 
@@ -221,8 +226,8 @@ the loss signal.
 
 | Step Threshold | Change |
 |---|---|
-| 0 → 12 000 | `action_rate` weight ramps from −0.001 to −0.01 |
-| 0 → 12 000 | `joint_vel` weight ramps from −0.0005 to −0.005 |
+| 0 → 4 500 | `action_rate` weight ramps from −0.0001 to −0.005 |
+| 0 → 4 500 | `joint_vel` weight ramps from −0.0001 to −0.001 |
 
 ## Reset Events
 
@@ -245,21 +250,24 @@ All variants share the same PPO configuration (see `config/<variant>/agents/skrl
 
 | Parameter | Value | Notes |
 |---|---|---|
-| `models.separate` | `True` | Separate policy / value networks |
-| `policy.min_log_std` | `−5.0` | Prevents policy collapse (floor std ≈ 0.007) |
-| `policy.layers` | `[256, 128]` | Larger capacity for compliant dynamics |
-| `value.layers` | `[256, 128]` | Matches policy network size |
-| `rollouts` | `32` | Rollout horizon per update |
-| `learning_epochs` | `8` | Gradient steps per rollout |
-| `learning_rate` | `5.0e-04` | Conservative LR |
+| `models.separate` | `False` | Shared policy / value backbone |
+| `policy.min_log_std` | `−20.0` | Effectively unclamped exploration |
+| `policy.initial_log_std` | `0.0` | Start with std ≈ 1 |
+| `policy.layers` | `[64, 64]` | Compact network, ELU activations |
+| `value.layers` | `[64, 64]` | Matches policy network size |
+| `rollouts` | `24` | Rollout horizon per update |
+| `learning_epochs` | `5` | Gradient steps per rollout |
+| `mini_batches` | `4` | Mini-batch splits per epoch |
+| `learning_rate` | `1.0e-03` | KL-adaptive scheduler (threshold 0.01) |
+| `discount_factor` | `0.99` | — |
+| `lambda` (GAE) | `0.95` | — |
 | `write_interval` | `auto` | Eliminates TensorBoard I/O bottleneck |
-| `timesteps` | `36 000` | Matches working reference budget |
+| `timesteps` | 24 000 (tensegrity) / 96 000 (UR10e, Kinova) | Industrial arms need longer training |
 
 ## Training
 
-Training is configured for 36 000 timesteps (PPO via SKRL, 4 096 parallel
-environments).  See `config/<variant>/agents/skrl_ppo_cfg.yaml` for the full
-hyperparameter set.
+Training uses SKRL PPO with 4 096 parallel environments.
+See `config/<variant>/agents/skrl_ppo_cfg.yaml` for the full hyperparameter set.
 
 Use `train_reach.sh` to train one or more variants in sequence and
 auto-generate plots and reports:
@@ -307,12 +315,16 @@ conda run --no-capture-output -n env_isaaclab \
 
 ## Training Results
 
-| Variant | Latest Report | Date |
-|---|---|---|
-| Tensegrity PD | [Report](reports/tensegrity/reach_results_tensegrity_2026-03-15_12-07-19_ppo_torch.md) | 2026-03-15 |
-| Tensegrity Tendon | [Report](reports/tensegrity_tendon/reach_results_tensegrity_tendon_2026-03-15_12-36-11_ppo_torch.md) | 2026-03-15 |
-| UR10e | [Report](reports/ur10e/reach_results_ur10e_2026-03-15_13-02-21_ppo_torch.md) | 2026-03-15 |
-| Kinova | [Report](reports/kinova/reach_results_kinova_2026-03-15_13-42-01_ppo_torch.md) | 2026-03-15 |
+| Variant | Steps | Total Reward | Pos. Error | Orient. Error | Fine-Grained | Report | Date |
+|---|---|---|---|---|---|---|---|
+| Tensegrity PD | 24k | +0.47 | −0.008 | −0.024 | 0.075 | [Report](reports/tensegrity/reach_results_tensegrity_2026-03-28_04-04-46_ppo_torch.md) | 2026-03-28 |
+| Tensegrity Tendon | 24k | +0.61 | −0.008 | −0.013 | 0.076 | [Report](reports/tensegrity_tendon/reach_results_tensegrity_tendon_2026-03-28_04-22-38_ppo_torch.md) | 2026-03-28 |
+| UR10e | 96k | −4.37 | −0.165 | −0.187 | 0.000 | [Report](reports/ur10e/reach_results_ur10e_2026-03-28_05-23-35_ppo_torch.md) | 2026-03-28 |
+| Kinova | 96k | −2.25 | −0.088 | −0.098 | 0.002 | [Report](reports/kinova/reach_results_kinova_2026-03-28_06-28-02_ppo_torch.md) | 2026-03-28 |
+
+**Note:** UR10e and Kinova do not converge within 96k steps.  Both robots are
+mounted at 2.5 m height with 180° rotation — the workspace / mounting
+configuration may need investigation.
 
 ### Training Figures
 

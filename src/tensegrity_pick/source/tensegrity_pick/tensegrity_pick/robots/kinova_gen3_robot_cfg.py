@@ -24,6 +24,8 @@ import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets.articulation import ArticulationCfg
 
+from .robotiq_2f140_gripper_cfg import get_gripper_actuators
+
 PROJ_ASSETS_PATH = "/home/robot/studentische-arbeiten/res"
 
 TARGET_LINK_NAME = "end_effector_link"
@@ -103,42 +105,7 @@ KINOVA_GEN3_GRIPPER_CFG = ArticulationCfg(
             stiffness=2500.0,
             damping=160.0,
         ),
-        # ── Gripper: identical 3-group config to tensegrity/UR10e ──
-        "gripper_drive": ImplicitActuatorCfg(
-            joint_names_expr=["finger_joint"],
-            effort_limit_sim=10.0,
-            velocity_limit_sim=1.0,
-            stiffness=11.25,
-            damping=0.1,
-            friction=0.0,
-            armature=0.0,
-        ),
-        "gripper_finger": ImplicitActuatorCfg(
-            joint_names_expr=[
-                "left_inner_finger_joint",
-                "right_inner_finger_joint",
-            ],
-            effort_limit_sim=10.0,
-            velocity_limit_sim=10.0,
-            stiffness=10.0,
-            damping=0.05,
-            friction=0.0,
-            armature=0.0,
-        ),
-        "gripper_passive": ImplicitActuatorCfg(
-            joint_names_expr=[
-                "left_inner_finger_pad_joint",
-                "right_inner_finger_pad_joint",
-                "left_outer_finger_joint",
-                "right_outer_finger_joint",
-                "right_outer_knuckle_joint",
-            ],
-            effort_limit_sim=1.0,
-            velocity_limit_sim=1.0,
-            stiffness=0.0,
-            damping=0.0,
-            friction=0.0,
-            armature=0.0,
-        ),
+        # ── Gripper: imported from shared centralized config ──
+        **get_gripper_actuators("original"),
     },
 )
