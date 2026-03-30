@@ -96,18 +96,19 @@ Through this gain tuning process, we confirmed that the base's linear axes and t
 % \end{thebibliography}
 
 %===================================================================%
-\section{Reinforcement Learning Setup}
+\section{Reinforcement Learning Setup}\label{sec:rl_setup}
 %===================================================================%
 
-\subsection{State Space}
+% NOTE: The general MDP/POMDP formalism, IsaacLab manager-based MDP workflow,
+% observation/action/reward design principles, reward shaping theory, curriculum
+% learning concepts, and GPU-vectorized training details were previously located
+% in the Background chapter (§2.5 "Policy Learning Pipeline"). They have been
+% moved here because they describe the specific MDP instantiation and training
+% pipeline used in this project, not general background theory.
+% The general RL formalism (MDPs, PPO, advantage estimation) remains in
+% Background §2.1.
 
-\subsection{Action Space}
-
-\subsection{Reward Space}
-
-\subsection{RL Algorithm and Training Parameters}
-
-\subsection{MDP Workflow in IsaacLab}
+\input{chapters/methodology/4_4_RLSetup}
 
 %===================================================================%
 \section{Initial Experiments} % (Reach pose, simple pick and place)

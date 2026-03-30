@@ -1,0 +1,19 @@
+flowchart LR
+    Tendon["Tendon Space<br/><i>Spool lengths / Tensions</i>"]
+    Joint["Joint Space<br/><i>q₁, q₂, q₃</i>"]
+    Task["Task Space<br/><i>End-Effector Pose</i>"]
+
+    Tendon -- "Transmission Model<br/><i>Routing, Compliance</i>" --> Joint
+    Joint -- "Forward Kinematics<br/><i>f(q)</i>" --> Task
+
+    Friction["Friction &<br/>Hysteresis"]
+    Coupling["Multi-Joint<br/>Coupling"]
+
+    Friction -. "non-idealities" .-> Tendon
+    Coupling -. "tendon routing" .-> Tendon
+
+    style Tendon fill:#E6E6E6,color:#2B2B2B,stroke:#5F5F5F
+    style Joint fill:#97C139,color:#2B2B2B,stroke:#5F5F5F
+    style Task fill:#296193,color:#FFFFFF,stroke:#1E4F6E
+    style Friction fill:#FFFFFF,color:#5F5F5F,stroke:#5F5F5F,stroke-dasharray: 5 5
+    style Coupling fill:#FFFFFF,color:#5F5F5F,stroke:#5F5F5F,stroke-dasharray: 5 5
