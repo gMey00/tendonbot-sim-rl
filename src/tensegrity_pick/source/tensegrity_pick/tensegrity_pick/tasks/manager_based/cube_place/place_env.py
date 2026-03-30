@@ -16,11 +16,12 @@ from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from isaaclab.utils.math import quat_apply
 
 from .place_scene_cfg import CONVEYOR_SURFACE_HEIGHT_M
-from .mdp.rewards import GRASP_CENTER_LOCAL_Z
+from .mdp.rewards import GRASP_CENTER_LOCAL_Z, BinCylinder, _in_upright_cylinder, _get_world_pos
 
 
 EE_BODY_CANDIDATES = ("tool_link_0", "robotiq_base_link", "end_effector_link")
 GREEN_CUBE_KEY = "green_cube"
+DRUM_KEY = "drum_target"
 FINGER_JOINT_NAME = "finger_joint"
 
 # Physics-based grasp detection thresholds
@@ -30,6 +31,9 @@ GRASP_PROXIMITY_THRESHOLD = 0.10
 GRASP_LIFT_THRESHOLD = 0.06
 GRASP_MIN_CLOSURE = 0.20  # ~25% of 0.7854; reject open-gripper bumps
 BELT_HEIGHT = CONVEYOR_SURFACE_HEIGHT_M
+
+# Drum geometry — must match _BIN_GEOM in place_env_cfg.py
+_DRUM_GEOM = BinCylinder(radius=0.547 * 0.5, height=0.30)
 
 
 class TensegrityPlaceEnv(ManagerBasedRLEnv):
@@ -52,6 +56,10 @@ class TensegrityPlaceEnv(ManagerBasedRLEnv):
         # this episode.  Prevents reward-hacking (pushing cube into drum
         # without grasping).
         self._was_grasped = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+
+        # Latched flag: True once the green cube entered the drum this episode
+        # (after a valid grasp).  Used as a per-episode binary placement metric.
+        self._was_placed = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
 
     # ------------------------------------------------------------------
     # Grasp centre helper
@@ -94,18 +102,32 @@ class TensegrityPlaceEnv(ManagerBasedRLEnv):
         """Per-env bool: True once the cube has been grasped this episode."""
         return self._was_grasped
 
+    @property
+    def was_placed(self) -> torch.Tensor:
+        """Per-env bool: True once the green cube entered the drum this episode."""
+        return self._was_placed
+
+    def _green_in_drum(self) -> torch.Tensor:
+        """Per-env bool: True when the green cube is currently inside the drum."""
+        green = self.scene[GREEN_CUBE_KEY]
+        drum_pos = _get_world_pos(self.scene[DRUM_KEY], env=self)
+        return _in_upright_cylinder(green.data.root_pos_w, drum_pos, _DRUM_GEOM)
+
     # ------------------------------------------------------------------
-    # Override _step_impl to update latched grasp flag
+    # Override _step_impl to update latched flags
     # ------------------------------------------------------------------
 
     def step(self, action: torch.Tensor):
-        """Standard step with grasp-latch update after physics."""
+        """Standard step with grasp- and place-latch update after physics."""
         obs, reward, terminated, time_outs, extras = super().step(action)
-        # Update latched grasp flag only for envs that are still running.
+        # Update latched flags only for envs that are still running.
         # Terminated/timed-out envs have already been reset inside
         # super().step(), so their post-reset state must not re-latch.
         still_running = ~(terminated | time_outs)
         self._was_grasped[still_running] |= self.grasp_active[still_running]
+        self._was_placed[still_running] |= (
+            self._green_in_drum() & self._was_grasped
+        )[still_running]
         return obs, reward, terminated, time_outs, extras
 
     # ------------------------------------------------------------------
@@ -124,12 +146,15 @@ class TensegrityPlaceEnv(ManagerBasedRLEnv):
         mean_ep_len = torch.tensor(0.0, device=self.device)
         if len(env_ids_t) > 0:
             grasp_rate = self._was_grasped[env_ids_t].float().mean()
+            place_rate = self._was_placed[env_ids_t].float().mean()
             mean_ep_len = self.episode_length_buf[env_ids_t].float().mean()
 
         result = super()._reset_idx(env_ids)
         self._was_grasped[env_ids_t] = False
+        self._was_placed[env_ids_t] = False
 
         # ── Inject custom scalars AFTER super (which creates extras["log"]) ──
         self.extras["log"]["Metrics/grasp_rate"] = grasp_rate
+        self.extras["log"]["Metrics/place_success_rate"] = place_rate
         self.extras["log"]["Metrics/mean_episode_length"] = mean_ep_len
         return result
