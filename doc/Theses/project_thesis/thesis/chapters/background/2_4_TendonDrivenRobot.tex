@@ -16,53 +16,24 @@ The same properties that reduce distal inertia also reduce transmission rigidity
 \paragraph{Rigid-link jointed mechanisms.}
 For tendon-driven mechanisms built from rigid links and discrete joints, the kinematic structure in task space is formally identical to that of a direct-drive serial manipulator once the joint coordinates are defined. The principal difference is that the commanded variables are naturally expressed in tendon space (tendon lengths or tensions) rather than joint space. Consequently, the overall mapping is typically decomposed into two stages: (i) a transmission model from tendon variables to generalized joint coordinates, and (ii) a conventional rigid-body forward kinematic chain from joint coordinates to end-effector pose. In practice, the transmission model is required because routing geometry and tendon elasticity determine how a commanded spool displacement converts into a joint angle, and multi-joint tendons can create coupling terms that are absent in direct-drive designs~\cite{Miyasaka2020HysteresisFriction}.
 
+\begin{figure}[ht!]
+\centering
+\includegraphics[width=0.75\textwidth]{tendon_actuation_mapping}
+\caption[Tendon-to-task-space mapping]{Two-stage kinematic mapping in tendon-driven mechanisms: tendon variables are mapped to joint coordinates through a transmission model that is affected by friction, hysteresis, and multi-joint coupling; joint coordinates are then mapped to end-effector pose through conventional forward kinematics.}\label{fig:tendon_actuation_mapping}
+\end{figure}
+
 \paragraph{Continuum and cable-driven bending mechanisms.}
 For tendon-driven continuum robots, joint coordinates are not associated with discrete revolute joints but with distributed deformation of a flexible backbone. A widespread modeling approach is the piecewise constant-curvature assumption, in which the backbone is approximated as a sequence of constant-curvature arcs. This assumption reduces an effectively infinite-dimensional shape description to a finite set of arc parameters, enabling closed-form forward and differential kinematics for many designs~\cite{Webster2010ConstantCurvature}. The assumption is frequently used as a baseline model and remains attractive for control and planning because it yields tractable Jacobians and efficient computations. However, tendon friction and hysteresis can substantially degrade the predictive accuracy of purely geometric constant-curvature mappings, motivating extended models that incorporate frictional memory effects and tension propagation along the tendons~\cite{Kato2016Neuroendoscopy}.
 
 \paragraph{Implications for inverse kinematics and control.}
 In tendon-driven systems, the \ac{IK} problem is frequently formulated in actuator space (tendon lengths) rather than in joint space. Even if a rigid-link \ac{IK} solution exists in terms of joint angles, the implementation of that solution on real tendon-driven hardware can be limited by transmission nonlinearities. In particular, hysteresis implies that the same tendon command can yield different end-effector poses depending on motion history and external loading, such that a purely kinematic \ac{IK} solution may not be repeatable without feedback~\cite{Kato2016Neuroendoscopy}. For learning-based control pipelines, this motivates the separation between an \emph{idealized kinematic model} used for planning or workspace analysis and a \emph{simulation/control model} that includes compliance and control bandwidth limitations to represent actuation uncertainty~\cite{Miyasaka2020HysteresisFriction}.
 
-\subsection{Robot configuration used in this project}
-
-The robotic system considered in this thesis combines a virtual positioning stage with a tendon-driven arm and a parallel-jaw gripper. The complete assembly is modeled as a serial chain in which a planar repositioning stage provides coarse positioning of the arm base, and a tendon-driven wristed arm provides dexterous local manipulation. The design builds on the tendon-driven robot concept and mechanical arm design described by Klein~\cite{Klein2023}.
-
-\paragraph{Kinematic structure.}
-The manipulator is composed of three modules:
-(i) a 2-\ac{DoF} linear stage modeled as two orthogonal prismatic joints, (ii) a 3-\ac{DoF} tendon-driven arm modeled as three revolute joints, and (iii) a two-finger gripper attached at the wrist flange for grasping. For workspace and dexterity measures that depend on end-effector pose, the gripper opening is not treated as a kinematic \ac{DoF} affecting pose (it affects grasp state rather than tool pose) and is therefore excluded from the pose workspace computation.
-
-A minimal generalized coordinate vector for pose-related analysis is defined as
-\[
-\mathbf{q} =
-\begin{bmatrix}
-q_y & q_z & q_1 & q_2 & q_3
-\end{bmatrix}^{\top},
-\]
-where $q_y$ and $q_z$ denote the prismatic stage displacements and $q_1, q_2, q_3$ denote the arm revolute joint angles (e.g., one proximal bending joint and two wrist tilt axes). The joint limits bound the feasible configuration space and are imposed explicitly in the workspace analysis in \autoref{sec:workspace_analysis_sampling_metrics}.
-
-\begin{figure}[ht!]
-\centering
-\fbox{\parbox{0.8\textwidth}{\centering \vspace{0.1in}Placeholder for \textit{robot kinematic chain schematic} image\vspace{0.1in}}}
-\caption[Robot kinematic chain]{Schematic of the kinematic chain used for modeling and workspace analysis: two orthogonal prismatic joints for base repositioning, followed by a three-revolute-joint tendon-driven arm and an end-effector frame located at the gripper mounting interface.}\label{fig:robot_kinematic_chain}
-\end{figure}
-
-\begin{table}[htb]
-    \centering
-    \caption{Pose-relevant degrees of freedom for workspace analysis. Joint limit values are defined by the robot specification and are applied during sampling.}\label{tab:robot_dofs}
-    \begin{tabular}{l c c}
-    \hline
-    \textbf{Joint} & \textbf{Type} & \textbf{Joint limits} \\
-    \hline
-    $q_y$ (stage) & prismatic & $[q_{y,\min}, q_{y,\max}]$ \\
-    $q_z$ (stage) & prismatic & $[q_{z,\min}, q_{z,\max}]$ \\
-    $q_1$ (arm) & revolute & $[q_{1,\min}, q_{1,\max}]$ \\
-    $q_2$ (arm) & revolute & $[q_{2,\min}, q_{2,\max}]$ \\
-    $q_3$ (arm) & revolute & $[q_{3,\min}, q_{3,\max}]$ \\
-    \hline
-    \end{tabular}
-\end{table}
-
-\paragraph{Rationale for the modular decomposition.}
-The stage--arm decomposition separates coarse positioning from local dexterity. From a modeling viewpoint, this separation is advantageous because it allows the tendon-driven arm (which is sensitive to transmission compliance and cable routing) to be analyzed both with and without the additional stage \acp{DoF}. In addition, it supports environment design and task placement by making the reachable workspace tunable through stage limits without changing the arm geometry~\cite{Klein2023}.
+% NOTE: The subsection "Robot configuration used in this project" (describing
+% the specific 5-DoF kinematic structure, coordinate vector, joint limit table,
+% and modular decomposition rationale) has been moved to Methodology §4.3
+% (Robot Model Integration), where the complete robot model assembly including
+% base, arm, gripper, joint limits, and control gain tuning is presented.
+% See: chapters/4_0_Methodology.tex
 
 \subsection{Simulation considerations for tendon-driven systems in Isaac Sim}
 
@@ -74,19 +45,21 @@ Omniverse Physics (PhysX backend) provides an articulation tendon concept with t
 \paragraph{URDF mimic joints as a pragmatic approximation.}
 When a robot is imported via \ac{URDF}, coupled motion can be encoded by mimic joints. The Isaac Sim \ac{URDF} importer can apply the PhysX mimic joint mechanism to joints carrying a mimic tag, enabling linear coupling between a reference joint and a mimicking joint~\cite{isaacsim_urdf_importer}. This mechanism is frequently used to represent mechanically linked joints such as parallelogram linkages or differential couplings. For tendon-driven approximations, mimic joints can be used to enforce idealized coupling relationships that would otherwise arise from shared tendon routing. It is noted in the Omni Physics documentation that mimic joints can introduce numerical instability when enforced as stiff constraints and that compliance can be introduced to improve stability when competing constraints apply~\cite{omni_physics_articulations_tendons}.
 
-\paragraph{MJCF tendon elements.}
-\ac{MJCF} models (MuJoCo XML) include tendon elements to express fixed and spatial tendons explicitly. The Isaac Sim \ac{MJCF} importer exposes a tendon element for creating cable-like constraints that can span multiple bodies and joints, including fixed and spatial tendon types~\cite{isaacsim_mjcf_tendon_api}. This provides an additional modeling route for tendon-driven mechanisms when an \ac{MJCF} description is available or when it is convenient to prototype tendon constraints in MuJoCo-style syntax before conversion to \ac{USD}.
-
 \paragraph{Limitations relevant to tendon-driven fidelity.}
 Although tendon primitives and mimic couplings allow tendon-like behavior to be introduced into an articulation, several fidelity gaps remain for tendon-driven robots:
 (i) distributed friction along tendon routing and hysteresis are typically not captured by ideal constraints, (ii) tendon stretch and tension propagation require tuned compliance parameters to remain stable at simulation time steps, and (iii) multi-contact routing through pulleys and guides is usually simplified to a small set of attachment points. These limitations are significant because tendon friction and hysteresis are reported to dominate motion errors in tendon-driven systems in applications such as surgical robotics, and improved prediction accuracy is obtained only when frictional effects are included in the mapping~\cite{Kato2016Neuroendoscopy,Miyasaka2020HysteresisFriction}.
 As a consequence, tendon-driven robots are often simulated using a hybrid strategy: the \emph{kinematic chain} is represented by standard joints, while tendon effects are represented by coupled joints (tendons or mimic constraints) and by compliant joint drives tuned to reproduce the apparent stiffness/damping observed in the physical system. Where higher fidelity is required, custom actuation models that map tendon commands to joint torques with friction/hysteresis compensation are required~\cite{Miyasaka2020HysteresisFriction}. % TODO: find citation for Isaac Sim best practice on using joint drives vs tendons for stability
 
-\subsection{Precision, dynamics, and compliance: implications for cloth manipulation}
+\subsection{Precision, dynamics, and compliance}
 
 Tendon-driven designs differ from direct-drive manipulators in both achievable dynamics and precision characteristics. Reduced distal inertia can enable rapid wrist motions and high dynamic bandwidth in configurations that would be limited by motor mass and gearbox inertia if actuators were placed distally~\cite{Nemoto2022CableWrist}. However, because the actuation forces are transmitted through compliant tendons and routed interfaces, the closed-loop behavior is sensitive to friction, elastic stretch, and hysteresis effects. These phenomena can manifest as configuration-dependent tracking error and reduced repeatability compared to stiff, direct-drive solutions, and they motivate calibration and model-based compensation strategies when high positional accuracy is required~\cite{Miyasaka2020HysteresisFriction,Kato2016Neuroendoscopy}.
 
-For cloth interaction tasks, the same compliance mechanisms that degrade open-loop positioning precision can be advantageous. Cloth manipulation is characterized by frequent contact, uncertain contact locations, and large modeling error due to deformable object dynamics. In this context, compliance can reduce peak contact forces, mitigate damage to the environment, and tolerate contact uncertainty by allowing small deviations from commanded trajectories without large impulsive forces~\cite{Bicchi2004FastSoftArm,Rao2021TDCRModeling}. The safety-performance tradeoff in physical interaction is classically addressed by introducing compliance in the actuation/transmission, which reduces impact severity and can improve robustness in contact-rich tasks at the cost of reduced rigidity~\cite{Bicchi2004FastSoftArm}. Therefore, tendon-driven designs can be regarded as mechanically aligned with manipulation scenarios in which force limiting and safe contact are prioritized over sub-millimeter absolute accuracy. % TODO: find citation specific to cloth manipulation requiring compliance
+The safety-performance tradeoff in physical interaction is classically addressed by introducing compliance in the actuation/transmission, which reduces impact severity and can improve robustness in contact-rich tasks at the cost of reduced rigidity~\cite{Bicchi2004FastSoftArm}. Therefore, tendon-driven designs can be regarded as mechanically aligned with manipulation scenarios in which force limiting and safe contact are prioritized over sub-millimeter absolute accuracy.
+
+% NOTE: The extended discussion of compliance implications specifically for
+% cloth manipulation has been moved to the Master Thesis background, because
+% the project thesis experiments do not involve cloth/deformable objects.
+% See: master_thesis/thesis/chapters/background/2_2_ClothSimulation.tex
 
 \subsection{Workspace analysis and dexterity metrics}
 \label{sec:workspace_analysis_sampling_metrics}
@@ -132,7 +105,7 @@ This index lies in $[0,1]$, approaches zero near singular configurations, and eq
 Reachability density is defined here as the number of sampled configurations whose end-effector poses fall within a given voxel. Under uniform joint sampling, this count is proportional to the joint-space volume that maps into the voxel region; thus, higher density indicates that more distinct configurations can realize poses in that region. This concept is closely related to workspace density formulations that assign each voxel the number of reachable points (or a normalized probability density) and interpret higher density as higher positional/orientational reach richness and, in discretely actuated systems, higher achievable pose resolution~\cite{Dong2013WorkspaceDensity}.
 
 \paragraph{Implications for task-space design in learning-based manipulation.}
-For manipulation tasks in cluttered scenes and for \ac{RL}-based control, the workspace and dexterity metrics directly inform environment layout and action-space design. Task objects (e.g., pick targets, cloth placement zones) are preferably positioned in regions with high reachability density and consistently high manipulability to reduce the probability that the robot is driven into near-singular configurations during exploration. Similarly, action bounds for end-effector motion primitives can be restricted to dexterous regions to improve learning stability and to reduce large corrective motions caused by kinematic ill-conditioning~\cite{Yoshikawa1985Manipulability,Salisbury1982ArticulatedHands,Dong2013WorkspaceDensity}. When tendon-driven compliance is present, these considerations become more important because poor kinematic conditioning can amplify transmission uncertainties into larger Cartesian errors, which in turn increases undesired contact forces during cloth interaction~\cite{Miyasaka2020HysteresisFriction,Bicchi2004FastSoftArm}.
+For manipulation tasks in cluttered scenes and for \ac{RL}-based control, the workspace and dexterity metrics directly inform environment layout and action-space design. Task objects (e.g., pick targets, placement zones) are preferably positioned in regions with high reachability density and consistently high manipulability to reduce the probability that the robot is driven into near-singular configurations during exploration. Similarly, action bounds for end-effector motion primitives can be restricted to dexterous regions to improve learning stability and to reduce large corrective motions caused by kinematic ill-conditioning~\cite{Yoshikawa1985Manipulability,Salisbury1982ArticulatedHands,Dong2013WorkspaceDensity}. When tendon-driven compliance is present, these considerations become more important because poor kinematic conditioning can amplify transmission uncertainties into larger Cartesian errors, which in turn increases undesired contact forces during object interaction~\cite{Miyasaka2020HysteresisFriction,Bicchi2004FastSoftArm}.
 
 % ---------------------------------------------------------------------------
 % BibTeX keys used in this section:

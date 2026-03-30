@@ -15,7 +15,12 @@
 
 \usepackage[centertags]{amsmath}		% Mathepakete
 \usepackage{amssymb}
+
+% fdsymbol provides extra symbols but replaces the math symbol font,
+% which turns \nabla into a fat dot.  Restore from the original CM font.
 \usepackage{fdsymbol}
+\DeclareSymbolFont{CMsymbols}{OMS}{cmsy}{m}{n}
+\DeclareMathSymbol{\nabla}{\mathord}{CMsymbols}{"72}
 
 %\usepackage[pdftex]{graphicx}
 %\usepackage{epstopdf}

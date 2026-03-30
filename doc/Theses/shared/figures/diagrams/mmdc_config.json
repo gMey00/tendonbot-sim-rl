@@ -1,0 +1,97 @@
+{
+    "theme": "base",
+    "themeVariables": {
+        "fontSize": "13px",
+        "fontFamily": "Helvetica, Arial, sans-serif",
+
+        "primaryColor": "#97C139",
+        "primaryTextColor": "#2B2B2B",
+        "primaryBorderColor": "#5F5F5F",
+
+        "secondaryColor": "#D6E8A8",
+        "secondaryTextColor": "#2B2B2B",
+        "secondaryBorderColor": "#5F5F5F",
+
+        "tertiaryColor": "#E6E6E6",
+        "tertiaryTextColor": "#2B2B2B",
+        "tertiaryBorderColor": "#5F5F5F",
+
+        "lineColor": "#5F5F5F",
+        "textColor": "#2B2B2B",
+
+        "mainBkg": "#97C139",
+        "nodeBorder": "#5F5F5F",
+        "clusterBkg": "#F2F2F2",
+        "clusterBorder": "#5F5F5F",
+        "titleColor": "#296193",
+
+        "edgeLabelBackground": "#FFFFFF",
+        "nodeTextColor": "#2B2B2B",
+
+        "actorBkg": "#296193",
+        "actorTextColor": "#FFFFFF",
+        "actorBorder": "#1E4F6E",
+        "actorLineColor": "#5F5F5F",
+
+        "signalColor": "#5F5F5F",
+        "signalTextColor": "#2B2B2B",
+
+        "labelBoxBkgColor": "#97C139",
+        "labelBoxBorderColor": "#5F5F5F",
+        "labelTextColor": "#2B2B2B",
+
+        "loopTextColor": "#296193",
+        "noteBkgColor": "#E6E6E6",
+        "noteTextColor": "#2B2B2B",
+        "noteBorderColor": "#5F5F5F",
+
+        "sectionBkgColor": "#97C139",
+        "altSectionBkgColor": "#D6E8A8",
+        "sectionBkgColor2": "#296193",
+        "taskBkgColor": "#97C139",
+        "taskBorderColor": "#5F5F5F",
+        "taskTextColor": "#2B2B2B",
+        "taskTextLightColor": "#FFFFFF",
+        "activeTaskBkgColor": "#296193",
+        "activeTaskBorderColor": "#1E4F6E",
+        "doneTaskBkgColor": "#D6E8A8",
+        "doneTaskBorderColor": "#5F5F5F",
+
+        "pie1": "#97C139",
+        "pie2": "#296193",
+        "pie3": "#D6E8A8",
+        "pie4": "#5F5F5F",
+        "pie5": "#E6E6E6",
+        "pie6": "#1E4F6E",
+        "pie7": "#B8D97A",
+        "pie8": "#CCCCCC",
+        "pieStrokeColor": "#5F5F5F",
+        "pieStrokeWidth": "1px",
+        "pieTitleTextSize": "16px",
+        "pieTitleTextColor": "#296193",
+        "pieSectionTextSize": "13px",
+        "pieSectionTextColor": "#2B2B2B",
+        "pieOuterStrokeColor": "#5F5F5F",
+        "pieOuterStrokeWidth": "1px",
+        "pieOpacity": "1"
+    },
+    "flowchart": {
+        "htmlLabels": true,
+        "curve": "basis",
+        "nodeSpacing": 50,
+        "rankSpacing": 60,
+        "padding": 12,
+        "useMaxWidth": false
+    },
+    "sequence": {
+        "useMaxWidth": false,
+        "mirrorActors": false
+    },
+    "gantt": {
+        "useMaxWidth": false,
+        "barHeight": 24,
+        "barGap": 6,
+        "topPadding": 40,
+        "sidePadding": 60
+    }
+}
