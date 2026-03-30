@@ -1,0 +1,84 @@
+# FAPS Thesis Matplotlib Style
+# ─────────────────────────────────────────────────────────────
+# Matches the FAU/FAPS thesis template:
+#   Font: Arial / Helvetica (helvet scaled=0.92)
+#   Body text: 12 pt;  Figures: ≥ 10 pt, consistent
+#   textwidth: 16 cm  →  6.299 in
+# ─────────────────────────────────────────────────────────────
+
+# ── Typography ───────────────────────────────────────────────
+font.family     : sans-serif
+font.sans-serif : Liberation Sans, Helvetica, Arial, DejaVu Sans
+font.size       : 10
+
+axes.labelsize  : 10
+axes.titlesize  : 11
+axes.titleweight: bold
+
+legend.fontsize : 9
+legend.title_fontsize : 9
+
+xtick.labelsize : 9
+ytick.labelsize : 9
+
+# ── Figure geometry ──────────────────────────────────────────
+# 16 cm wide (thesis textwidth), golden-ratio height
+figure.figsize  : 6.299, 3.898
+figure.dpi      : 150
+figure.facecolor: white
+figure.edgecolor: white
+
+# ── Save defaults ────────────────────────────────────────────
+savefig.format     : png
+savefig.dpi        : 300
+savefig.bbox       : tight
+savefig.pad_inches : 0.04
+savefig.facecolor  : white
+savefig.edgecolor  : white
+
+# ── Colour cycle  (FAPS-anchored, colourblind-friendly) ─────
+axes.prop_cycle : cycler('color', ['296193', '97C139', 'CC8800', 'CC3333', '7755AA', '22AAAA', 'DD6622', '5F5F5F'])
+
+# ── Axes ─────────────────────────────────────────────────────
+axes.facecolor  : white
+axes.edgecolor  : 0.3
+axes.linewidth  : 0.6
+axes.grid       : True
+axes.axisbelow  : True
+
+axes.spines.top   : False
+axes.spines.right : False
+
+# ── Grid ─────────────────────────────────────────────────────
+grid.color     : 0.85
+grid.linewidth : 0.5
+grid.alpha     : 1.0
+grid.linestyle : -
+
+# ── Lines ────────────────────────────────────────────────────
+lines.linewidth  : 1.5
+lines.markersize : 5
+
+# ── Legend ────────────────────────────────────────────────────
+legend.frameon       : True
+legend.framealpha    : 0.92
+legend.edgecolor     : 0.8
+legend.fancybox      : True
+legend.borderpad     : 0.4
+legend.labelspacing  : 0.4
+legend.handlelength  : 1.5
+
+# ── Ticks ────────────────────────────────────────────────────
+xtick.direction    : out
+ytick.direction    : out
+xtick.major.width  : 0.6
+ytick.major.width  : 0.6
+xtick.minor.visible: False
+ytick.minor.visible: False
+
+# ── Patches / bars ───────────────────────────────────────────
+patch.linewidth   : 0.6
+patch.edgecolor   : white
+
+# ── Math text ────────────────────────────────────────────────
+mathtext.default : regular
