@@ -2,7 +2,3 @@
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
-
-"""Shirt pick-and-place environments."""
-
-from . import config  # noqa: F401
