@@ -45,6 +45,8 @@ every target is reachable.
 | `Template-Reach-Tensegrity-Play-v0` | Tensegrity 5-DOF | 5 | PD (eval) | `config/tensegrity/` |
 | `Template-Reach-Tensegrity-Tendon-v0` | Tensegrity 5-DOF | 5 | Tendon | `config/tensegrity_tendon/` |
 | `Template-Reach-Tensegrity-Tendon-Play-v0` | Tensegrity 5-DOF | 5 | Tendon (eval) | `config/tensegrity_tendon/` |
+| `Template-Reach-Tensegrity-Physical-Tendon-v0` | Tensegrity 5-DOF (physical) | 7 | Physical Tendon | `config/tensegrity_tendon/` |
+| `Template-Reach-Tensegrity-Physical-Tendon-Play-v0` | Tensegrity 5-DOF (physical) | 7 | Physical Tendon (eval) | `config/tensegrity_tendon/` |
 | `Template-Reach-UR10e-v0` | UR10e + Robotiq 2F-140 | 6 | PD | `config/ur10e/` |
 | `Template-Reach-UR10e-Play-v0` | UR10e + Robotiq 2F-140 | 6 | PD (eval) | `config/ur10e/` |
 | `Template-Reach-Kinova-v0` | Kinova Gen3 + Robotiq 2F-140 | 7 | PD | `config/kinova/` |
@@ -66,8 +68,11 @@ reach/
 │   │   ├── joint_pos_env_cfg.py  # TensegrityReachEnvCfg
 │   │   └── agents/skrl_ppo_cfg.yaml
 │   ├── tensegrity_tendon/
-│   │   ├── joint_pos_env_cfg.py  # TensegrityReachTendonEnvCfg
-│   │   └── agents/skrl_ppo_cfg.yaml
+│   │   ├── joint_pos_env_cfg.py          # TensegrityReachTendonEnvCfg
+│   │   ├── joint_pos_env_cfg_physical.py # TensegrityReachPhysicalTendonEnvCfg
+│   │   └── agents/
+│   │       ├── skrl_ppo_cfg.yaml
+│   │       └── skrl_ppo_cfg_physical.yaml
 │   ├── ur10e/
 │   │   ├── joint_pos_env_cfg.py  # UR10eReachEnvCfg
 │   │   └── agents/skrl_ppo_cfg.yaml
@@ -77,12 +82,14 @@ reach/
 ├── figures/
 │   ├── scene_setup.png
 │   ├── tensegrity/               # Training plots for tensegrity PD
-│   ├── tensegrity_tendon/        # Training plots for tensegrity tendon
-│   ├── ur10e/                    # Training plots for UR10e
+│   ├── tensegrity_tendon/              # Training plots for tensegrity tendon
+│   ├── tensegrity_physical_tendon/     # Training plots for tensegrity physical tendon
+│   ├── ur10e/                          # Training plots for UR10e
 │   └── kinova/                   # Training plots for Kinova
 └── reports/
     ├── tensegrity/
     ├── tensegrity_tendon/
+    ├── tensegrity_physical_tendon/
     ├── ur10e/
     └── kinova/
 ```
@@ -109,6 +116,24 @@ Robot mounting positions vary per variant (see `proj_base_scene_cfg.py`).
 | `base_y_joint` | Prismatic |
 | `base_z_joint` | Prismatic |
 | `elbow_joint` | Revolute |
+| `wrist_y_joint` | Revolute |
+| `wrist_x_joint` | Revolute |
+
+Target link: `tool_link_0`
+
+### Tensegrity Physical Tendon (7 DOF)
+
+Uses a 4-bar antiparallelogram linkage instead of a single `elbow_joint`.
+`coupler_right_joint` is excluded from the articulation tree (loop-closure
+constraint).
+
+| Joint | Type |
+|---|---|
+| `base_y_joint` | Prismatic |
+| `base_z_joint` | Prismatic |
+| `rod_left_joint` | Revolute |
+| `rod_right_joint` | Revolute |
+| `coupler_left_joint` | Revolute |
 | `wrist_y_joint` | Revolute |
 | `wrist_x_joint` | Revolute |
 
@@ -154,6 +179,17 @@ The gripper is **not** controlled in the reach task.
 | `base_action` | 2 | Joint position delta | `base_y_joint`, `base_z_joint`, scale=0.5 |
 | `arm_tendon` | 5 | Tendon tensions | max_tension=500 N, Jacobian transpose from URDF |
 
+### Physical Tendon variant
+
+| Term | Dims | Type | Details |
+|---|---|---|---|
+| `base_action` | 2 | Joint position to limits | `base_y_joint`, `base_z_joint`, maps [-1, 1] → joint limits |
+| `arm_tendon` | 5 | Physical tendon efforts | max_tension=500 N, body-force tendons at physical attachment points |
+
+Elbow actuation uses 2 body-force tendons applied at physical cable
+attachment points on `root_link` and `forearm_link`.  Wrist actuation uses
+3 tendons mapped via a constant Jacobian transpose.
+
 All PD actions use `use_default_offset=True`.
 
 ## Observations (policy group)
@@ -173,6 +209,7 @@ Where N = DOF count and M = action dimension for that variant.
 |---|---|---|---|
 | Tensegrity PD | 5 | 5 | 22 |
 | Tensegrity Tendon | 5 | 7 | 24 |
+| Tensegrity Physical Tendon | 7 | 7 | 28 |
 | UR10e | 6 | 6 | 25 |
 | Kinova | 7 | 7 | 28 |
 
@@ -262,7 +299,7 @@ All variants share the same PPO configuration (see `config/<variant>/agents/skrl
 | `discount_factor` | `0.99` | — |
 | `lambda` (GAE) | `0.95` | — |
 | `write_interval` | `auto` | Eliminates TensorBoard I/O bottleneck |
-| `timesteps` | 24 000 (tensegrity) / 96 000 (UR10e, Kinova) | Industrial arms need longer training |
+| `timesteps` | 48 000 (tensegrity, tendon, physical tendon) / 96 000 (UR10e, Kinova) | Industrial arms need longer training |
 
 ## Training
 
@@ -275,7 +312,7 @@ auto-generate plots and reports:
 ```bash
 cd src/tensegrity_pick
 
-# All 4 variants
+# All variants
 ./scripts/train_reach.sh
 
 # Specific variants
@@ -301,6 +338,10 @@ conda run --no-capture-output -n env_isaaclab \
 
 conda run --no-capture-output -n env_isaaclab \
     python3 scripts/skrl/train.py \
+    --task Template-Reach-Tensegrity-Physical-Tendon-v0 --headless
+
+conda run --no-capture-output -n env_isaaclab \
+    python3 scripts/skrl/train.py \
     --task Template-Reach-UR10e-v0 --headless
 
 conda run --no-capture-output -n env_isaaclab \
@@ -317,12 +358,13 @@ conda run --no-capture-output -n env_isaaclab \
 
 | Variant | Steps | Total Reward | Pos. Error | Orient. Error | Fine-Grained | Report | Date |
 |---|---|---|---|---|---|---|---|
-| Tensegrity PD | 24k | +0.47 | −0.008 | −0.024 | 0.075 | [Report](reports/tensegrity/reach_results_tensegrity_2026-03-28_04-04-46_ppo_torch.md) | 2026-03-28 |
-| Tensegrity Tendon | 24k | +0.61 | −0.008 | −0.013 | 0.076 | [Report](reports/tensegrity_tendon/reach_results_tensegrity_tendon_2026-03-28_04-22-38_ppo_torch.md) | 2026-03-28 |
-| UR10e | 96k | −4.37 | −0.165 | −0.187 | 0.000 | [Report](reports/ur10e/reach_results_ur10e_2026-03-28_05-23-35_ppo_torch.md) | 2026-03-28 |
-| Kinova | 96k | −2.25 | −0.088 | −0.098 | 0.002 | [Report](reports/kinova/reach_results_kinova_2026-03-28_06-28-02_ppo_torch.md) | 2026-03-28 |
+| Tensegrity PD | 48k | +0.52 | −0.008 | −0.024 | 0.077 | [Report](reports/tensegrity/reach_results_tensegrity_2026-03-30_00-47-46_ppo_torch.md) | 2026-03-30 |
+| Tensegrity Tendon | 48k | +0.64 | −0.007 | −0.012 | 0.079 | [Report](reports/tensegrity_tendon/reach_results_tensegrity_tendon_2026-03-31_08-38-05_ppo_torch.md) | 2026-03-31 |
+| Tensegrity Physical Tendon | 48k | +0.67 | −0.006 | −0.012 | 0.080 | [Report](reports/tensegrity_physical_tendon/reach_results_tensegrity_physical_tendon_2026-03-31_01-08-16_ppo_torch.md) | 2026-03-31 |
+| UR10e | 96k | −0.21 | −0.051 | −0.021 | 0.056 | [Report](reports/ur10e/reach_results_ur10e_2026-03-30_07-37-24_ppo_torch.md) | 2026-03-30 |
+| Kinova | 96k | +0.62 | −0.014 | −0.019 | 0.088 | [Report](reports/kinova/reach_results_kinova_2026-03-30_06-29-39_ppo_torch.md) | 2026-03-30 |
 
-**Note:** UR10e and Kinova do not converge within 96k steps.  Both robots are
+**Note:** UR10e does not fully converge within 96k steps.  The robot is
 mounted at 2.5 m height with 180° rotation — the workspace / mounting
 configuration may need investigation.
 
@@ -332,6 +374,7 @@ configuration may need investigation.
 |---|---|
 | Tensegrity PD | [figures/tensegrity/](figures/tensegrity/) |
 | Tensegrity Tendon | [figures/tensegrity_tendon/](figures/tensegrity_tendon/) |
+| Tensegrity Physical Tendon | [figures/tensegrity_physical_tendon/](figures/tensegrity_physical_tendon/) |
 | UR10e | [figures/ur10e/](figures/ur10e/) |
 | Kinova | [figures/kinova/](figures/kinova/) |
 
@@ -346,6 +389,9 @@ conda run --no-capture-output -n env_isaaclab \
 
 conda run --no-capture-output -n env_isaaclab \
     python3 scripts/plot_reach_training_results.py --variant tensegrity_tendon
+
+conda run --no-capture-output -n env_isaaclab \
+    python3 scripts/plot_reach_training_results.py --variant tensegrity_physical_tendon
 
 conda run --no-capture-output -n env_isaaclab \
     python3 scripts/plot_reach_training_results.py --variant ur10e
