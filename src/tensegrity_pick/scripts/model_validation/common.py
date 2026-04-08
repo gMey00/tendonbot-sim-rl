@@ -55,8 +55,8 @@ TARGET_ZETA_RANGE = (1.0, 1.5)       # near-critical damping ratio
 # Derived from xacro Force1–5 attachment coordinates (threedof_manipulator.urdf.xacro).
 JACOBIAN_T = np.array([
     [+0.0725, -0.0725,  0.0,       0.0,      0.0],       # elbow
-    [ 0.0,     0.0,    -0.013856,  0.0,     +0.013856],   # wrist_y
-    [ 0.0,     0.0,    +0.008,    -0.016,   +0.008],      # wrist_x
+    [ 0.0,     0.0,    -0.017321,  0.0,     +0.017321],   # wrist_y (r=20 mm, Klein §3.2.2 p.42)
+    [ 0.0,     0.0,    +0.010,    -0.020,   +0.010],      # wrist_x
 ], dtype=np.float64)
 
 _JACOBIAN_T_PINV: Optional[np.ndarray] = None
@@ -78,9 +78,10 @@ VALIDATED_DAMPING: float = 20.0      # confirmed optimal by tune_pd_gains.py
 # ── Simulation timing ──────────────────────────────────────────────────────────
 SIM_DT: float = 1.0 / 120.0   # 120 Hz physics (matches step_response_test.py)
 RENDER_INTERVAL: int = 2
+PRE_STEP_S: float = 0.5        # recorded baseline before step onset
 STEP_HOLD_S: float = 2.5       # duration of step-up phase
 RETURN_HOLD_S: float = 1.0     # duration of return-to-zero phase
-WARMUP_S: float = 0.5          # pre-trial settle time
+WARMUP_S: float = 0.5          # pre-trial settle time (not recorded)
 
 
 # ── Data classes ───────────────────────────────────────────────────────────────
@@ -109,7 +110,7 @@ class JointTestSpec:
 # to match the Isaac Sim model's effective rotational inertia (~0.103 kg·m²
 # for the elbow).  ~133× higher gains needed for similar settling behaviour.
 #
-# Wrist gains are lower because wrist lever arms (~0.014 m) limit
+# Wrist gains are lower because wrist lever arms (~0.017 m) limit
 # achievable torque — tensions saturate at 600 N.  The D gain uses
 # derivative-on-measurement (same as elbow) which naturally filters
 # PhysX velocity noise.  Earlier versions used a separate raw-velocity
@@ -124,7 +125,7 @@ class JointTestSpec:
 ELBOW_SPEC = JointTestSpec(
     name="elbow_joint",
     joint_index=0,
-    pid=PIDGains(kp=40.0, ki=4.0, kd=3.0),
+    pid=PIDGains(kp=50.0, ki=4.0, kd=2.0),
     step_amplitudes_deg=(20.0, 30.0, 40.0),
     min_tension_n=6.0,
     saturation_n=400.0,
@@ -135,7 +136,7 @@ ELBOW_SPEC = JointTestSpec(
 WRIST_Y_SPEC = JointTestSpec(
     name="wrist_y_joint",
     joint_index=1,
-    pid=PIDGains(kp=10.0, ki=2.0, kd=0.3),
+    pid=PIDGains(kp=10.0, ki=1.5, kd=0.6),
     step_amplitudes_deg=(10.0, 20.0, 30.0),
     min_tension_n=5.0,
     saturation_n=600.0,
@@ -146,7 +147,7 @@ WRIST_Y_SPEC = JointTestSpec(
 WRIST_X_SPEC = JointTestSpec(
     name="wrist_x_joint",
     joint_index=2,
-    pid=PIDGains(kp=10.0, ki=2.0, kd=0.3),
+    pid=PIDGains(kp=10.0, ki=1.5, kd=0.6),
     step_amplitudes_deg=(10.0, 20.0, 30.0),
     min_tension_n=5.0,
     saturation_n=600.0,
@@ -187,7 +188,7 @@ PHYSICAL_TENDON_DATA_DIR = DEFAULT_OUTPUT_ROOT / "tendon_physical" / "data"
 PHYSICAL_ELBOW_SPEC = JointTestSpec(
     name="elbow_physical",          # virtual joint (measured from body quat)
     joint_index=-1,                 # not in any joint array — special handling
-    pid=PIDGains(kp=60.0, ki=6.0, kd=4.0),
+    pid=PIDGains(kp=75.0, ki=6.0, kd=3.0),
     step_amplitudes_deg=(20.0, 30.0, 40.0),
     min_tension_n=6.0,
     saturation_n=500.0,
@@ -281,7 +282,7 @@ def compute_pid_torque(
     state: PIDState,
     integral_clamp: float = 50.0,
     integral_zone_rad: float | None = None,
-    deriv_filter_alpha: float = 0.3,
+    deriv_filter_alpha: float = 0.5,
     measured_velocity_rad_s: float | None = None,
 ) -> float:
     """Classic discrete PID with derivative-on-measurement, EMA-filtered D, and clamped integrator.
@@ -308,9 +309,13 @@ def compute_pid_torque(
         state.integral += error * dt
     state.integral = max(-integral_clamp, min(integral_clamp, state.integral))
     if measured_velocity_rad_s is not None:
-        # Use PhysX solver velocity with light EMA to smooth numerical noise
+        # Use PhysX solver velocity with EMA to smooth numerical noise.
+        # NOTE: PhysX velocity at 120 Hz contains a 60 Hz artefact from
+        # the Gauss-Seidel solver.  The EMA attenuates this by ~2/3 at
+        # alpha=0.5.  Residual 60 Hz ripple in tensions is purely visual
+        # and has zero net torque effect — it is smoothed during plotting.
         deriv_raw = -measured_velocity_rad_s
-        deriv = 0.5 * deriv_raw + 0.5 * state.prev_deriv
+        deriv = deriv_filter_alpha * deriv_raw + (1.0 - deriv_filter_alpha) * state.prev_deriv
     else:
         deriv_raw = -(current_rad - state.prev_measurement) / dt if dt > 1e-9 else 0.0
         deriv = deriv_filter_alpha * deriv_raw + (1.0 - deriv_filter_alpha) * state.prev_deriv
@@ -378,26 +383,49 @@ def torque_vector_to_tensions(
     desired_torques: np.ndarray,
     min_tension: float,
     saturation: float,
+    elbow_saturation: float | None = None,
+    wrist_saturation: float | None = None,
+    prev_wrist_tensions: np.ndarray | None = None,
 ) -> np.ndarray:
     """Map a full 3-joint torque vector to 5 tendon tensions via block-wise redistribution.
 
     Elbow block (tendons 0,1) and wrist block (tendons 2,3,4) are solved
     independently, mirroring the logic in :func:`torque_to_tensions`.
+
+    Per-block saturation limits can be specified via *elbow_saturation* and
+    *wrist_saturation*; they default to *saturation* if not set.
+
+    When *prev_wrist_tensions* (shape ``(3,)``) is provided, the null-space
+    component of the 2×3 wrist pseudoinverse is biased toward the previous
+    tensions.  This removes the temporal instability inherent in minimum-norm
+    solutions where the null-space projection vector flips between timesteps
+    even when the net torque changes smoothly.
     """
+    elbow_sat = elbow_saturation if elbow_saturation is not None else saturation
+    wrist_sat = wrist_saturation if wrist_saturation is not None else saturation
     tensions = np.full(5, min_tension, dtype=np.float64)
 
     # Elbow block: tendons [0, 1]
     lever = abs(JACOBIAN_T[0, 0])
     diff = desired_torques[0] / lever
-    tensions[0] = min(min_tension + max(0.0, diff), saturation)
-    tensions[1] = min(min_tension + max(0.0, -diff), saturation)
+    tensions[0] = min(min_tension + max(0.0, diff), elbow_sat)
+    tensions[1] = min(min_tension + max(0.0, -diff), elbow_sat)
 
     # Wrist block: tendons [2, 3, 4]
     j_wrist = JACOBIAN_T[1:3, 2:5]
     j_wrist_pinv = np.linalg.pinv(j_wrist)
-    t_raw = j_wrist_pinv @ desired_torques[1:3]
+    t_min_norm = j_wrist_pinv @ desired_torques[1:3]
+    if prev_wrist_tensions is not None:
+        # Project previous tensions into the null space and add to the
+        # minimum-norm particular solution.  This keeps the tensions as
+        # close as possible to the previous timestep without affecting
+        # the net torque.
+        null_proj = np.eye(3) - j_wrist_pinv @ j_wrist
+        t_raw = t_min_norm + null_proj @ prev_wrist_tensions
+    else:
+        t_raw = t_min_norm
     shift = max(0.0, min_tension - float(np.min(t_raw)))
-    tensions[2:5] = np.clip(t_raw + shift, 0.0, saturation)
+    tensions[2:5] = np.clip(t_raw + shift, 0.0, wrist_sat)
 
     return tensions
 

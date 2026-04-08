@@ -343,6 +343,11 @@ def sample_workspace(
     filter_self_collisions: bool = True,
     collision_min_distance: float = 0.05,
     collision_adjacency_skip: int = 1,
+    linked_joint_indices: dict[int, int] | None = None,
+    elbow_filter_body_index: int | None = None,
+    elbow_filter_max_rad: float = 0.0,
+    antiparallelogram_cols: tuple[int, int, int] | None = None,
+    num_settle_steps: int = 1,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Collect EE positions and manipulability via randomised FK.
 
@@ -362,6 +367,25 @@ def sample_workspace(
     collision_adjacency_skip : int
         Body pairs with ``|i - j| <= adjacency_skip`` are kinematically
         adjacent and excluded from the distance check.
+    linked_joint_indices : dict[int, int] | None
+        Mapping {target_col: source_col} within the sampled joint
+        positions tensor.  After random sampling, target columns are
+        copied from source columns (e.g. rod_right = rod_left).
+    elbow_filter_body_index : int | None
+        When set, extract the X-axis rotation of this body after each
+        physics step and reject samples where |angle| > *elbow_filter_max_rad*.
+    elbow_filter_max_rad : float
+        Maximum absolute elbow angle (rad) for the post-physics filter.
+    antiparallelogram_cols : tuple[int, int, int] | None
+        Column indices (rod_left, rod_right, coupler_left) in the
+        sampled joint positions tensor.  When set, rod_right and
+        coupler_left are computed from rod_left via the closure condition
+        instead of random sampling.
+    num_settle_steps : int
+        Number of physics steps per batch.  For robots with closed-loop
+        kinematic constraints (e.g. antiparallelogram linkage), extra
+        steps let the PhysX constraint solver converge before reading
+        body transforms.  Default 1 is sufficient for open-chain robots.
 
     Returns
     -------
@@ -388,17 +412,55 @@ def sample_workspace(
     jacobian_available = True
     total_collision_filtered = 0
 
+    zero_joint_positions = torch.zeros(num_envs, len(joint_ids), device=device)
+
     for batch_index in range(num_batches):
         random_joint_positions = lower + (upper - lower) * torch.rand(
             num_envs, len(joint_ids), device=device,
         )
 
-        robot.write_joint_position_to_sim(random_joint_positions, joint_ids=joint_ids)
-        robot.write_joint_velocity_to_sim(
-            torch.zeros(num_envs, len(joint_ids), device=device), joint_ids=joint_ids,
-        )
+        # Enforce kinematic constraints
+        if linked_joint_indices:
+            for tgt_col, src_col in linked_joint_indices.items():
+                random_joint_positions[:, tgt_col] = random_joint_positions[:, src_col]
 
-        sim.step()
+        # Antiparallelogram closure: compute rod_right and coupler_left
+        # from rod_left via the McCarthy & Soh (2010) closure equation.
+        #   θ = θ₀ + δ_left
+        #   φ = θ + 2·arctan(−k_e·cosθ / (l_e − k_e·sinθ))
+        #   rod_right = φ + θ₀
+        #   coupler_left = rod_right  (antiparallelogram symmetry)
+        if antiparallelogram_cols is not None:
+            _rl, _rr, _cl = antiparallelogram_cols
+            _le = 0.150   # rod length [m]
+            _ke = 0.060   # joint spacing [m]
+            _t0 = math.asin(_ke / _le)  # equilibrium angle
+            theta = _t0 + random_joint_positions[:, _rl]
+            t = -_ke * torch.cos(theta) / (_le - _ke * torch.sin(theta))
+            phi = theta + 2.0 * torch.atan(t)
+            rod_right_val = phi + _t0
+            random_joint_positions[:, _rr] = rod_right_val
+            random_joint_positions[:, _cl] = rod_right_val
+
+        # Reset to initial state before each batch so the PhysX loop-
+        # closure constraint (coupler_right_joint, excludeFromArticulation)
+        # starts from a known-good state.  Without this reset the
+        # constraint solver warm-start data accumulates errors across
+        # batches and eventually the constraint breaks (rod hangs down).
+        if num_settle_steps > 1:
+            robot.write_joint_position_to_sim(zero_joint_positions, joint_ids=joint_ids)
+            robot.write_joint_velocity_to_sim(zero_joint_positions, joint_ids=joint_ids)
+            sim.step()
+
+        robot.write_joint_position_to_sim(random_joint_positions, joint_ids=joint_ids)
+        robot.write_joint_velocity_to_sim(zero_joint_positions, joint_ids=joint_ids)
+
+        for _settle in range(num_settle_steps):
+            sim.step()
+            if _settle < num_settle_steps - 1:
+                # Re-zero velocities between settle steps so constraint-solver
+                # impulses don't accumulate into dynamic drift.
+                robot.write_joint_velocity_to_sim(zero_joint_positions, joint_ids=joint_ids)
         scene.update(dt)
 
         # ── Self-collision mask (geometric body-distance check) ─────
@@ -418,6 +480,20 @@ def sample_workspace(
         #     collision_free_np = np.ones(num_envs, dtype=bool)
         collision_free_np = np.ones(num_envs, dtype=bool)
 
+        # Validate loop-closure constraint integrity.  If the PhysX
+        # constraint broke (e.g. coupler_right disconnected), the
+        # kinematic chain is invalid and body positions are garbage.
+        # Check that no adjacent body pair is farther apart than the
+        # maximum link length (0.5 m covers all links generously;
+        # the longest single segment is the forearm at ~0.26 m).
+        if num_settle_steps > 1:
+            body_pos_local = robot.data.body_pos_w[:, :, :3] - env_origins.unsqueeze(1)
+            for bi in range(1, min(ee_body_index + 1, body_pos_local.shape[1])):
+                pair_dist = torch.norm(
+                    body_pos_local[:, bi] - body_pos_local[:, bi - 1], dim=-1,
+                )
+                collision_free_np &= (pair_dist < 0.5).cpu().numpy()
+
         ee_world = robot.data.body_pos_w[:, ee_body_index, :3]
         ee_quat = robot.data.body_quat_w[:, ee_body_index, :]
         tip_offset_world = quat_apply(
@@ -430,13 +506,13 @@ def sample_workspace(
         #
         # Three independent constraints, each derived from the kinematic chain:
         #
-        #  1. dist_from_mount < 2.2 m
+        #  1. dist_from_mount < 1.95 m
         #     Triangle-inequality bound: arm_root_travel(≤0.707) + arm_length(1.197)
-        #     = 1.904 m max reach from mount; 2.2 m provides 15% margin.
+        #     = 1.904 m max reach from mount; 1.95 m provides ~2.5% margin.
         #
-        #  2. Z < mount_height
-        #     Arm always hangs BELOW the ceiling mount.  Any sample at or above
-        #     mount height is a solver-convergence artefact.
+        #  2. Z < mount_height − 0.15
+        #     Arm always hangs BELOW the ceiling mount.  Even at its shortest
+        #     configuration (elbow at 0°) the EE is ~0.2 m below the mount.
         #
         #  3. |Y| < base_y_max + arm_length = 0.5 + 1.197 = 1.70 m
         #     The base Y axis is the only source of lateral motion; the arm can
@@ -448,11 +524,19 @@ def sample_workspace(
         mount_local = np.array([0.15, 0.0, mount_height], dtype=np.float32)
         dist_from_mount = np.linalg.norm(batch_positions - mount_local, axis=1)
         physics_valid = (
-            (dist_from_mount < 2.2)
-            & (batch_positions[:, 2] < mount_height)
+            (dist_from_mount < 1.95)
+            & (batch_positions[:, 2] < mount_height - 0.15)
             & (np.abs(batch_positions[:, 1]) < 1.7)
         )
         collision_free_np &= physics_valid
+
+        # ── Elbow-angle post-filter (physical model) ──────────────
+        if elbow_filter_body_index is not None:
+            quat = robot.data.body_quat_w[:, elbow_filter_body_index, :]  # (N,4) wxyz
+            # Extract rotation around the local X axis (elbow flexion)
+            elbow_angle = 2.0 * torch.atan2(quat[:, 1], quat[:, 0])  # 2*atan2(qx, qw)
+            elbow_ok = (elbow_angle.abs() <= elbow_filter_max_rad).cpu().numpy()
+            collision_free_np &= elbow_ok
 
         batch_yoshikawa: np.ndarray
         batch_condition: np.ndarray
@@ -689,6 +773,17 @@ def main() -> None:
             prim_path="{ENV_REGEX_NS}/Robot",
             init_state=init_state,
         )
+    elif robot_choice == "tensegrity_physical":
+        from tensegrity_pick.robots.tendon_robot_cfg import TENS_5DOF_GRIPPER_PHYSICAL_TENDON_CFG
+
+        # FK sampling teleports joint positions directly via write_joint_position_to_sim,
+        # bypassing the tendon actuator entirely.  The physical USD has the correct linkage
+        # geometry, so the workspace captured here reflects the real antiparallelogram
+        # elbow kinematics rather than the single-DOF elbow_approx approximation.
+        scene_cfg.robot = TENS_5DOF_GRIPPER_PHYSICAL_TENDON_CFG.replace(
+            prim_path="{ENV_REGEX_NS}/Robot",
+            init_state=init_state,
+        )
     elif robot_choice == "ur10e":
         from tensegrity_pick.robots import UR10E_GRIPPER_CFG
 
@@ -741,12 +836,44 @@ def main() -> None:
     _log("  Spawned translucent desired-workspace box")
 
     _log(f"\nSampling {num_samples:,} configs ({num_envs} parallel envs)...\n")
+
+    # Build linked-joint index mapping (legacy, for non-closure robots)
+    linked_joint_indices: dict[int, int] | None = None
+    if robot_cfg.linked_joints:
+        linked_joint_indices = {}
+        for tgt_name, src_name in robot_cfg.linked_joints.items():
+            linked_joint_indices[CONTROLLED_JOINT_NAMES.index(tgt_name)] = (
+                CONTROLLED_JOINT_NAMES.index(src_name)
+            )
+        _log(f"  Linked joints: {robot_cfg.linked_joints}")
+
+    # Resolve elbow-filter body index (optional post-physics filter)
+    elbow_filter_body_index: int | None = None
+    if robot_cfg.elbow_filter_body:
+        elbow_filter_body_index = robot.find_bodies(robot_cfg.elbow_filter_body)[0][0]
+        _log(f"  Elbow filter: body={robot_cfg.elbow_filter_body} "
+             f"(idx={elbow_filter_body_index}), max={math.degrees(robot_cfg.elbow_filter_max_rad):.1f}°")
+
+    # Antiparallelogram closure condition (physical model)
+    antiparallelogram_cols: tuple[int, int, int] | None = None
+    if robot_cfg.antiparallelogram_closure:
+        _rl = CONTROLLED_JOINT_NAMES.index("rod_left_joint")
+        _rr = CONTROLLED_JOINT_NAMES.index("rod_right_joint")
+        _cl = CONTROLLED_JOINT_NAMES.index("coupler_left_joint")
+        antiparallelogram_cols = (_rl, _rr, _cl)
+        _log(f"  Antiparallelogram closure: cols=({_rl}, {_rr}, {_cl})")
+
     positions, yoshikawa, condition = sample_workspace(
         robot, ee_body_index, joint_ids, env_origins,
         num_samples, num_envs, sim, scene, device,
         mount_height=mount_height,
         collision_min_distance=COLLISION_MIN_DISTANCE,
         collision_adjacency_skip=COLLISION_ADJACENCY_SKIP,
+        linked_joint_indices=linked_joint_indices,
+        elbow_filter_body_index=elbow_filter_body_index,
+        elbow_filter_max_rad=robot_cfg.elbow_filter_max_rad,
+        antiparallelogram_cols=antiparallelogram_cols,
+        num_settle_steps=robot_cfg.num_settle_steps,
     )
 
     # ── Append mode: merge with existing data ─────────────────────────

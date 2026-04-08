@@ -49,16 +49,16 @@ CONTROLLED_JOINT_NAMES_5DOF = ["base_y_joint", "base_z_joint", "elbow_joint", "w
 
 _TENDON_ELBOW_ACTUATOR = IdealPDActuatorCfg(
     joint_names_expr=["elbow_joint"],
-    effort_limit=40.0,      # cable-derived: 500 N × 0.0725 m = 36.25 N·m  TODO(motor-params)
-    velocity_limit=1.0,     # Klein (2023) joint spec
+    effort_limit=35.0,      # cable-derived: 160 N motor peak × 3:1 MA × 0.0725 m = 34.8 N·m (Klein 2023 §3.2.6 p.53)
+    velocity_limit=2.5,     # Klein (2023) §4.2 p.77: 126°/s ≈ 2.2 rad/s measured
     stiffness=0.0,
     damping=0.0,
 )
 
 _TENDON_WRIST_ACTUATOR = IdealPDActuatorCfg(
     joint_names_expr=["wrist_y_joint", "wrist_x_joint"],
-    effort_limit=10.0,      # Klein (2023) joint spec / cable-derived 8–14 N·m  TODO(motor-params)
-    velocity_limit=0.5,     # Klein (2023) joint spec
+    effort_limit=3.5,       # cable-derived: 80 N continuous × 0.020 m max lever × 2 = 3.2 N·m (Klein 2023 §3.2.2 p.42)
+    velocity_limit=9.0,     # Klein (2023) §4.2 p.76: 504°/s ≈ 8.8 rad/s measured
     stiffness=0.0,
     damping=0.0,
 )
@@ -127,16 +127,16 @@ CONTROLLED_JOINT_NAMES_5DOF_PHYSICAL = [
 
 _PHYSICAL_LINKAGE_ACTUATOR = IdealPDActuatorCfg(
     joint_names_expr=["rod_.*_joint", "coupler_left_joint"],
-    effort_limit=40.0,
-    velocity_limit=2.0,
+    effort_limit=35.0,      # Klein (2023) §3.2.6: 160 N × 3:1 × 0.0725 m = 34.8 N·m
+    velocity_limit=2.5,
     stiffness=0.0,
     damping=0.0,
 )
 
 _PHYSICAL_WRIST_ACTUATOR = IdealPDActuatorCfg(
     joint_names_expr=["wrist_y_joint", "wrist_x_joint"],
-    effort_limit=10.0,
-    velocity_limit=0.5,
+    effort_limit=3.5,       # Klein (2023) §3.2.2 p.42: 80 N × 0.020 m × 2 = 3.2 N·m, rounded up
+    velocity_limit=9.0,
     stiffness=0.0,
     damping=0.0,
 )

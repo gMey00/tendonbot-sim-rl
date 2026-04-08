@@ -4,6 +4,18 @@ To add a new robot:
     1. Add a ``RobotConfig`` entry to ``ROBOTS``.
     2. In ``workspace_sample.py:main()`` add an ``elif`` branch that
        imports the Isaac Lab ``ArticulationCfg`` for the new robot.
+
+Robots
+------
+* ``tensegrity``          — 5-DOF (2 prismatic base + 3-DOF arm), elbow_approx USD,
+                            ImplicitActuator PD drives.
+* ``tensegrity_physical`` — 5-DOF (2 prismatic base + physical 4-bar linkage elbow
+                            + 2-DOF wrist), body-force tendon actuated arm.
+                            FK sampling teleports joint positions directly, so the
+                            workspace geometry is captured correctly without needing
+                            the tendon control loop.
+* ``ur10e``               — UR10e 6-DOF + Robotiq 2F-140.
+* ``kinova``              — Kinova Gen3 7-DOF + Robotiq 2F-140.
 """
 
 from __future__ import annotations
@@ -26,6 +38,21 @@ class RobotConfig:
     output_directory: str
     mount_rotations: dict[str, tuple[float, float, float, float]]
     default_mount_direction: str = "down"
+    # Mapping {target_joint: source_joint} — after random sampling,
+    # the target joint is copied from the source to enforce kinematic
+    # constraints (e.g. antiparallelogram symmetry).
+    linked_joints: dict[str, str] | None = None
+    # Body whose rotation (around X) is checked post-physics to enforce
+    # an elbow-angle limit.  None = no post-filter.
+    elbow_filter_body: str | None = None
+    elbow_filter_max_rad: float = 0.0
+    # When True, the physical antiparallelogram closure condition is used
+    # to compute rod_right and coupler_left from rod_left after sampling.
+    antiparallelogram_closure: bool = False
+    # Number of physics steps per batch.  Closed-loop kinematic constraints
+    # (e.g. the antiparallelogram coupler_right loop closure) benefit from
+    # extra solver steps after joint teleportation.
+    num_settle_steps: int = 1
 
 
 ROBOTS: dict[str, RobotConfig] = {
@@ -38,6 +65,28 @@ ROBOTS: dict[str, RobotConfig] = {
         ),
         mount_height=2.30,
         output_directory="outputs/workspace_analysis_tensegrity",
+        mount_rotations={
+            "down": (1.0, 0.0, 0.0, 0.0),
+            "up": (0.0, 0.0, 1.0, 0.0),
+        },
+    ),
+    "tensegrity_physical": RobotConfig(
+        display_name="5-DOF Tensegrity Robot (Physical Tendon)",
+        ee_body_name="tool_link_0",
+        # The physical model replaces elbow_joint with a 4-bar antiparallelogram
+        # linkage with a SINGLE kinematic DOF.  rod_left_joint is the independent
+        # sampling variable; rod_right_joint and coupler_left_joint are computed
+        # from the closure condition (see antiparallelogram_kinematics.ipynb).
+        # coupler_right_joint is excluded from the articulation tree.
+        controlled_joints=(
+            "base_y_joint", "base_z_joint",
+            "rod_left_joint", "rod_right_joint", "coupler_left_joint",
+            "wrist_y_joint", "wrist_x_joint",
+        ),
+        antiparallelogram_closure=True,
+        num_settle_steps=4,
+        mount_height=2.30,
+        output_directory="outputs/workspace_analysis_tensegrity_physical",
         mount_rotations={
             "down": (1.0, 0.0, 0.0, 0.0),
             "up": (0.0, 0.0, 1.0, 0.0),

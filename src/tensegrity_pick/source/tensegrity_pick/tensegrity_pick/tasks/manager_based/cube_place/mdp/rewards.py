@@ -214,10 +214,22 @@ def reset_place_cubes(
     red_name: str,
     parking_pose: Tuple[float, float, float] = (100.0, 100.0, 1.0),
 ) -> None:
-    """Reset both cubes.  Red activation is curriculum-controlled via env.extras."""
-    red_active = _is_red_active(env)
+    """Reset both cubes.  Red is always on the conveyor so observations stay
+    continuous.  Red-related *rewards* are gated by the curriculum flag
+    ``_RED_ACTIVE_KEY`` instead.
+
+    If the curriculum has set a spawn y-half width in extras, the
+    spawn_box y_range is overridden accordingly.
+    """
+    # Apply curriculum-controlled spawn width if available
+    y_half = getattr(env, "extras", {}).get(_SPAWN_Y_HALF_KEY)
+    if y_half is not None:
+        spawn_box.y_range = (-y_half, y_half)
+
     reset_single_cube(env, env_ids, green_name, spawn_box, active=True, parking_pose=parking_pose)
-    reset_single_cube(env, env_ids, red_name, spawn_box, active=red_active, parking_pose=parking_pose)
+    # Always spawn red on conveyor to avoid observation discontinuity.
+    # Rewards are gated by _is_red_active() curriculum flag.
+    reset_single_cube(env, env_ids, red_name, spawn_box, active=True, parking_pose=parking_pose)
 
 
 # ---------------------------------------------------------------------------
@@ -225,6 +237,7 @@ def reset_place_cubes(
 # ---------------------------------------------------------------------------
 
 _RED_ACTIVE_KEY = "place_red_active"
+_SPAWN_Y_HALF_KEY = "spawn_y_half"
 
 
 def _is_red_active(env: ManagerBasedRLEnv) -> bool:
@@ -244,6 +257,25 @@ def activate_red_cube_curriculum(
     if not hasattr(env, "extras") or env.extras is None:
         env.extras = {}
     env.extras[_RED_ACTIVE_KEY] = env.common_step_counter >= num_steps
+
+
+def widen_spawn_curriculum(
+    env: ManagerBasedRLEnv,
+    env_ids: torch.Tensor,
+    initial_y: float,
+    final_y: float,
+    num_steps: int,
+    delay_steps: int = 0,
+) -> None:
+    """Curriculum term: linearly widen spawn y-range from ±initial_y to ±final_y."""
+    if not hasattr(env, "extras") or env.extras is None:
+        env.extras = {}
+    step = env.common_step_counter
+    if step < delay_steps:
+        env.extras[_SPAWN_Y_HALF_KEY] = initial_y
+        return
+    frac = min(1.0, (step - delay_steps) / max(num_steps, 1))
+    env.extras[_SPAWN_Y_HALF_KEY] = initial_y + frac * (final_y - initial_y)
 
 
 # ---------------------------------------------------------------------------
@@ -290,10 +322,50 @@ def object_ee_distance(
     tip = _dynamic_finger_tip_w(robot, ee_cfg, finger_cfg)
     distance = _nearest_active_cube_distance(env, tip, green_name, red_name)
     result = 1.0 - torch.tanh(distance / std)
-    # Gate: turn off reach reward once holding a cube
+    # Gate: turn off reach reward once holding a cube OR task complete
     if hasattr(env, "grasp_active"):
         result = result * (~env.grasp_active).float()
+    if hasattr(env, "was_placed"):
+        result = result * (~env.was_placed).float()
     return result
+
+
+def return_to_neutral(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    std: float = 1.0,
+) -> torch.Tensor:
+    """Reward for returning joints to their default positions after task completion.
+
+    Returns ``1 - tanh(joint_distance / std)`` where joint_distance is the
+    L2 norm between current and default joint positions.  Gated on
+    ``was_placed`` — only active once the cube has been placed in the drum
+    (not on failed drops, so the agent can retry reaching).
+    """
+    robot: Articulation = env.scene[asset_cfg.name]
+    current = robot.data.joint_pos[:, asset_cfg.joint_ids]
+    default = robot.data.default_joint_pos[:, asset_cfg.joint_ids]
+    distance = torch.norm(current - default, dim=-1)
+    result = 1.0 - torch.tanh(distance / std)
+    if hasattr(env, "was_placed"):
+        result = result * env.was_placed.float()
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Observation: task completion flag
+# ---------------------------------------------------------------------------
+
+
+def was_placed_obs(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Binary observation: 1.0 once the green cube has been placed in the drum.
+
+    Returns a (N, 1) tensor so the policy can learn to switch behaviour
+    (e.g. return to neutral) after a successful placement.
+    """
+    if hasattr(env, "was_placed"):
+        return env.was_placed.float().unsqueeze(-1)
+    return torch.zeros(env.num_envs, 1, device=env.device)
 
 
 def object_is_lifted(
@@ -407,6 +479,9 @@ def approach_target_tanh(
     gate = is_lifted
     if hasattr(env, "was_grasped"):
         gate = gate & env.was_grasped
+    # Disable goal tracking after placement — arm should return to neutral
+    if hasattr(env, "was_placed"):
+        gate = gate & (~env.was_placed)
 
     return torch.where(gate, proximity, torch.zeros_like(proximity))
 
@@ -433,15 +508,17 @@ def red_cube_in_target(
     drum_name: str,
     bin_geom: BinCylinder,
 ) -> torch.Tensor:
-    """Penalty: 1.0 when the red cube is inside the drum."""
+    """Penalty: 1.0 when the red cube is inside the drum.
+
+    Gated on ``_is_red_active()`` so it returns 0 before the
+    curriculum enables the red cube.
+    """
+    if not _is_red_active(env):
+        return torch.zeros(env.num_envs, device=env.device)
     red: RigidObject = env.scene[red_name]
     pos_r = red.data.root_pos_w
     pos_d = _get_world_pos(env.scene[drum_name], env=env)
-
-    local_x = pos_r[:, 0] - env.scene.env_origins[:, 0]
-    active = local_x < 50.0
-
-    return (_in_upright_cylinder(pos_r, pos_d, bin_geom) & active).to(torch.float32)
+    return _in_upright_cylinder(pos_r, pos_d, bin_geom).to(torch.float32)
 
 
 def red_clearance_from_drum(
@@ -453,24 +530,22 @@ def red_clearance_from_drum(
     """Reward for the red cube being far from the drum.
 
     Returns ``tanh(d_xy / std)`` — reward increases as the red cube
-    is further from the drum in XY.  Only active when the red cube
-    is not parked (local_x < 50).  Gated on ``!was_grasped`` so it
-    only drives behaviour before the green cube has been grasped —
-    once grasped, the agent should focus on transport + release.
+    is further from the drum in XY.  Gated on the curriculum flag
+    ``_is_red_active()`` and on ``!was_grasped`` so it only drives
+    behaviour before the green cube has been grasped.
     """
+    if not _is_red_active(env):
+        return torch.zeros(env.num_envs, device=env.device)
     red: RigidObject = env.scene[red_name]
     pos_r = red.data.root_pos_w
     pos_d = _get_world_pos(env.scene[drum_name], env=env)
-
-    local_x = pos_r[:, 0] - env.scene.env_origins[:, 0]
-    active = local_x < 50.0
 
     d_xy = torch.sqrt(
         (pos_r[:, 0] - pos_d[:, 0]) ** 2 + (pos_r[:, 1] - pos_d[:, 1]) ** 2
     )
     clearance = torch.tanh(d_xy / std)
 
-    gate = active
+    gate = torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
     if hasattr(env, "was_grasped"):
         gate = gate & (~env.was_grasped)
 
@@ -581,6 +656,9 @@ def release_above_target(
     gate = in_xy & above_rim
     if hasattr(env, "was_grasped"):
         gate = gate & env.was_grasped
+    # Disable release reward after placement — arm should return to neutral
+    if hasattr(env, "was_placed"):
+        gate = gate & (~env.was_placed)
 
     return torch.where(gate, openness, torch.zeros_like(openness))
 
@@ -621,15 +699,19 @@ def ee_to_green_distance_metric(
 def cube_off_conveyor_penalty(
     env: ManagerBasedRLEnv,
     green_name: str,
-    red_name: str,
     bounds: ConveyorBounds,
+    red_name: str | None = None,
 ) -> torch.Tensor:
-    """Penalty (1.0) when any active cube is outside the conveyor region.
+    """Penalty (1.0) when any checked cube is outside the conveyor region.
 
     Checks Y bounds and Z threshold.  Returns per-env float in [0, 1].
+    If ``red_name`` is None, only the green cube is checked.
     """
     penalty = torch.zeros(env.num_envs, device=env.device)
-    for name in (green_name, red_name):
+    names = [green_name]
+    if red_name is not None:
+        names.append(red_name)
+    for name in names:
         cube: RigidObject = env.scene[name]
         active = _cube_is_active(cube, env)
         local = cube.data.root_pos_w - env.scene.env_origins
@@ -637,6 +719,53 @@ def cube_off_conveyor_penalty(
         out_z = local[:, 2] < bounds.z_min
         penalty = torch.where(active & (out_y | out_z), 1.0, penalty)
     return penalty
+
+
+def red_green_separation(
+    env: ManagerBasedRLEnv,
+    green_name: str,
+    red_name: str,
+    std: float = 0.15,
+) -> torch.Tensor:
+    """Reward for red and green cubes being far apart.
+
+    Returns ``tanh(d / std)`` where d is the distance between the two
+    cubes.  Gated on the curriculum flag ``_is_red_active()`` and on
+    ``!was_grasped`` so it only drives the push-aside phase.
+    """
+    if not _is_red_active(env):
+        return torch.zeros(env.num_envs, device=env.device)
+    green: RigidObject = env.scene[green_name]
+    red: RigidObject = env.scene[red_name]
+
+    d = torch.norm(red.data.root_pos_w - green.data.root_pos_w, dim=-1)
+    separation = torch.tanh(d / std)
+
+    gate = torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
+    if hasattr(env, "was_grasped"):
+        gate = gate & (~env.was_grasped)
+    return torch.where(gate, separation, torch.zeros_like(separation))
+
+
+def red_on_belt_check(
+    env: ManagerBasedRLEnv,
+    red_name: str,
+    bounds: ConveyorBounds,
+) -> torch.Tensor:
+    """Per-env bool: True when the red cube is currently inside conveyor bounds.
+
+    Used by the environment to latch a ``red_left_belt`` flag for
+    per-episode metrics.  Returns True (all on belt) when the
+    curriculum has not yet activated red — metrics only matter once
+    the red cube challenge is live.
+    """
+    if not _is_red_active(env):
+        return torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
+    red: RigidObject = env.scene[red_name]
+    local = red.data.root_pos_w - env.scene.env_origins
+    in_y = (local[:, 1] >= bounds.y_min) & (local[:, 1] <= bounds.y_max)
+    in_z = local[:, 2] >= bounds.z_min
+    return in_y & in_z
 
 
 

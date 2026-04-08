@@ -83,6 +83,7 @@ class TensegrityReachTendonEnvCfg(ReachEnvCfg):
         # override commands
         self.commands.ee_pose.body_name = TARGET_LINK_NAME
         self.commands.ee_pose.joint_names = CONTROLLED_JOINT_NAMES
+        self.commands.ee_pose.joint_range_margin = 0.01
         # re-declare actions for the tendon-driven arm
         self.actions = TendonReachActionsCfg()
         # override rewards

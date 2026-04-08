@@ -57,6 +57,9 @@ TENDON_LABELS  = [
     "T0 (elbow +)", "T1 (elbow −)",
     "T2 (wrist 0°)", "T3 (wrist 120°)", "T4 (wrist 240°)",
 ]
+TENDON_COLORS = [
+    pcfg.FAPS_BLUE, pcfg.MUTED_RED, pcfg.FAPS_GREEN, pcfg.AMBER, pcfg.PURPLE,
+]
 
 
 def _group_by_joint(trials: list[dict]) -> dict[str, list[dict]]:
@@ -117,7 +120,8 @@ def plot_step_responses(
         settle_str = f"{settle:.0f} ms" if settle is not None else "—"
         ax_angle.annotate(
             f"NRMSE={nrmse:.1f}%\nrise={rise_str}\nsettle={settle_str}",
-            xy=(common.STEP_HOLD_S * 0.55 + idx * 0.12, amp * (0.72 - 0.05 * idx)),
+            xy=(common.PRE_STEP_S + common.STEP_HOLD_S * 0.55 + idx * 0.12,
+                amp * (0.72 - 0.05 * idx)),
             fontsize=7, color=color, alpha=0.85,
             bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.5, linewidth=0),
         )
@@ -126,10 +130,12 @@ def plot_step_responses(
     klein_vals = common.KLEIN_NRMSE.get(joint_name, [])
     ax_angle.set_ylabel("Angle [°]")
     ax_angle.set_xlabel("Time [s]")
-    ax_angle.legend(ncol=2, loc="lower right")
-    ax_angle.set_xlim(0, common.STEP_HOLD_S + common.RETURN_HOLD_S)
-    ax_angle.axvline(common.STEP_HOLD_S, color="gray", linestyle=":", alpha=0.5,
-                     label="return")
+    ax_angle.legend(ncol=2, loc="upper right")
+    ax_angle.set_xlim(0, common.PRE_STEP_S + common.STEP_HOLD_S + common.RETURN_HOLD_S)
+    ax_angle.axvline(common.PRE_STEP_S, color="gray", linestyle=":", alpha=0.5,
+                     label="step onset")
+    ax_angle.axvline(common.PRE_STEP_S + common.STEP_HOLD_S, color="gray",
+                     linestyle=":", alpha=0.5, label="return")
 
     if has_tensions:
         ax_t = axes[1]
@@ -138,15 +144,23 @@ def plot_step_responses(
             t    = trial["time_s"]
             tens = trial["tensions_n"]  # (T, 5)
             for ti in range(5):
-                alpha = 0.30 + 0.15 * idx
+                alpha = 0.35 + 0.20 * idx
                 lbl   = TENDON_LABELS[ti] if idx == 0 else None
-                ax_t.plot(t, tens[:, ti], alpha=alpha, linewidth=0.9, label=lbl)
+                # 2-sample moving average removes the 60 Hz PhysX solver
+                # artefact (alternating-sign velocity impulses) that
+                # produces a cosmetic 2-step limit cycle in tensions
+                # without affecting net torque.
+                smooth_t = np.convolve(tens[:, ti], [0.5, 0.5], mode="same")
+                ax_t.plot(t, smooth_t, color=TENDON_COLORS[ti],
+                          alpha=alpha, linewidth=1.0, label=lbl)
 
         ax_t.set_ylabel("Tension [N]")
         ax_t.set_xlabel("Time [s]")
-        ax_t.legend(ncol=3, loc="upper right")
-        ax_t.set_xlim(0, common.STEP_HOLD_S + common.RETURN_HOLD_S)
-        ax_t.axvline(common.STEP_HOLD_S, color="gray", linestyle=":", alpha=0.5)
+        ax_t.legend(ncol=2, loc="upper right")
+        ax_t.set_xlim(0, common.PRE_STEP_S + common.STEP_HOLD_S + common.RETURN_HOLD_S)
+        ax_t.axvline(common.PRE_STEP_S, color="gray", linestyle=":", alpha=0.5)
+        ax_t.axvline(common.PRE_STEP_S + common.STEP_HOLD_S, color="gray",
+                     linestyle=":", alpha=0.5)
 
     pcfg.finalize(fig, output_path, title=_title)
 
@@ -414,10 +428,10 @@ def plot_damping_sweep(
         ax_top.axhline(amp, color="k", linestyle=":", alpha=0.4, linewidth=1.0)
         ax_top.axhline(amp * 1.02, color="g", linestyle="--", alpha=0.3, linewidth=0.8)
         ax_top.axhline(amp * 0.98, color="g", linestyle="--", alpha=0.3, linewidth=0.8)
-        ax_top.set_xlim(0, common.STEP_HOLD_S)
+        ax_top.set_xlim(0, common.PRE_STEP_S + common.STEP_HOLD_S)
         ax_top.set_xlabel("Time [s]")
         ax_top.set_ylabel("Angle [°]")
-        ax_top.legend(fontsize=7, loc="lower right")
+        ax_top.legend(fontsize=7, loc="upper right")
         ax_top.grid(True, alpha=0.3)
 
         # ── Bottom: settling time bar chart ───────────────────────────
@@ -513,16 +527,19 @@ def plot_base_step_responses(
         settle_str = f"{settle:.0f} ms" if settle is not None else "—"
         ax.annotate(
             f"NRMSE={nrmse:.1f}%\nrise={rise_str}\nsettle={settle_str}",
-            xy=(common.STEP_HOLD_S * 0.55 + idx * 0.12, amp * (0.72 - 0.05 * idx)),
+            xy=(common.PRE_STEP_S + common.STEP_HOLD_S * 0.55 + idx * 0.12,
+                amp * (0.72 - 0.05 * idx)),
             fontsize=7, color=color, alpha=0.85,
             bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.5, linewidth=0),
         )
 
     ax.set_ylabel("Displacement [mm]")
     ax.set_xlabel("Time [s]")
-    ax.legend(ncol=2, loc="lower right")
-    ax.set_xlim(0, common.STEP_HOLD_S + common.RETURN_HOLD_S)
-    ax.axvline(common.STEP_HOLD_S, color="gray", linestyle=":", alpha=0.5, label="return")
+    ax.legend(ncol=2, loc="upper right")
+    ax.set_xlim(0, common.PRE_STEP_S + common.STEP_HOLD_S + common.RETURN_HOLD_S)
+    ax.axvline(common.PRE_STEP_S, color="gray", linestyle=":", alpha=0.5, label="step onset")
+    ax.axvline(common.PRE_STEP_S + common.STEP_HOLD_S, color="gray", linestyle=":",
+               alpha=0.5, label="return")
 
     pcfg.finalize(fig, output_path, title=_title)
 

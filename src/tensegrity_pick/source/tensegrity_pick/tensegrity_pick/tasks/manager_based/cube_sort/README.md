@@ -105,9 +105,9 @@ Stage 1: only 1 green cube is active, 0 red cubes (rest parked at (100, 100, 1))
 |---|---|---|---|
 | `base_y_joint` | Prismatic | ±0.5 m | (−0.5, 0.5) |
 | `base_z_joint` | Prismatic | −0.5 … 0.0 m | (−0.5, 0.0) |
-| `elbow_joint` | Revolute | ±1.5 rad | (−1.5, 1.5) |
-| `wrist_y_joint` | Revolute | ±0.8 rad | (−0.8, 0.8) |
-| `wrist_x_joint` | Revolute | ±0.8 rad | (−0.8, 0.8) |
+| `elbow_joint` | Revolute | ±1.2217 rad | (−1.2217, 1.2217) |
+| `wrist_y_joint` | Revolute | ±0.8727 rad | (−0.8727, 0.8727) |
+| `wrist_x_joint` | Revolute | ±0.8727 rad | (−0.8727, 0.8727) |
 | `finger_joint` | Revolute | — | Binary (open=0.0, close=0.7854) |
 
 ## Actions (6 dims)
@@ -426,8 +426,6 @@ conda run --no-capture-output -n env_isaaclab python3 scripts/plot_sort_training
 
 ## Related
 
-- [Implementation report](../../../../../../../../doc/implementation_report_cube_sort_v1.md) — detailed change log and debugging timeline
-- [Research report](../../../../../../../../doc/research_report_rl_cube_sorting.md) — original research analysis
 - [Robot specification](../../../../../../../../res/Tensegrity/README.md) — kinematic chain, joint constraints
 - [Cube Place task](../cube_place/README.md) — single-cube pick-and-place (predecessor)
 - [Extension overview](../../../../../../README.md) — all registered tasks and scripts

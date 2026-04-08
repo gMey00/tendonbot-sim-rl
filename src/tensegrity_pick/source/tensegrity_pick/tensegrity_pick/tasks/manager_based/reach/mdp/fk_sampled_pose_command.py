@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import MISSING
 from typing import TYPE_CHECKING
 
@@ -144,6 +144,10 @@ class FKSampledPoseCommand(CommandTerm):
             len(env_ids), len(self.joint_ids), device=self.device
         )
 
+        # Apply optional coupling constraint (e.g. antiparallelogram closure)
+        if self.cfg.joint_coupling_fn is not None:
+            random_joint_positions = self.cfg.joint_coupling_fn(random_joint_positions)
+
         saved_joint_positions = self.robot.data.joint_pos[env_ids].clone()
         # Save all-joint velocities so we can flush PhysX's internal state after the restore.
         saved_joint_velocities = self.robot.data.joint_vel[env_ids].clone()
@@ -223,6 +227,14 @@ class FKSampledPoseCommandCfg(CommandTermCfg):
     A margin of 0.10 (default) samples from the inner 80% of each joint range,
     avoiding extreme configurations.  Larger values narrow the workspace, which
     can help robots with large joint ranges (e.g. UR10e ±2π) converge faster."""
+
+    joint_coupling_fn: Callable[[torch.Tensor], torch.Tensor] | None = None
+    """Optional function to enforce kinematic coupling after independent sampling.
+
+    When set, called with the (N, J) sampled joint positions tensor and must
+    return a modified tensor of the same shape.  Useful for robots with closed
+    kinematic chains (e.g. antiparallelogram 4-bar linkage) where some joints
+    are not independent."""
 
     goal_pose_visualizer_cfg: VisualizationMarkersCfg = FRAME_MARKER_CFG.replace(
         prim_path="/Visuals/Command/goal_pose"

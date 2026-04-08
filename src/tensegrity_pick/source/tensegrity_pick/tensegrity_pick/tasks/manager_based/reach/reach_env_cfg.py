@@ -5,6 +5,7 @@
 
 from dataclasses import MISSING
 
+import isaaclab.sim as sim_utils
 from isaaclab.devices import DevicesCfg
 from isaaclab.devices.gamepad import Se3GamepadCfg
 from isaaclab.devices.keyboard import Se3KeyboardCfg
@@ -32,7 +33,19 @@ from . import mdp
 
 @configclass
 class ReachSceneCfg(ProjBaseSceneCfg):
-    """Configuration for the reach scene."""
+    """Configuration for the reach scene.
+
+    All non-robot objects (conveyors, drums) have collisions disabled so the
+    robot can freely explore its full workspace without physical interference.
+    The scene props remain visible as a reference for downstream tasks.
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        # Make all scene props visual-only (penetrable)
+        self.conveyor.spawn.collision_props = sim_utils.CollisionPropertiesCfg(collision_enabled=False)
+        self.conveyor_upstream.spawn.collision_props = sim_utils.CollisionPropertiesCfg(collision_enabled=False)
+        self.drum_target.spawn.collision_props = sim_utils.CollisionPropertiesCfg(collision_enabled=False)
 
 
 ##

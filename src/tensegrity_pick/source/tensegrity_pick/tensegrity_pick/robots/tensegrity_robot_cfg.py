@@ -55,23 +55,25 @@ TENS_3DOF_CFG = ArticulationCfg(
     ),
 
     actuators={
-        # Elbow: cable-derived max torque ≈ 36.25 N·m (500 N × 0.0725 m lever).
-        # 40 N·m provides slight headroom.  Velocity matches physical spec
-        # from Klein (2023) joint table: 1.0 rad/s.
+        # Elbow: cable-derived max torque ≈ 34.8 N·m (160 N motor peak × 3:1 MA × 0.0725 m lever).
+        # Klein (2023) §3.2.6 p.53, §3.5 p.65, spool radius 5 mm.
+        # 35 N·m provides slight headroom.  Velocity matches physical spec
+        # from Klein (2023) §4.2 p.77: 126°/s ≈ 2.2 rad/s (measured at 40° step).
         "elbow": ImplicitActuatorCfg(
             joint_names_expr=["elbow_joint"],
-            effort_limit_sim=40.0,
-            velocity_limit_sim=1.0,
+            effort_limit_sim=35.0,
+            velocity_limit_sim=2.5,
             stiffness=400.0,
             damping=20.0,
         ),
-        # Wrist: cable-derived max torque ≈ 8–14 N·m (500 N × 0.008–0.016 m
-        # levers).  10 N·m matches Klein (2023) joint spec.
-        # Velocity: 0.5 rad/s per Klein (2023).
+        # Wrist: cable-derived max torque ≈ 3.2 N·m (80 N motor continuous × 0.020 m
+        # max lever × 2 contributing cables). Klein (2023) §3.2.2 p.42 (r = 20 mm),
+        # §3.2.6 p.53. No pulley MA at wrist. 3.5 N·m provides headroom.
+        # Velocity: 504°/s ≈ 8.8 rad/s measured (Klein 2023 §4.2 p.76).
         "wrist": ImplicitActuatorCfg(
             joint_names_expr=["wrist_x_joint", "wrist_y_joint"],
-            effort_limit_sim=10.0,
-            velocity_limit_sim=0.5,
+            effort_limit_sim=3.5,
+            velocity_limit_sim=9.0,
             stiffness=400.0,
             damping=20.0,
         ),
@@ -147,19 +149,22 @@ TENS_5DOF_GRIPPER_CFG = ArticulationCfg(
         ),
         # Arm: D=120→20 (ζ 6.4→1.1, settle 1.66s→0.30s).
         # Klein (2023) target: ζ≈1.0, settle 0.1–0.3s, overshoot<5%.
-        # Elbow effort: cable-derived 36.25 N·m, use 40 for headroom.
+        # Elbow effort: cable-derived 34.8 N·m (160 N × 3:1 × 0.0725 m), use 35 for headroom.
+        # Klein (2023) §3.2.6 p.53, spool radius 5 mm, 3:1 elbow pulley MA.
         "elbow": ImplicitActuatorCfg(
             joint_names_expr=["elbow_joint"],
-            effort_limit_sim=40.0,
-            velocity_limit_sim=1.0,
+            effort_limit_sim=35.0,
+            velocity_limit_sim=2.5,
             stiffness=400.0,
             damping=20.0,
         ),
-        # Wrist effort: cable-derived 8–14 N·m, use 10 (Klein joint spec).
+        # Wrist effort: cable-derived max ≈ 3.2 N·m (80 N × 0.020 m × 2 cable
+        # contributions). Klein (2023) §3.2.2 p.42 (r = 20 mm), no pulley MA.
+        # 3.5 N·m provides headroom.
         "wrist": ImplicitActuatorCfg(
             joint_names_expr=["wrist_x_joint", "wrist_y_joint"],
-            effort_limit_sim=10.0,
-            velocity_limit_sim=0.5,
+            effort_limit_sim=3.5,
+            velocity_limit_sim=9.0,
             stiffness=400.0,
             damping=20.0,
         ),

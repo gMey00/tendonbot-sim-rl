@@ -80,9 +80,9 @@ class TensegrityPlaceEnvCfg(PlaceEnvCfg):
             scale=1.0,
             use_default_offset=True,
             clip={
-                "elbow_joint": (-1.5, 1.5),
-                "wrist_y_joint": (-0.8, 0.8),
-                "wrist_x_joint": (-0.8, 0.8),
+                "elbow_joint": (-1.2217, 1.2217),
+                "wrist_y_joint": (-0.8727, 0.8727),
+                "wrist_x_joint": (-0.8727, 0.8727),
             },
         )
 
@@ -96,7 +96,7 @@ class TensegrityPlaceEnvCfg(PlaceEnvCfg):
         # ── Tensegrity-specific: base velocity penalty ────────────────
         self.rewards.base_velocity = RewTerm(
             func=task_rew.base_velocity_l2,
-            weight=-1.5,
+            weight=-0.75,
             params={
                 "asset_cfg": SceneEntityCfg("robot", joint_names=BASE_JOINT_NAMES),
             },

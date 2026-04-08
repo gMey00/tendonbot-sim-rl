@@ -176,8 +176,8 @@ ALL_JOINT_SPECS = [WRIST_Y_SPEC, WRIST_X_SPEC, ELBOW_SPEC]
 # Row order: [elbow, wrist_y, wrist_x]  — matches ARM_JOINT_NAMES
 JACOBIAN_T = np.array([
     [+0.0725, -0.0725,  0.0,       0.0,      0.0],       # elbow
-    [ 0.0,     0.0,     -0.013856,  0.0,     +0.013856],  # wrist_y
-    [ 0.0,     0.0,     +0.008,    -0.016,   +0.008],     # wrist_x
+    [ 0.0,     0.0,     -0.017321,  0.0,     +0.017321],  # wrist_y (r=20 mm, Klein §3.2.2 p.42)
+    [ 0.0,     0.0,     +0.010,    -0.020,   +0.010],     # wrist_x
 ], dtype=np.float64)
 
 JACOBIAN_T_TENSOR: torch.Tensor | None = None  # lazily initialised on-device

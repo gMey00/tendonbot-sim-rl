@@ -162,6 +162,9 @@ class TendonObservationsCfg:
         )
         actions = ObsTerm(func=mdp.last_action)
 
+        # Task completion flag — lets the policy know when to return to neutral
+        was_placed = ObsTerm(func=task_rew.was_placed_obs)
+
         def __post_init__(self) -> None:
             self.enable_corruption = False
             self.concatenate_terms = True

@@ -16,7 +16,7 @@ from isaaclab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from isaaclab.utils.math import quat_apply
 
 from .place_scene_cfg import CONVEYOR_SURFACE_HEIGHT_M
-from .mdp.rewards import GRASP_CENTER_LOCAL_Z, BinCylinder, _in_upright_cylinder, _get_world_pos
+from .mdp.rewards import GRASP_CENTER_LOCAL_Z, BinCylinder, ConveyorBounds, _in_upright_cylinder, _get_world_pos
 
 
 EE_BODY_CANDIDATES = ("tool_link_0", "robotiq_base_link", "end_effector_link")
@@ -31,6 +31,9 @@ GRASP_PROXIMITY_THRESHOLD = 0.10
 GRASP_LIFT_THRESHOLD = 0.06
 GRASP_MIN_CLOSURE = 0.20  # ~25% of 0.7854; reject open-gripper bumps
 BELT_HEIGHT = CONVEYOR_SURFACE_HEIGHT_M
+
+# Conveyor bounds for red-on-belt metric
+_CONVEYOR_BOUNDS = ConveyorBounds(y_min=-0.4, y_max=0.4, z_min=0.70)
 
 # Drum geometry — must match _BIN_GEOM in place_env_cfg.py
 _DRUM_GEOM = BinCylinder(radius=0.547 * 0.5, height=0.30)
@@ -60,6 +63,16 @@ class TensegrityPlaceEnv(ManagerBasedRLEnv):
         # Latched flag: True once the green cube entered the drum this episode
         # (after a valid grasp).  Used as a per-episode binary placement metric.
         self._was_placed = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+
+        # Latched flag: True once the task is complete — either the cube has
+        # been placed in the drum, or was grasped and then dropped far from
+        # the EE (unreachable).  Used to gate reaching rewards off and
+        # activate the return-to-neutral reward.
+        self._task_done = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+
+        # Latched flag: True once the red cube left the conveyor belt
+        # this episode.  Used as a per-episode metric for red cube handling.
+        self._red_left_belt = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
 
     # ------------------------------------------------------------------
     # Grasp centre helper
@@ -107,6 +120,11 @@ class TensegrityPlaceEnv(ManagerBasedRLEnv):
         """Per-env bool: True once the green cube entered the drum this episode."""
         return self._was_placed
 
+    @property
+    def task_done(self) -> torch.Tensor:
+        """Per-env bool: True once the cube is placed or dropped out of reach."""
+        return self._task_done
+
     def _green_in_drum(self) -> torch.Tensor:
         """Per-env bool: True when the green cube is currently inside the drum."""
         green = self.scene[GREEN_CUBE_KEY]
@@ -128,6 +146,28 @@ class TensegrityPlaceEnv(ManagerBasedRLEnv):
         self._was_placed[still_running] |= (
             self._green_in_drum() & self._was_grasped
         )[still_running]
+
+        # Latch task_done: cube placed OR (had cube, released, now far)
+        green = self.scene[GREEN_CUBE_KEY]
+        gc_pos = self._grasp_center_pos()
+        dist = torch.norm(green.data.root_pos_w - gc_pos, dim=-1)
+        cube_far = dist > 0.20
+        done_now = self._was_placed | (
+            self._was_grasped & (~self.grasp_active) & cube_far
+        )
+        self._task_done[still_running] |= done_now[still_running]
+
+        # Latch red_left_belt: red cube went off conveyor
+        red = self.scene["red_cube"]
+        red_local = red.data.root_pos_w - self.scene.env_origins
+        red_active = (red_local[:, 0] < 50.0)  # not parked
+        red_off = red_active & (
+            (red_local[:, 1] < _CONVEYOR_BOUNDS.y_min)
+            | (red_local[:, 1] > _CONVEYOR_BOUNDS.y_max)
+            | (red_local[:, 2] < _CONVEYOR_BOUNDS.z_min)
+        )
+        self._red_left_belt[still_running] |= red_off[still_running]
+
         return obs, reward, terminated, time_outs, extras
 
     # ------------------------------------------------------------------
@@ -144,17 +184,22 @@ class TensegrityPlaceEnv(ManagerBasedRLEnv):
         # ── Collect episode-level metrics BEFORE reset clears state ───
         grasp_rate = torch.tensor(0.0, device=self.device)
         mean_ep_len = torch.tensor(0.0, device=self.device)
+        red_on_belt_rate = torch.tensor(1.0, device=self.device)
         if len(env_ids_t) > 0:
             grasp_rate = self._was_grasped[env_ids_t].float().mean()
             place_rate = self._was_placed[env_ids_t].float().mean()
             mean_ep_len = self.episode_length_buf[env_ids_t].float().mean()
+            red_on_belt_rate = (~self._red_left_belt[env_ids_t]).float().mean()
 
         result = super()._reset_idx(env_ids)
         self._was_grasped[env_ids_t] = False
         self._was_placed[env_ids_t] = False
+        self._task_done[env_ids_t] = False
+        self._red_left_belt[env_ids_t] = False
 
         # ── Inject custom scalars AFTER super (which creates extras["log"]) ──
         self.extras["log"]["Metrics/grasp_rate"] = grasp_rate
         self.extras["log"]["Metrics/place_success_rate"] = place_rate
         self.extras["log"]["Metrics/mean_episode_length"] = mean_ep_len
+        self.extras["log"]["Metrics/red_on_conveyor_rate"] = red_on_belt_rate
         return result

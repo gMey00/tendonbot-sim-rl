@@ -52,6 +52,8 @@ drum volume (radius = 0.2735 m, height = 0.30 m).  Episodes run the full
 | `Template-Tensegrity-Cube-Place-Play-v0` | Tensegrity 5-DOF | PD (joint pos) | `config/tensegrity/` | — |
 | `Template-Tensegrity-Cube-Place-Tendon-v0` | Tensegrity 5-DOF | Tendon tensions | `config/tensegrity_tendon/` | `logs/skrl/cube_place/tensegrity_tendon/` |
 | `Template-Tensegrity-Cube-Place-Tendon-Play-v0` | Tensegrity 5-DOF | Tendon tensions | `config/tensegrity_tendon/` | — |
+| `Template-Tensegrity-Cube-Place-Physical-Tendon-v0` | Tensegrity 5-DOF | Body-force tendons | `config/tensegrity_tendon/` | `logs/skrl/cube_place/tensegrity_tendon/` |
+| `Template-Tensegrity-Cube-Place-Physical-Tendon-Play-v0` | Tensegrity 5-DOF | Body-force tendons | `config/tensegrity_tendon/` | — |
 | `Template-UR10e-Cube-Place-v0` | UR10e 6-DOF | PD (joint pos) | `config/ur10e/` | `logs/skrl/cube_place/ur10e/` |
 | `Template-UR10e-Cube-Place-Play-v0` | UR10e 6-DOF | PD (joint pos) | `config/ur10e/` | — |
 | `Template-Kinova-Cube-Place-v0` | Kinova Gen3 7-DOF | PD (joint pos) | `config/kinova/` | `logs/skrl/cube_place/kinova/` |
@@ -76,6 +78,7 @@ cube_place/
     ├── tensegrity_tendon/    # Tensegrity tendon variant
     │   ├── __init__.py
     │   ├── joint_pos_env_cfg.py
+    │   ├── joint_pos_env_cfg_physical.py
     │   └── agents/skrl_ppo_cfg.yaml
     ├── ur10e/                # UR10e 6-DOF variant
     │   ├── __init__.py
@@ -109,7 +112,7 @@ Extends `ProjBaseSceneCfg` with two rigid-body cubes.
 | Z | belt + 0.03 … belt + 0.05 m (= 0.83 … 0.85 m) |
 
 Only the green cube is placed in the spawn box initially.  The red cube is
-parked at (100, 100, 1) and activated through curriculum after 100 000 steps.
+parked at (100, 100, 1) and activated through curriculum after 125 000 steps.
 In play mode the curriculum threshold is set to 0 so both cubes are always
 visible.
 
@@ -127,9 +130,9 @@ visible.
 |---|---|---|---|
 | `base_y_joint` | Prismatic | ±0.5 m | (−0.5, 0.5) |
 | `base_z_joint` | Prismatic | −0.5 … 0.0 m | (−0.5, 0.0) |
-| `elbow_joint` | Revolute | ±1.5 rad | (−1.5, 1.5) |
-| `wrist_y_joint` | Revolute | ±0.8 rad | (−0.8, 0.8) |
-| `wrist_x_joint` | Revolute | ±0.8 rad | (−0.8, 0.8) |
+| `elbow_joint` | Revolute | ±1.2217 rad | (−1.2217, 1.2217) |
+| `wrist_y_joint` | Revolute | ±0.8727 rad | (−0.8727, 0.8727) |
+| `wrist_x_joint` | Revolute | ±0.8727 rad | (−0.8727, 0.8727) |
 | `finger_joint` | Revolute | — | Binary (open=0.0, close=0.7854) |
 
 ## Actions
@@ -168,8 +171,9 @@ visible.
 | `red_cube_vel` | 3 | Red cube linear velocity |
 | `drum_rel` | 3 | Drum position relative to grasp centre |
 | `actions` | 6 or 8 | Previous actions |
+| `was_placed` | 1 | Binary flag: cube successfully placed in drum |
 
-Total (PD): **47**.  Total (tendon): **49**.
+Total (PD): **48**.  Total (tendon): **50**.
 
 ## Rewards
 
@@ -198,26 +202,28 @@ flowchart TD
 
 | Term | Weight | Function | Gate |
 |---|---|---|---|
-| `reaching_object` | +1.0 | `1 − tanh(d_fingertip→nearest / 0.1)` | — |
-| `grasping` | +5.0 | `closure × (1 − tanh(d / 0.08))` | — |
-| `lifting_object` | +8.0 | Binary: cube > belt+0.06, near gripper, closed, velocity < 1 m/s | — |
-| `height_bonus` | +8.0 | Smooth: `min(Δz, 0.30) / 0.30`, velocity < 1 m/s | — |
-| `goal_tracking` | +50.0 | `1 − tanh(d_xy_green→drum / 1.0)`, lift_threshold=0.02 | `was_grasped` |
-| `goal_tracking_fine` | +5.0 | `1 − tanh(d_xy_green→drum / 0.20)`, lift_threshold=0.02 | `was_grasped` |
-| `release` | +10.0 | `(1−closure) × in_xy × above_rim` | `was_grasped` |
+| `reaching_object` | +2.0 | `1 − tanh(d_fingertip→nearest / 2.0)` — coarse, long-range | `!grasp_active ∧ !was_placed` |
+| `reaching_object_fine` | +5.0 | `1 − tanh(d_fingertip→nearest / 0.5)` — mid-range | `!grasp_active ∧ !was_placed` |
+| `grasping` | +3.0 | `closure × (1 − tanh(d / 0.08))` | — |
+| `lifting_object` | +5.0 | Binary: cube > belt+0.06, near gripper, closed, velocity < 1 m/s | — |
+| `height_bonus` | +5.0 | Smooth: `min(Δz, 0.30) / 0.30`, velocity < 1 m/s | — |
+| `goal_tracking` | +40.0 | `1 − tanh(d_xy_green→drum / 1.0)`, lift_threshold=0.02 | `was_grasped ∧ !was_placed` |
+| `goal_tracking_fine` | +10.0 | `1 − tanh(d_xy_green→drum / 0.20)`, lift_threshold=0.02 | `was_grasped ∧ !was_placed` |
+| `release` | +25.0 | `(1−closure) × in_xy × above_rim` | `was_grasped ∧ !was_placed` |
 | `green_in_target` | +100.0 | Green cube inside drum cylinder | `was_grasped` |
+| `return_to_neutral` | +25.0 | Joint distance to default position (inverted) | `was_placed` |
 | `red_in_target` | −12.0 | Red cube inside drum (penalty) | red active |
 
 ### Regularisation & utility
 
 | Term | Weight | Notes |
 |---|---|---|
-| `action_rate` | −1×10⁻⁴ → −2×10⁻³ | Ramped by curriculum at 200k steps |
-| `joint_vel` | −1×10⁻⁴ → −2×10⁻³ | Ramped by curriculum at 200k steps |
+| `action_rate` | −1×10⁻⁴ → −2×10⁻³ | Ramped by curriculum at 150k steps |
+| `joint_vel` | −1×10⁻⁴ → −2×10⁻³ | Ramped by curriculum at 150k steps |
 | `belt_contact` | −10.0 | EE depth below belt surface |
-| `joint_torque` | −0.05 | Arm joint effort fraction |
-| `base_velocity` | −1.5 | Prefer arm over base movement |
-| `arm_utilization` | +1.5 | Reward arm joint activity |
+| `joint_torque` | −0.025 | Arm joint effort fraction |
+| `base_velocity` | −0.75 | Prefer arm over base movement |
+| `arm_utilization` | +0.25 | Reward arm joint activity |
 | `cube_off_conveyor` | −5.0 | Cubes outside belt Y∈[−0.4, 0.4] or below z=0.70 |
 
 ### Metrics (tiny weight, for TensorBoard)
@@ -245,9 +251,9 @@ No early success termination — episodes always run the full 5 s.
 
 | Step Threshold | Change |
 |---|---|
-| 100 000 | Red cube activated (moved from parking to spawn box) |
-| 200 000 | `action_rate` weight: −1×10⁻⁴ → −2×10⁻³ |
-| 200 000 | `joint_vel` weight: −1×10⁻⁴ → −2×10⁻³ |
+| 125 000 | Red cube activated (moved from parking to spawn box) |
+| 150 000 | `action_rate` weight: −1×10⁻⁴ → −2×10⁻³ |
+| 150 000 | `joint_vel` weight: −1×10⁻⁴ → −2×10⁻³ |
 
 ## Reset Events
 
@@ -269,13 +275,33 @@ No early success termination — episodes always run the full 5 s.
 | Bounce threshold | 0.2 m/s |
 | Stabilisation | Enabled |
 | Friction correlation distance | 0.00625 m |
-| Default num_envs | 8 192 (PD) / 4 096 (tendon) / 50 (play) |
+| Default num_envs | 8 192 (PD & tendon) / 50 (play) |
 
 ## Training
 
-Training converges at approximately 200–250k steps (PPO via SKRL with 8 192
+Training converges at approximately 20–30k steps (PPO via SKRL with 8 192
 parallel environments).  The `skrl_ppo_cfg.yaml` is configured for 300 000
-timesteps.
+timesteps.  The reward plateau is reached very early; the remaining steps
+refine the policy without significant gain.
+
+### Latest results (Tensegrity PD, 2026-04-05)
+
+| Metric | Value |
+|---|---|
+| Place success rate | **90.6%** |
+| Grasp rate | **98.7%** |
+| Red on conveyor | **98.0%** |
+| Return-to-neutral | **3.21** ep. reward |
+| Total reward (final) | ≈ 333 |
+| Training time | ~4.5 h @ 1024 envs |
+
+![Total Reward](figures/tensegrity/01_total_reward.png)
+![Task Success](figures/tensegrity/02_task_success.png)
+![Reward Decomposition](figures/tensegrity/03_reward_decomposition.png)
+![Penalties](figures/tensegrity/04_penalties.png)
+![Policy Diagnostics](figures/tensegrity/05_policy_diagnostics.png)
+![Converged Breakdown](figures/tensegrity/06_converged_breakdown.png)
+![Episode Length](figures/tensegrity/07_episode_length.png)
 
 ## Design Decisions & Lessons Learned
 
@@ -330,7 +356,7 @@ more robust closure + proximity + lift combination.
 ### Red cube curriculum timing
 
 Introducing the red distractor too early (e.g. 30k steps) causes a ~60% reward
-crash that destabilises learning.  At 100k steps the green-only policy has
+crash that destabilises learning.  At 125k steps the green-only policy has
 mastered reach→grasp→lift→transport→place and can absorb the distractor
 gracefully.
 
@@ -369,27 +395,28 @@ conda run --no-capture-output -n env_isaaclab python3 scripts/skrl/play.py \
 
 ## Training Results
 
-Results from training run `2026-03-06_21-05-45` (PPO, 8 192 envs, 293k steps), Tensegrity PD variant.
+Results from training run `2026-04-05_10-54-14` (PPO, 1024 envs, 300k steps), Tensegrity PD variant.
 Plots generated with `scripts/plot_place_training_results.py --variant tensegrity`.
 
 ### Key Performance Numbers
 
 | Metric | Converged Value | Notes |
 |---|---|---|
-| **Grasp Rate** | **96.7 %** | % of episodes with ≥1 successful grasp-and-lift (last 10 % of training) |
-| **Place Success Rate** | n/a for this run | % of episodes where cube entered drum ≥1 step; tracked from `was_placed` latch — available in future runs |
-| **Time in Drum** | **13.9 %** of steps (~35 / 250) | Average fraction of episode steps with cube inside drum; proxy for placement timing |
-| **Reward Plateau** | **337** | Mean total episode return averaged over last 10 % of training |
-| **Avg. Episode Length** | **248 steps** | Out of max 250; near-zero early terminations at convergence |
-| **Training Duration** | **293k steps** | ~1 h wall-clock with 8 192 parallel envs on a single GPU |
+| **Place Success Rate** | **90.6 %** | % of episodes where cube entered drum ≥1 step (at 300k) |
+| **Grasp Rate** | **98.7 %** | % of episodes with ≥1 successful grasp-and-lift |
+| **Red on Conveyor** | **98.0 %** | % of episodes where red cube stays on belt |
+| **Return-to-Neutral** | **3.21** ep. reward | Arm retracts safely after placement |
+| **Reward Plateau** | **333** | Mean total episode return at convergence |
+| **Spawn Width** | **±0.30 m** | 75% of conveyor width (via curriculum) |
+| **Training Duration** | **300k steps** | ~4.5 h wall-clock with 1024 envs |
 
 ### Total Episode Reward
 
 The total reward curve shows the complete learning trajectory.  The min/max
-envelope reveals the spread across the environment population.  Two curriculum
-events are marked: the red distractor cube introduction at 100k steps causes a
-brief reward crash (~365 → ~55), and the regularisation ramp begins at 200k
-steps.  The green dashed line marks the convergence plateau at **≈ 337**.
+envelope reveals the spread across the environment population.  The spawn
+curriculum widens to ±0.30 by 100k steps, and the red distractor cube is
+introduced at 125k steps.  The regularisation ramp also begins at 150k steps.
+The reward climbs to a plateau of **≈ 333** at convergence.
 
 ![Total Reward](figures/tensegrity/01_total_reward.png)
 
@@ -397,31 +424,32 @@ steps.  The green dashed line marks the convergence plateau at **≈ 337**.
 
 All three success metrics on a common percentage axis:
 
-- **Grasp Rate** — fraction of episodes with at least one successful grasp-and-lift event; reaches ~97 % by 50k steps.
-- **Time in Drum** — average fraction of episode steps with the green cube inside the drum; rises to ~14 % at convergence, meaning the agent deposits the cube with roughly 35 steps remaining per episode.
-- **Place Success Rate** — fraction of episodes where the cube entered the drum at least once (binary, per-episode); only available for runs after the `was_placed` latch was added to `place_env.py`.
+- **Grasp Rate** — fraction of episodes with at least one successful grasp-and-lift event; reaches ~99 % by 75k steps.
+- **Place Success Rate** — fraction of episodes where the cube entered the drum at least once; climbs from 0% to ~90% between 100k–250k steps.
+- **Red on Conveyor** — fraction of episodes where the red cube stays on the belt; remains >98% throughout training.
 
-The red cube introduction at 100k steps causes a brief dip in all metrics as the agent adapts to the distractor.
+The red cube introduction at 125k steps causes a brief perturbation as the agent adapts to the distractor.
 
 ![Task Success](figures/tensegrity/02_task_success.png)
 
 ### Sequential Skill Acquisition
 
 Each reward component activates in sequence, revealing the learning order:
-reach → grasp → lift → transport → release → success.  The transport reward
-(goal tracking) shows the largest magnitude, confirming the design goal that
-lateral progress dominates holding.  The success reward (green in target)
-rises steeply once the agent masters the full pipeline.
+reach → grasp → lift → transport → release → success → return.  The transport
+reward (goal tracking) shows the largest magnitude during the approach phase.
+The success reward (green in target) rises steeply once the agent masters
+the full pipeline.  After placement, the return-to-neutral reward activates
+to guide the arm safely away from the drum.
 
 ![Reward Decomposition](figures/tensegrity/03_reward_decomposition.png)
 
 ### Penalties & Regularisation
 
 Penalty evolution over training.  The cube-off-conveyor penalty increases
-sharply after the red cube is introduced (the agent's movements displace the
-distractor).  Base velocity and belt contact penalties remain stable.  The
-action rate and joint velocity penalties ramp up over the regularisation
-curriculum from 200k steps onward, smoothing the policy's motor commands.
+as the agent learns more aggressive manipulation.  Base velocity penalties
+remain stable.  The action rate and joint velocity penalties ramp up over
+the regularisation curriculum from 150k steps onward, smoothing the policy's
+motor commands.
 
 ![Penalties](figures/tensegrity/04_penalties.png)
 
@@ -440,8 +468,9 @@ rapidly.
 
 Final performance averaged over the last 10% of training.  The success reward
 (green in target) dominates as intended, confirming that release-and-accumulate
-is the optimal strategy.  The cube-off-conveyor penalty is the largest negative
-component — a known consequence of manipulating cubes near the belt edge.
+is the optimal strategy.  The return-to-neutral reward is the second-largest
+positive component, showing the arm actively retracts after placement.  The
+cube-off-conveyor penalty is the largest negative component.
 
 ![Converged Breakdown](figures/tensegrity/06_converged_breakdown.png)
 
@@ -455,6 +484,81 @@ early-termination events become negligible at convergence.
 
 ![Episode Length](figures/tensegrity/07_episode_length.png)
 
+---
+
+## Training Results — Tensegrity Tendon (J^T)
+
+Results from training run `2026-04-05_15-32-10` (PPO, 1024 envs, 300k steps).
+Plots generated with `scripts/plot_place_training_results.py --variant tensegrity_tendon`.
+
+### Key Performance Numbers (Tendon)
+
+| Metric | Converged Value | vs PD |
+|---|---|---|
+| **Place Success Rate** | **93.4 %** | +2.8 % |
+| **Grasp Rate** | **94.7 %** | −4.0 % |
+| **Red on Conveyor** | **95.2 %** | −2.8 % |
+| **Return-to-Neutral** | **3.27** ep. reward | Similar |
+| **Reward Plateau** | **333** | Similar |
+| **Training Duration** | **300k steps** | ~6.9 h wall-clock |
+
+The tendon variant replaces the arm's 3 implicit PD joint drives with 5 tendon
+efforts via a constant Jacobian-transpose mapping.  Despite the more complex
+action space (8 vs 6 dims), the tendon model converges faster than PD and
+achieves higher place success.  Place success reached 92.6% by 73k steps —
+before the red cube curriculum activated.
+
+![Total Reward](figures/tensegrity_tendon/01_total_reward.png)
+![Task Success](figures/tensegrity_tendon/02_task_success.png)
+![Reward Decomposition](figures/tensegrity_tendon/03_reward_decomposition.png)
+![Penalties](figures/tensegrity_tendon/04_penalties.png)
+![Policy Diagnostics](figures/tensegrity_tendon/05_policy_diagnostics.png)
+![Converged Breakdown](figures/tensegrity_tendon/06_converged_breakdown.png)
+![Episode Length](figures/tensegrity_tendon/07_episode_length.png)
+
+---
+
+## Training Results — Tensegrity Physical Tendon (body-force)
+
+Results from training run `2026-04-05_22-43-20` (PPO, 1024 envs, 300k steps).
+Plots generated with `scripts/plot_place_training_results.py --variant tensegrity_physical_tendon`.
+
+### Key Performance Numbers (Physical Tendon)
+
+| Metric | Final Value | Notes |
+|---|---|---|
+| **Place Success Rate** | **0.0 %** | Did not learn placement |
+| **Grasp Rate** | **0.5 %** | Did not learn reliable grasping |
+| **Total Reward** | **58.9** | Reaching rewards only |
+| **Training Duration** | **300k steps** | ~4.5 h wall-clock |
+
+The physical tendon variant replaces the single elbow joint with a four-bar
+antiparallelogram linkage driven by body-force cable tendons at the physical
+attachment points.  The reaching phase learned normally (arm approaches cube),
+but the policy could not bridge the gap from reaching to grasping within 300k
+steps.  The much more nonlinear cable-force dynamics make fine motor control
+significantly harder than the J^T tendon model.
+
+![Total Reward](figures/tensegrity_physical_tendon/01_total_reward.png)
+![Task Success](figures/tensegrity_physical_tendon/02_task_success.png)
+![Reward Decomposition](figures/tensegrity_physical_tendon/03_reward_decomposition.png)
+![Penalties](figures/tensegrity_physical_tendon/04_penalties.png)
+![Policy Diagnostics](figures/tensegrity_physical_tendon/05_policy_diagnostics.png)
+![Converged Breakdown](figures/tensegrity_physical_tendon/06_converged_breakdown.png)
+![Episode Length](figures/tensegrity_physical_tendon/07_episode_length.png)
+
+---
+
+### Variant Comparison Summary
+
+| Metric | PD | Tendon (J^T) | Physical Tendon |
+|---|---|---|---|
+| **Place success** | 90.6% | **93.4%** | 0.0% |
+| **Grasp rate** | **98.7%** | 94.7% | 0.5% |
+| **Red on conveyor** | **98.0%** | 95.2% | 97.8% |
+| **Return-to-neutral** | 3.21 | 3.27 | 0.00 |
+| **Total reward** | 333 | 333 | 59 |
+
 ### Regenerating Plots
 
 ```bash
@@ -464,11 +568,13 @@ conda run --no-capture-output -n env_isaaclab python3 scripts/plot_place_trainin
     --variant tensegrity
 # Or specify a run:
 conda run --no-capture-output -n env_isaaclab python3 scripts/plot_place_training_results.py \
-    --variant tensegrity --run 2026-03-06_21-05-45_ppo_torch
+    --variant tensegrity --run 2026-04-05_10-54-14_ppo_torch
 
 # Other variants
 conda run --no-capture-output -n env_isaaclab python3 scripts/plot_place_training_results.py \
     --variant tensegrity_tendon
+conda run --no-capture-output -n env_isaaclab python3 scripts/plot_place_training_results.py \
+    --variant tensegrity_physical_tendon
 conda run --no-capture-output -n env_isaaclab python3 scripts/plot_place_training_results.py \
     --variant ur10e
 conda run --no-capture-output -n env_isaaclab python3 scripts/plot_place_training_results.py \

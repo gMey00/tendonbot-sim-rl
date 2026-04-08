@@ -37,23 +37,31 @@ simulation documentation.
 | Gym ID | Drive | Description |
 |--------|-------|-------------|
 | `Template-Tensegrity-Cube-Sort-v0` | PD | **Cube Sort** — 8 green + 8 red cubes on a moving conveyor. Pick green cubes and place them into the target drum while ignoring red. |
-| `Template-Tensegrity-Reach-v0` | PD | **Reach** — Move the end-effector to a random target position and orientation. No gripper action. |
-| `Template-Tensegrity-Reach-Play-v0` | PD | Reach (play/eval variant, 50 envs, no observation noise). |
-| `Template-Tensegrity-Reach-Tendon-v0` | Tendon | **Reach (Tendon)** — Same task as Reach but the arm is tendon-driven. Direct comparison with PD variant. |
-| `Template-Tensegrity-Reach-Tendon-Play-v0` | Tendon | Reach Tendon (play/eval variant, 50 envs). |
+| `Template-Tensegrity-Cube-Sort-Play-v0` | PD | Cube Sort (play/eval variant, 50 envs). |
+| `Template-Reach-Tensegrity-v0` | PD | **Reach** — Move the end-effector to a random target position and orientation. No gripper action. |
+| `Template-Reach-Tensegrity-Play-v0` | PD | Reach (play/eval variant, 50 envs, no observation noise). |
+| `Template-Reach-Tensegrity-Tendon-v0` | Tendon | **Reach (Tendon)** — Same task as Reach but the arm is tendon-driven. Direct comparison with PD variant. |
+| `Template-Reach-Tensegrity-Tendon-Play-v0` | Tendon | Reach Tendon (play/eval variant, 50 envs). |
+| `Template-Reach-Tensegrity-Physical-Tendon-v0` | Physical Tendon | **Reach (Physical Tendon)** — Same task as Reach but with body-force elbow tendons and antiparallelogram linkage. |
+| `Template-Reach-Tensegrity-Physical-Tendon-Play-v0` | Physical Tendon | Reach Physical Tendon (play/eval variant, 50 envs). |
+| `Template-Reach-UR10e-v0` | PD | **Reach (UR10e)** — Same reach task with UR10e + Robotiq 2F-140 (PG-6 baseline). |
+| `Template-Reach-UR10e-Play-v0` | PD | Reach UR10e (play/eval variant, 50 envs). |
+| `Template-Reach-Kinova-v0` | PD | **Reach (Kinova)** — Same reach task with Kinova Gen3 7-DOF + Robotiq 2F-140 (PG-6 baseline). |
+| `Template-Reach-Kinova-Play-v0` | PD | Reach Kinova (play/eval variant, 50 envs). |
 | `Template-Tensegrity-Cube-Place-v0` | PD | **Cube Place** — 1 green + 1 red cube below the robot, conveyor inactive. Place the green cube into the drum. Curriculum: green-only → green + red. |
 | `Template-Tensegrity-Cube-Place-Play-v0` | PD | Cube Place (play/eval variant, 50 envs). |
 | `Template-Tensegrity-Cube-Place-Tendon-v0` | Tendon | **Cube Place (Tendon)** — Same task as Cube Place but the arm is tendon-driven. |
 | `Template-Tensegrity-Cube-Place-Tendon-Play-v0` | Tendon | Cube Place Tendon (play/eval variant, 50 envs). |
-| `Template-UR10e-Reach-v0` | PD | **Reach (UR10e)** — Same reach task with UR10e + Robotiq 2F-140 (PG-6 baseline). |
-| `Template-UR10e-Reach-Play-v0` | PD | Reach UR10e (play/eval variant, 50 envs). |
+| `Template-Tensegrity-Cube-Place-Physical-Tendon-v0` | Physical Tendon | **Cube Place (Physical Tendon)** — Same task as Cube Place but with body-force elbow tendons. |
+| `Template-Tensegrity-Cube-Place-Physical-Tendon-Play-v0` | Physical Tendon | Cube Place Physical Tendon (play/eval variant, 50 envs). |
 | `Template-UR10e-Cube-Place-v0` | PD | **Cube Place (UR10e)** — Same cube place task with UR10e + Robotiq 2F-140 (PG-6 baseline). |
 | `Template-UR10e-Cube-Place-Play-v0` | PD | Cube Place UR10e (play/eval variant, 50 envs). |
-| `Template-Kinova-Reach-v0` | PD | **Reach (Kinova)** — Same reach task with Kinova Gen3 7-DOF + Robotiq 2F-140 (PG-6 baseline). |
-| `Template-Kinova-Reach-Play-v0` | PD | Reach Kinova (play/eval variant, 50 envs). |
 | `Template-Kinova-Cube-Place-v0` | PD | **Cube Place (Kinova)** — Same cube place task with Kinova Gen3 7-DOF + Robotiq 2F-140 (PG-6 baseline). |
 | `Template-Kinova-Cube-Place-Play-v0` | PD | Cube Place Kinova (play/eval variant, 50 envs). |
 | `Template-Tensegrity-Shirt-Place-v0` | PD | **Shirt Place** — *(template)* Place a T-shirt into a drum. Cloth simulation. |
+| `Template-Tensegrity-Shirt-Place-Play-v0` | PD | Shirt Place (play/eval variant, 50 envs). |
+| `Template-Tensegrity-Shirt-Place-Physical-Tendon-v0` | Physical Tendon | **Shirt Place (Physical Tendon)** — *(template)* Shirt place with body-force elbow tendons. |
+| `Template-Tensegrity-Shirt-Place-Physical-Tendon-Play-v0` | Physical Tendon | Shirt Place Physical Tendon (play/eval variant, 50 envs). |
 | `Template-Tensegrity-Shirt-Sort-v0` | PD | **Shirt Sort** — *(template)* Sort T-shirts on a moving conveyor. Cloth simulation. |
 
 > New tasks are auto-discovered by `import_packages` — just add a new sub-package under
@@ -128,14 +136,19 @@ python scripts/skrl/train.py   --task=Template-Tensegrity-Cube-Sort-v0  --headle
 python scripts/skrl/play.py    --task=Template-Tensegrity-Cube-Sort-v0  --num_envs=10
 
 # --- Reach (PD) ---
-python scripts/zero_agent.py   --task=Template-Tensegrity-Reach-v0      --num_envs=10
-python scripts/skrl/train.py   --task=Template-Tensegrity-Reach-v0      --headless
-python scripts/skrl/play.py    --task=Template-Tensegrity-Reach-Play-v0 --num_envs=10
+python scripts/zero_agent.py   --task=Template-Reach-Tensegrity-v0      --num_envs=10
+python scripts/skrl/train.py   --task=Template-Reach-Tensegrity-v0      --headless
+python scripts/skrl/play.py    --task=Template-Reach-Tensegrity-Play-v0 --num_envs=10
 
 # --- Reach (Tendon) ---
-python scripts/zero_agent.py   --task=Template-Tensegrity-Reach-Tendon-v0      --num_envs=10
-python scripts/skrl/train.py   --task=Template-Tensegrity-Reach-Tendon-v0      --headless
-python scripts/skrl/play.py    --task=Template-Tensegrity-Reach-Tendon-Play-v0 --num_envs=10
+python scripts/zero_agent.py   --task=Template-Reach-Tensegrity-Tendon-v0      --num_envs=10
+python scripts/skrl/train.py   --task=Template-Reach-Tensegrity-Tendon-v0      --headless
+python scripts/skrl/play.py    --task=Template-Reach-Tensegrity-Tendon-Play-v0 --num_envs=10
+
+# --- Reach (Physical Tendon) ---
+python scripts/zero_agent.py   --task=Template-Reach-Tensegrity-Physical-Tendon-v0      --num_envs=10
+python scripts/skrl/train.py   --task=Template-Reach-Tensegrity-Physical-Tendon-v0      --headless
+python scripts/skrl/play.py    --task=Template-Reach-Tensegrity-Physical-Tendon-Play-v0 --num_envs=10
 
 # --- Cube Place (PD) ---
 python scripts/zero_agent.py   --task=Template-Tensegrity-Cube-Place-v0      --num_envs=10
@@ -148,9 +161,9 @@ python scripts/skrl/train.py   --task=Template-Tensegrity-Cube-Place-Tendon-v0  
 python scripts/skrl/play.py    --task=Template-Tensegrity-Cube-Place-Tendon-Play-v0 --num_envs=10
 
 # --- Reach (UR10e) ---
-python scripts/zero_agent.py   --task=Template-UR10e-Reach-v0      --num_envs=10
-python scripts/skrl/train.py   --task=Template-UR10e-Reach-v0      --headless
-python scripts/skrl/play.py    --task=Template-UR10e-Reach-Play-v0 --num_envs=10
+python scripts/zero_agent.py   --task=Template-Reach-UR10e-v0      --num_envs=10
+python scripts/skrl/train.py   --task=Template-Reach-UR10e-v0      --headless
+python scripts/skrl/play.py    --task=Template-Reach-UR10e-Play-v0 --num_envs=10
 
 # --- Cube Place (UR10e) ---
 python scripts/zero_agent.py   --task=Template-UR10e-Cube-Place-v0      --num_envs=10
@@ -158,9 +171,9 @@ python scripts/skrl/train.py   --task=Template-UR10e-Cube-Place-v0      --headle
 python scripts/skrl/play.py    --task=Template-UR10e-Cube-Place-Play-v0 --num_envs=10
 
 # --- Reach (Kinova Gen3) ---
-python scripts/zero_agent.py   --task=Template-Kinova-Reach-v0      --num_envs=10
-python scripts/skrl/train.py   --task=Template-Kinova-Reach-v0      --headless
-python scripts/skrl/play.py    --task=Template-Kinova-Reach-Play-v0 --num_envs=10
+python scripts/zero_agent.py   --task=Template-Reach-Kinova-v0      --num_envs=10
+python scripts/skrl/train.py   --task=Template-Reach-Kinova-v0      --headless
+python scripts/skrl/play.py    --task=Template-Reach-Kinova-Play-v0 --num_envs=10
 
 # --- Cube Place (Kinova Gen3) ---
 python scripts/zero_agent.py   --task=Template-Kinova-Cube-Place-v0      --num_envs=10

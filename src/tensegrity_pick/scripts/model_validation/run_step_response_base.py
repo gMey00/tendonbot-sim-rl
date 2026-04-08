@@ -232,9 +232,10 @@ def run_one_trial(
 
     _reset_and_warmup(robot, scene, sim, all_joint_ids, rest_positions, num_envs, device)
 
-    step_steps = int(common.STEP_HOLD_S / dt)
+    pre_steps    = int(common.PRE_STEP_S    / dt)
+    step_steps   = int(common.STEP_HOLD_S   / dt)
     return_steps = int(common.RETURN_HOLD_S / dt)
-    total_steps = step_steps + return_steps
+    total_steps  = pre_steps + step_steps + return_steps
 
     times: list[float] = []
     displacements_mm: list[float] = []
@@ -242,7 +243,12 @@ def run_one_trial(
 
     for i in range(total_steps):
         t = i * dt
-        step_target_m = rest_m + amplitude_m if i < step_steps else rest_m
+        if i < pre_steps:
+            step_target_m = rest_m  # pre-step baseline
+        elif i < pre_steps + step_steps:
+            step_target_m = rest_m + amplitude_m
+        else:
+            step_target_m = rest_m  # return to rest
 
         # Gravity feedforward for base_z: shift target to compensate m·g/K offset
         if joint_name == "base_z_joint":
@@ -310,8 +316,8 @@ def run_all_trials(
             # compute_step_metrics works generically — "deg" = mm here
             metrics = common.compute_step_metrics(
                 time_s, displacement_mm, amp_mm,
-                step_start_s=0.0,
-                step_end_s=common.STEP_HOLD_S,
+                step_start_s=common.PRE_STEP_S,
+                step_end_s=common.PRE_STEP_S + common.STEP_HOLD_S,
                 joint_name=joint_name,
             )
             metrics_list.append(metrics)

@@ -10,6 +10,7 @@ Setup and installation scripts for the development environment.
 |--------|-------------|
 | `install_IsaacLab.sh` | Automated installer for NVIDIA Isaac Sim and Isaac Lab. Creates the conda environment (`env_isaaclab`), installs Isaac Sim, clones and builds Isaac Lab, and installs the selected RL framework (default: skrl). |
 | `build_tensegrity_arm_usd.py` | Builds a physics-ready Isaac Lab articulation USD for the tensegrity arm from a Blender-exported mesh file (`tensegrity_arm_cad.usdc`). |
+| `monitor/` | Live training dashboard for SKRL training runs. Reads TensorBoard event files and displays reward terms, learning metrics, and training progress. Terminal (SSH-friendly) and web (Streamlit) modes. See [`monitor/README.md`](monitor/README.md) for details. |
 
 ## Usage
 

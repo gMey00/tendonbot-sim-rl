@@ -63,6 +63,15 @@ from workspace_analysis_helper import (  # noqa: E402
 
 from workspace_config import DEFAULT_SLICE_THICKNESS, DEFAULT_VOXEL_SIZE  # noqa: E402
 
+# Contrasting box colours per colormap (high visibility against the palette)
+BOX_COLORS: dict[str, str] = {
+    "plasma":  "cyan",
+    "inferno": "cyan",
+    "viridis": "magenta",
+}
+BOX_3D_ALPHA = 0.20
+BOX_2D_ALPHA = 0.25
+
 
 # ── Data classes ──────────────────────────────────────────────────────────
 
@@ -112,8 +121,14 @@ FRONT_VIEW = HeatmapViewConfig(
 
 # ── Drawing helpers ───────────────────────────────────────────────────────
 
-def _draw_box_3d(ax: plt.Axes, ws_min: np.ndarray, ws_max: np.ndarray) -> None:
-    """Overlay a translucent red wireframe box onto a 3-D axes."""
+def _draw_box_3d(
+    ax: plt.Axes,
+    ws_min: np.ndarray,
+    ws_max: np.ndarray,
+    color: str = "cyan",
+    alpha: float = BOX_3D_ALPHA,
+) -> None:
+    """Overlay a translucent wireframe box onto a 3-D axes."""
     x = [ws_min[0], ws_max[0]]
     y = [ws_min[1], ws_max[1]]
     z = [ws_min[2], ws_max[2]]
@@ -130,7 +145,7 @@ def _draw_box_3d(ax: plt.Axes, ws_min: np.ndarray, ws_max: np.ndarray) -> None:
         )
     ]
     ax.add_collection3d(
-        Poly3DCollection(faces, alpha=0.10, facecolor="red", edgecolor="red", linewidth=0.8),
+        Poly3DCollection(faces, alpha=alpha, facecolor=color, edgecolor=color, linewidth=0.8),
     )
 
 
@@ -140,11 +155,13 @@ def _draw_rect_2d(
     x_max: float,
     y_min: float,
     y_max: float,
+    color: str = "cyan",
+    alpha: float = BOX_2D_ALPHA,
 ) -> None:
-    """Overlay a translucent red rectangle onto a 2-D axes."""
+    """Overlay a translucent rectangle onto a 2-D axes."""
     ax.add_patch(plt.Rectangle(
         (x_min, y_min), x_max - x_min, y_max - y_min,
-        fill=True, facecolor="red", edgecolor="red", alpha=0.15, linewidth=1.5,
+        fill=True, facecolor=color, edgecolor=color, alpha=alpha, linewidth=1.5,
     ))
 
 
@@ -173,10 +190,12 @@ def _add_heatmap(
     colormap: str,
     norm: Normalize,
     view: HeatmapViewConfig,
+    box_color: str = "cyan",
 ) -> None:
     """Populate a 2-D axes with pcolormesh, desired-workspace rectangle and labels."""
     ax.pcolormesh(a_edges, b_edges, grid.T, cmap=colormap, norm=norm, shading="flat")
-    _draw_rect_2d(ax, view.rect_x_min, view.rect_x_max, view.rect_y_min, view.rect_y_max)
+    _draw_rect_2d(ax, view.rect_x_min, view.rect_x_max, view.rect_y_min, view.rect_y_max,
+                  color=box_color)
     ax.set_xlabel(view.xlabel)
     ax.set_ylabel(view.ylabel)
     ax.set_title(view.title)
@@ -233,6 +252,9 @@ def create_workspace_figure(
     slice_thickness : full thickness (metres) of cross-section slices
         centred on the workspace midpoint (default 0.05 m).
     """
+    # Resolve box colour for this colormap
+    box_color = BOX_COLORS.get(colormap, "cyan")
+
     # ── Compute 3-D voxel values ──────────────────────────────────────
     if density_mode:
         ones = np.ones(len(positions), dtype=np.float32)
@@ -271,7 +293,7 @@ def create_workspace_figure(
         c=scatter_values[finite_mask],
         cmap=colormap, norm=norm, s=3, alpha=0.6, edgecolors="none",
     )
-    _draw_box_3d(ax3d, DESIRED_WS_MIN, DESIRED_WS_MAX)
+    _draw_box_3d(ax3d, DESIRED_WS_MIN, DESIRED_WS_MAX, color=box_color)
     _set_proportional_3d_axes(ax3d, positions)
     ax3d.set_xlabel("X (m)")
     ax3d.set_ylabel("Y (m)")
@@ -299,7 +321,7 @@ def create_workspace_figure(
                 sliced_pos[:, view.column_a], sliced_pos[:, view.column_b],
                 sliced_vals, voxel_size,
             )
-        _add_heatmap(ax, a_edges, b_edges, grid, colormap, norm, view)
+        _add_heatmap(ax, a_edges, b_edges, grid, colormap, norm, view, box_color=box_color)
         heatmap_axes.append(ax)
 
     # Front view spanning both right columns
@@ -316,7 +338,8 @@ def create_workspace_figure(
             sliced_pos[:, FRONT_VIEW.column_a], sliced_pos[:, FRONT_VIEW.column_b],
             sliced_vals, voxel_size,
         )
-    _add_heatmap(ax_front, a_edges, b_edges, grid, colormap, norm, FRONT_VIEW)
+    _add_heatmap(ax_front, a_edges, b_edges, grid, colormap, norm, FRONT_VIEW,
+                 box_color=box_color)
     heatmap_axes.append(ax_front)
 
     # ── Shared colour bar ─────────────────────────────────────────────

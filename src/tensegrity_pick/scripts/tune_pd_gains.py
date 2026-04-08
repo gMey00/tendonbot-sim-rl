@@ -440,7 +440,7 @@ CURRENT_ARM_GAINS = GainSet(
     label="current",
     stiffness=400.0,
     damping=120.0,
-    effort_limit=40.0,
+    effort_limit=35.0,  # Klein (2023): 160 N × 3:1 MA × 0.0725 m = 34.8 N·m
     velocity_limit=2.0,
 )
 
@@ -452,11 +452,11 @@ CURRENT_ARM_GAINS = GainSet(
 # For wrists (much lighter, J≈0.014): D_crit ≈ 4.7.
 # A single group uses the same gains; D≈25 is a good compromise.
 ARM_GAIN_CANDIDATES = (
-    GainSet("D=60",  400.0,  60.0, 40.0, 2.0),
-    GainSet("D=30",  400.0,  30.0, 40.0, 2.0),
-    GainSet("D=25",  400.0,  25.0, 40.0, 2.0),
-    GainSet("D=20",  400.0,  20.0, 40.0, 2.0),
-    GainSet("D=15",  400.0,  15.0, 40.0, 2.0),
+    GainSet("D=60",  400.0,  60.0, 35.0, 2.0),
+    GainSet("D=30",  400.0,  30.0, 35.0, 2.0),
+    GainSet("D=25",  400.0,  25.0, 35.0, 2.0),
+    GainSet("D=20",  400.0,  20.0, 35.0, 2.0),
+    GainSet("D=15",  400.0,  15.0, 35.0, 2.0),
 )
 
 

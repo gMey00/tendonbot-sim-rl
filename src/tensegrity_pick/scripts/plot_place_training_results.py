@@ -49,6 +49,7 @@ VARIANT_LOG_DIRS: Final[dict[str, Path]] = {
     # with existing training runs logged before the config restructuring.
     "tensegrity": Path("logs/skrl/cube_place"),
     "tensegrity_tendon": Path("logs/skrl/cube_place/tensegrity_tendon"),
+    "tensegrity_physical_tendon": Path("logs/skrl/cube_place/tensegrity_tendon"),
     "ur10e": Path("logs/skrl/cube_place/ur10e"),
     "kinova": Path("logs/skrl/cube_place/kinova"),
 }
@@ -59,6 +60,7 @@ FIGURES_BASE: Final = Path(
 VARIANT_LABELS: Final[dict[str, str]] = {
     "tensegrity": "Tensegrity 5-DOF (PD)",
     "tensegrity_tendon": "Tensegrity 5-DOF (Tendon)",
+    "tensegrity_physical_tendon": "Tensegrity 5-DOF (Physical Tendon)",
     "ur10e": "UR10e 6-DOF (PD)",
     "kinova": "Kinova Gen3 7-DOF (PD)",
 }

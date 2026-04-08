@@ -212,9 +212,10 @@ def run_one_trial(
     pid_state = common.PIDState()
     pid_state.reset()
 
+    pre_steps    = int(common.PRE_STEP_S    / dt)
     step_steps   = int(common.STEP_HOLD_S   / dt)
     return_steps = int(common.RETURN_HOLD_S / dt)
-    total_steps  = step_steps + return_steps
+    total_steps  = pre_steps + step_steps + return_steps
 
     times: list[float] = []
     actuals: list[float] = []
@@ -223,7 +224,12 @@ def run_one_trial(
 
     for i in range(total_steps):
         t = i * dt
-        sp_rad = amplitude_rad if i < step_steps else 0.0
+        if i < pre_steps:
+            sp_rad = 0.0  # pre-step baseline
+        elif i < pre_steps + step_steps:
+            sp_rad = amplitude_rad
+        else:
+            sp_rad = 0.0  # return to zero
         sp_deg = math.degrees(sp_rad)
 
         # Read actual joint angle for the test joint
@@ -285,8 +291,8 @@ def run_all_trials(
             )
             metrics = common.compute_step_metrics(
                 time_s, actual_deg, amp_deg,
-                step_start_s=0.0,
-                step_end_s=common.STEP_HOLD_S,
+                step_start_s=common.PRE_STEP_S,
+                step_end_s=common.PRE_STEP_S + common.STEP_HOLD_S,
                 joint_name=spec.name,
             )
             metrics_list.append(metrics)
@@ -348,8 +354,8 @@ def run_gain_sweep(
             )
             metrics = common.compute_step_metrics(
                 time_s, actual_deg, amp_deg,
-                step_start_s=0.0,
-                step_end_s=common.STEP_HOLD_S,
+                step_start_s=common.PRE_STEP_S,
+                step_end_s=common.PRE_STEP_S + common.STEP_HOLD_S,
                 joint_name=spec.name,
             )
             mlist.append(metrics)

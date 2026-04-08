@@ -282,49 +282,59 @@ def run_one_trial(
 
     _reset_and_warmup(robot, scene, sim, joint_ids, num_envs, device)
 
+    # PID state for the tested joint
     pid_state = common.PIDState()
     pid_state.reset()
 
+    # PID states + specs for non-tested joints (holding at zero)
+    all_specs = common.PHYSICAL_ALL_JOINT_SPECS if is_physical else common.ALL_JOINT_SPECS
+    hold_pids: dict[str, tuple[common.PIDState, common.JointTestSpec]] = {}
+    for s in all_specs:
+        if s.name != spec.name:
+            ps = common.PIDState()
+            ps.reset()
+            hold_pids[s.name] = (ps, s)
+
+    pre_steps    = int(common.PRE_STEP_S    / dt)
     step_steps   = int(common.STEP_HOLD_S   / dt)
     return_steps = int(common.RETURN_HOLD_S / dt)
-    total_steps  = step_steps + return_steps
+    total_steps  = pre_steps + step_steps + return_steps
 
     times: list[float] = []
     actuals: list[float] = []
     setpoints: list[float] = []
     tensions_list: list[np.ndarray] = []
+    prev_wrist_tensions: np.ndarray | None = None
 
     for i in range(total_steps):
         t = i * dt
-        sp_rad = amplitude_rad if i < step_steps else 0.0
+        if i < pre_steps:
+            sp_rad = 0.0  # pre-step baseline
+        elif i < pre_steps + step_steps:
+            sp_rad = amplitude_rad
+        else:
+            sp_rad = 0.0  # return to zero
         sp_deg = math.degrees(sp_rad)
 
-        # ── Read current angle ────────────────────────────────────────────
+        # ── Read all joint angles ─────────────────────────────────────────
+        pos_all = robot.data.joint_pos[:, joint_ids]
+        vel_all = robot.data.joint_vel[:, joint_ids]
+
+        # Tested joint angle
         if is_elbow and is_physical:
-            # Physical model: extract elbow angle from forearm body quaternion
             forearm_quat = robot.data.body_quat_w[0, physical_ctx["forearm_idx"]].cpu().numpy()
             cur_rad = common.compute_elbow_angle_from_body_quat(forearm_quat)
         elif is_elbow:
-            # Elbow-approx: read joint_pos directly
-            pos_all = robot.data.joint_pos[:, joint_ids]
             cur_rad = float(pos_all[0, spec.joint_index].item())
         else:
-            # Wrist joint: same for both variants
-            pos_all = robot.data.joint_pos[:, joint_ids]
-            # For physical model, wrist joints are at indices 3,4 in _PHYSICAL_ARM_JOINTS
             if is_physical:
-                wrist_name = spec.name
-                wrist_local_idx = _PHYSICAL_ARM_JOINTS.index(wrist_name)
+                wrist_local_idx = _PHYSICAL_ARM_JOINTS.index(spec.name)
             else:
                 wrist_local_idx = spec.joint_index
             cur_rad = float(pos_all[0, wrist_local_idx].item())
-            # Read solver velocity for wrist D-term (bypasses EMA phase lag)
-            vel_all = robot.data.joint_vel[:, joint_ids]
             cur_vel = float(vel_all[0, wrist_local_idx].item())
 
-        # ── PID torque + gravity compensation ─────────────────────────────
-        # Both elbow and wrist use the same derivative-on-measurement PID.
-        # Wrist adds integral_zone_rad to prevent windup during fast transients.
+        # ── PID torque + gravity for tested joint ─────────────────────────
         izone = None if is_elbow else 0.175
         wrist_vel = cur_vel if not is_elbow else None
         pid_tau = common.compute_pid_torque(
@@ -332,21 +342,76 @@ def run_one_trial(
             integral_zone_rad=izone,
             measured_velocity_rad_s=wrist_vel,
         )
-
         grav_tau  = common.gravity_compensation_torque(cur_rad, spec.mass_kg, spec.gravity_arm_m)
         total_tau = pid_tau + grav_tau
 
-        # ── Tension distribution ──────────────────────────────────────────
+        # ── Build full 3-joint torque vector (tested + holding) ───────────
+        # Order: [elbow, wrist_y, wrist_x]
+        torque_vec = np.zeros(3, dtype=np.float64)
+
+        # Place tested joint torque
         if is_elbow:
-            tens_np = common.torque_to_tensions(
-                total_tau, 0, spec.min_tension_n, spec.saturation_n,
-            )
+            torque_vec[0] = total_tau
         else:
-            # Wrist: use joint_index 1 or 2 (within elbow_approx ordering)
-            ea_joint_idx = common.JOINT_INDEX[spec.name]
-            tens_np = common.torque_to_tensions(
-                total_tau, ea_joint_idx, spec.min_tension_n, spec.saturation_n,
+            ea_idx = common.JOINT_INDEX[spec.name]
+            torque_vec[ea_idx] = total_tau
+
+        # Add holding torques for non-tested joints
+        for hold_name, (hold_ps, hold_spec) in hold_pids.items():
+            hold_is_elbow = (hold_spec.joint_index == 0) if not is_physical else (hold_spec.joint_index == -1)
+            # Read this joint's current angle
+            if hold_is_elbow and is_physical:
+                fq = robot.data.body_quat_w[0, physical_ctx["forearm_idx"]].cpu().numpy()
+                hold_cur = common.compute_elbow_angle_from_body_quat(fq)
+            elif hold_is_elbow:
+                hold_cur = float(pos_all[0, hold_spec.joint_index].item())
+            else:
+                if is_physical:
+                    h_idx = _PHYSICAL_ARM_JOINTS.index(hold_name)
+                else:
+                    h_idx = hold_spec.joint_index
+                hold_cur = float(pos_all[0, h_idx].item())
+
+            h_izone = None if hold_is_elbow else 0.175
+            h_vel = None
+            if not hold_is_elbow:
+                if is_physical:
+                    h_vel_idx = _PHYSICAL_ARM_JOINTS.index(hold_name)
+                else:
+                    h_vel_idx = hold_spec.joint_index
+                h_vel = float(vel_all[0, h_vel_idx].item())
+
+            h_pid_tau = common.compute_pid_torque(
+                0.0, hold_cur, dt, hold_spec.pid, hold_ps,
+                integral_zone_rad=h_izone,
+                measured_velocity_rad_s=h_vel,
             )
+            h_grav = common.gravity_compensation_torque(hold_cur, hold_spec.mass_kg, hold_spec.gravity_arm_m)
+            h_total = h_pid_tau + h_grav
+
+            if hold_is_elbow:
+                torque_vec[0] = h_total
+            else:
+                ea_idx = common.JOINT_INDEX[hold_name]
+                torque_vec[ea_idx] = h_total
+
+        # ── Tension distribution (full 3-joint) ──────────────────────────
+        min_t = min(spec.min_tension_n, *(s.min_tension_n for _, s in hold_pids.values()))
+        # Per-block saturation: elbow vs wrist may have different limits
+        elbow_sat = spec.saturation_n if is_elbow else next(
+            s.saturation_n for _, s in hold_pids.values()
+            if (s.joint_index == 0 or s.joint_index == -1)
+        )
+        wrist_sat = spec.saturation_n if not is_elbow else next(
+            s.saturation_n for _, s in hold_pids.values()
+            if s.joint_index not in (0, -1)
+        )
+        tens_np = common.torque_vector_to_tensions(
+            torque_vec, min_t, saturation=max(elbow_sat, wrist_sat),
+            elbow_saturation=elbow_sat, wrist_saturation=wrist_sat,
+            prev_wrist_tensions=prev_wrist_tensions,
+        )
+        prev_wrist_tensions = tens_np[2:5].copy()
 
         # ── Apply forces ──────────────────────────────────────────────────
         if is_physical:
@@ -418,8 +483,8 @@ def run_all_trials(
             )
             metrics = common.compute_step_metrics(
                 time_s, actual_deg, amp_deg,
-                step_start_s=0.0,
-                step_end_s=common.STEP_HOLD_S,
+                step_start_s=common.PRE_STEP_S,
+                step_end_s=common.PRE_STEP_S + common.STEP_HOLD_S,
                 joint_name=spec.name,
             )
             metrics_list.append(metrics)

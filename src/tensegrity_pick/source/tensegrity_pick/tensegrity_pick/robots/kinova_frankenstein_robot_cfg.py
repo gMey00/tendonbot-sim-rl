@@ -112,8 +112,8 @@ KINOVA_FRANKENSTEIN_GRIPPER_CFG = ArticulationCfg(
         # ── Tendon Wrist: same config as Tensegrity Manipulator ──
         "tendon_wrist": ImplicitActuatorCfg(
             joint_names_expr=["wrist_x_joint", "wrist_y_joint"],
-            effort_limit_sim=40.0,
-            velocity_limit_sim=2.0,
+            effort_limit_sim=3.5,  # Klein (2023): max wrist torque ~3.2 N·m (80 N × 0.020 m × 2)
+            velocity_limit_sim=9.0,
             stiffness=400.0,
             damping=20.0,
         ),

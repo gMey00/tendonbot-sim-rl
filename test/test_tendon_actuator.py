@@ -17,8 +17,8 @@ import torch
 
 JACOBIAN_TRANSPOSE: list[list[float]] = [
     [+0.0725, -0.0725,  0.0,       0.0,      0.0],       # elbow
-    [ 0.0,     0.0,     -0.013856,  0.0,     +0.013856],  # wrist_y
-    [ 0.0,     0.0,     +0.008,    -0.016,   +0.008],     # wrist_x
+    [ 0.0,     0.0,     -0.017321,  0.0,     +0.017321],  # wrist_y
+    [ 0.0,     0.0,     +0.010,    -0.020,   +0.010],     # wrist_x
 ]
 
 NUM_JOINTS = 3
@@ -99,11 +99,11 @@ class TestTorqueMapping:
         assert torques[2] == pytest.approx(0.0, abs=1e-12)
 
     def test_that_known_wrist_tensions_give_expected_torques(self) -> None:
-        # T2=10, T3=0, T4=10  →  wrist_y = 10*(-0.013856) + 10*(+0.013856) = 0
-        #                         wrist_x = 10*(+0.008) + 0 + 10*(+0.008) = 0.16
+        # T2=10, T3=0, T4=10  →  wrist_y = 10*(-0.017321) + 10*(+0.017321) = 0
+        #                         wrist_x = 10*(+0.010) + 0 + 10*(+0.010) = 0.20
         torques = _torque_from_tensions([0.0, 0.0, 10.0, 0.0, 10.0])
         assert torques[1] == pytest.approx(0.0, abs=1e-12)
-        assert torques[2] == pytest.approx(0.16, rel=1e-6)
+        assert torques[2] == pytest.approx(0.20, rel=1e-6)
 
 
 # ── Affine mapping [-1,1] → [0, max_tension] ─────────────────────────────
@@ -203,22 +203,22 @@ class TestPhysicalPlausibility:
         assert JACOBIAN_NP[0, 1] == pytest.approx(-0.0725, rel=1e-6)
 
     def test_that_wrist_tendon_radii_are_consistent(self) -> None:
-        """Wrist tendons at 120° on a ≈ 16 mm circle: check consistent radius."""
-        # Force3: (+0.008, +0.013856) → r = √(0.008² + 0.013856²) ≈ 0.016
-        r3 = math.sqrt(0.008**2 + 0.013856**2)
-        # Force4: (-0.016, 0) → r = 0.016
-        r4 = 0.016
-        # Force5: (+0.008, -0.013856) → r = same as r3
-        r5 = math.sqrt(0.008**2 + 0.013856**2)
+        """Wrist tendons at 120° on a r = 20 mm circle: check consistent radius."""
+        # Force3: (+0.010, +0.017321) → r = √(0.010² + 0.017321²) ≈ 0.020
+        r3 = math.sqrt(0.010**2 + 0.017321**2)
+        # Force4: (-0.020, 0) → r = 0.020
+        r4 = 0.020
+        # Force5: (+0.010, -0.017321) → r = same as r3
+        r5 = math.sqrt(0.010**2 + 0.017321**2)
         assert r3 == pytest.approx(r4, rel=1e-3)
         assert r5 == pytest.approx(r4, rel=1e-3)
 
     def test_that_wrist_tendons_are_at_120_degree_spacing(self) -> None:
         """Verify the wrist tendon attachment angles are 120° apart."""
         angles = [
-            math.atan2(+0.013856, +0.008),    # Force3: ~60°
-            math.atan2(0.0, -0.016),           # Force4: 180°
-            math.atan2(-0.013856, +0.008),     # Force5: ~-60° (=300°)
+            math.atan2(+0.017321, +0.010),    # Force3: ~60°
+            math.atan2(0.0, -0.020),           # Force4: 180°
+            math.atan2(-0.017321, +0.010),     # Force5: ~-60° (=300°)
         ]
         angle_diffs = [
             (angles[1] - angles[0]) % (2 * math.pi),
@@ -244,8 +244,8 @@ ELBOW_FOREARM_OFFSETS = [
 
 # Wrist Jacobian sub-block used by PhysicalTendonEffortAction
 WRIST_J_T = np.array([
-    [-0.013856, 0.0, +0.013856],
-    [+0.008,   -0.016, +0.008],
+    [-0.017321, 0.0, +0.017321],
+    [+0.010,   -0.020, +0.010],
 ], dtype=np.float64)
 
 

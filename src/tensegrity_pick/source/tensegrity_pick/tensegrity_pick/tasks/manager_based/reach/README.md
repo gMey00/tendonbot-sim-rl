@@ -10,23 +10,38 @@ reachable by construction.
 
 ## Table of Contents
 
-- [Goal](#goal)
-- [Variants](#variants)
-- [Directory Structure](#directory-structure)
-- [Scene](#scene)
-- [Controlled Joints](#controlled-joints)
-- [Actions](#actions)
-- [Observations (policy group)](#observations-policy-group)
-- [Command Generator — FK-Sampled Pose](#command-generator--fk-sampled-pose)
-- [Rewards](#rewards)
-- [Terminations](#terminations)
-- [Curriculum](#curriculum)
-- [Reset Events](#reset-events)
-- [Simulation Parameters](#simulation-parameters)
-- [Training](#training)
-- [Running](#running)
-- [Training Results](#training-results)
-- [Related](#related)
+- [Reach Task](#reach-task)
+  - [Table of Contents](#table-of-contents)
+  - [Goal](#goal)
+  - [Variants](#variants)
+  - [Directory Structure](#directory-structure)
+  - [Scene](#scene)
+  - [Controlled Joints](#controlled-joints)
+    - [Tensegrity / Tensegrity Tendon (5 DOF)](#tensegrity--tensegrity-tendon-5-dof)
+    - [Tensegrity Physical Tendon (7 DOF)](#tensegrity-physical-tendon-7-dof)
+    - [UR10e (6 DOF)](#ur10e-6-dof)
+    - [Kinova Gen3 (7 DOF)](#kinova-gen3-7-dof)
+  - [Actions](#actions)
+    - [PD variants](#pd-variants)
+    - [Tendon variant](#tendon-variant)
+    - [Physical Tendon variant](#physical-tendon-variant)
+  - [Observations (policy group)](#observations-policy-group)
+  - [Command Generator — FK-Sampled Pose](#command-generator--fk-sampled-pose)
+  - [Rewards](#rewards)
+    - [Task rewards](#task-rewards)
+    - [Success metrics (logging only)](#success-metrics-logging-only)
+    - [Regularisation](#regularisation)
+  - [Terminations](#terminations)
+  - [Curriculum](#curriculum)
+  - [Reset Events](#reset-events)
+  - [Simulation Parameters](#simulation-parameters)
+  - [PPO Hyperparameters](#ppo-hyperparameters)
+  - [Training](#training)
+  - [Running](#running)
+  - [Training Results](#training-results)
+    - [Training Figures](#training-figures)
+    - [Regenerating Plots and Reports](#regenerating-plots-and-reports)
+  - [Related](#related)
 
 ## Goal
 
@@ -54,6 +69,15 @@ every target is reachable.
 
 All variants use the base `ManagerBasedRLEnv` as the gymnasium entry point
 (no custom env subclass needed for reach).
+
+### Variant Specifications
+
+Detailed hardware, actuator, observation/action space, and training
+configuration for each robot:
+
+- [Physical Elbow Tensegrity](config/tensegrity_tendon/physical_elbow_spec.md)
+- [Kinova Gen3](config/kinova/kinova_spec.md)
+- [UR10e](config/ur10e/ur10e_spec.md)
 
 ## Directory Structure
 
@@ -358,15 +382,18 @@ conda run --no-capture-output -n env_isaaclab \
 
 | Variant | Steps | Total Reward | Pos. Error | Orient. Error | Fine-Grained | Report | Date |
 |---|---|---|---|---|---|---|---|
-| Tensegrity PD | 48k | +0.52 | −0.008 | −0.024 | 0.077 | [Report](reports/tensegrity/reach_results_tensegrity_2026-03-30_00-47-46_ppo_torch.md) | 2026-03-30 |
-| Tensegrity Tendon | 48k | +0.64 | −0.007 | −0.012 | 0.079 | [Report](reports/tensegrity_tendon/reach_results_tensegrity_tendon_2026-03-31_08-38-05_ppo_torch.md) | 2026-03-31 |
-| Tensegrity Physical Tendon | 48k | +0.67 | −0.006 | −0.012 | 0.080 | [Report](reports/tensegrity_physical_tendon/reach_results_tensegrity_physical_tendon_2026-03-31_01-08-16_ppo_torch.md) | 2026-03-31 |
+| Tensegrity PD | 48k | +0.77 | −0.006 | −0.009 | 0.087 | [Report](reports/tensegrity/reach_results_tensegrity_2026-04-06_17-53-45_ppo_torch.md) | 2026-04-06 |
+| Tensegrity Tendon | 48k | +0.75 | −0.007 | −0.012 | 0.085 | [Report](reports/tensegrity_tendon/reach_results_tensegrity_tendon_2026-04-06_18-19-18_ppo_torch.md) | 2026-04-06 |
+| Tensegrity Physical Tendon | 48k | −1.64 | −0.055 | −0.092 | 0.025 | [Report](reports/tensegrity_physical_tendon/reach_results_tensegrity_physical_tendon_2026-04-06_18-44-32_ppo_torch.md) | 2026-04-06 |
 | UR10e | 96k | −0.21 | −0.051 | −0.021 | 0.056 | [Report](reports/ur10e/reach_results_ur10e_2026-03-30_07-37-24_ppo_torch.md) | 2026-03-30 |
 | Kinova | 96k | +0.62 | −0.014 | −0.019 | 0.088 | [Report](reports/kinova/reach_results_kinova_2026-03-30_06-29-39_ppo_torch.md) | 2026-03-30 |
 
-**Note:** UR10e does not fully converge within 96k steps.  The robot is
-mounted at 2.5 m height with 180° rotation — the workspace / mounting
-configuration may need investigation.
+**Note:** Tensegrity PD and Tendon both improved after Iteration 11 (penetrable
+scene, margin 0.01, FK coupling).  The Physical Tendon variant regressed
+significantly — the combination of antiparallelogram coupling enforcement and
+margin reduction from 0.25 → 0.01 made the goal distribution much harder for
+this variant.  Further investigation needed (longer training, intermediate
+margin, etc.).
 
 ### Training Figures
 

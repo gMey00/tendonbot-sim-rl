@@ -64,17 +64,17 @@ Because the USD already contains a proper fixed joint, set
 Setting it to ``True`` would create a redundant second fixed joint.
 
 Joint limits (elbow_approx):
-  elbow_joint        : ±1.5 rad
-  wrist_x_joint      : ±0.8 rad
-  wrist_y_joint      : ±0.8 rad
+  elbow_joint        : ±1.2217 rad (±70°, Klein 2023 §4.2 p.79 practical workspace)
+  wrist_x_joint      : ±0.8727 rad (±50°, Klein 2023 §4.2 p.79 practical workspace)
+  wrist_y_joint      : ±0.8727 rad (±50°, Klein 2023 §4.2 p.79 practical workspace)
 
 Joint limits (physical):
-  rod_left_joint     : ±1.0 rad
-  rod_right_joint    : ±1.0 rad
-  coupler_left_joint : ±2.0 rad
-  coupler_right_joint: ±2.0 rad  (loop closure)
-  wrist_x_joint      : ±0.8 rad
-  wrist_y_joint      : ±0.8 rad
+  rod_left_joint     : [−0.6886, +0.5332] rad — from closure condition at ±70° elbow
+  rod_right_joint    : [−0.5332, +0.6886] rad — closure-derived mirror of rod_left
+  coupler_left_joint : [−0.6886, +0.6886] rad — union of coupler range
+  coupler_right_joint: [−0.6886, +0.6886] rad — loop closure joint
+  wrist_x_joint      : ±0.8727 rad (±50°, Klein 2023 §4.2 p.79 practical workspace)
+  wrist_y_joint      : ±0.8727 rad (±50°, Klein 2023 §4.2 p.79 practical workspace)
 
 Link masses:
 - Elbow-approximation variants:
@@ -437,6 +437,21 @@ _LINKAGE_FRAME_PIVOT_Z = -0.360   # world z of A, B
 _LINKAGE_COUPLER_PIVOT_Z = -0.4975  # world z of D, C at equilibrium
 _LINKAGE_PIVOT_Y_OFFSET = 0.030   # |y| of each pivot = k_e / 2
 
+# ── Rod and coupler limits derived from ±70° elbow constraint ──────────────
+# Computed via delta_for_elbow(±70°) using the antiparallelogram closure
+# condition (see doc/antiparallelogram_kinematics.ipynb, Cell 2).
+#
+# Key relationship:  elbow_angle = rod_left_joint + rod_right_joint
+#                    coupler_left = rod_right,  coupler_right = rod_left
+#
+#   +70° elbow → rod_left = +0.5332 rad,  rod_right = +0.6886 rad
+#   −70° elbow → rod_left = −0.6886 rad,  rod_right = −0.5332 rad
+_ROD_LEFT_LOWER  = -0.6886   # δ at −70° elbow
+_ROD_LEFT_UPPER  = +0.5332   # δ at +70° elbow
+_ROD_RIGHT_LOWER = -0.5332   # φ + θ₀ at −70° elbow
+_ROD_RIGHT_UPPER = +0.6886   # φ + θ₀ at +70° elbow
+_COUPLER_LIMIT   =  0.6886   # max(|coupler_left|, |coupler_right|) ≈ ±39.5°
+
 
 # ═════════════════════════════════════════════════════════════════════════════
 # SHARED LINK / JOINT FRAGMENTS
@@ -457,14 +472,14 @@ _WRIST_JOINTS: list[JointSpec] = [
         name="wrist_x_joint",
         parent="forearm_link", child="wrist_intermediate_link",
         joint_type="revolute", axis="X",
-        lower_rad=-0.8, upper_rad=0.8,
+        lower_rad=-0.8727, upper_rad=0.8727,  # ±50°, Klein (2023) §4.2 p.79
         joint_world_z=-0.836,
     ),
     JointSpec(
         name="wrist_y_joint",
         parent="wrist_intermediate_link", child="wrist_link",
         joint_type="revolute", axis="Y",
-        lower_rad=-0.8, upper_rad=0.8,
+        lower_rad=-0.8727, upper_rad=0.8727,  # ±50°, Klein (2023) §4.2 p.79
         joint_world_z=-0.836,
     ),
     JointSpec(
@@ -491,7 +506,7 @@ _JOINTS_ELBOW_APPROX: list[JointSpec] = [
         name="elbow_joint",
         parent="root_link", child="forearm_link",
         joint_type="revolute", axis="X",
-        lower_rad=-1.5, upper_rad=1.5,
+        lower_rad=-1.2217, upper_rad=1.2217,  # ±70°, Klein (2023) §4.2 p.79
         joint_world_z=-0.430,
     ),
     *_WRIST_JOINTS,
@@ -522,7 +537,7 @@ _JOINTS_PHYSICAL: list[JointSpec] = [
         name="rod_left_joint",
         parent="root_link", child="rod_left_link",
         joint_type="revolute", axis="X",
-        lower_rad=-1.0, upper_rad=1.0,
+        lower_rad=_ROD_LEFT_LOWER, upper_rad=_ROD_LEFT_UPPER,
         joint_world_y=-_LINKAGE_PIVOT_Y_OFFSET,
         joint_world_z=_LINKAGE_FRAME_PIVOT_Z,
     ),
@@ -530,7 +545,7 @@ _JOINTS_PHYSICAL: list[JointSpec] = [
         name="coupler_left_joint",
         parent="rod_left_link", child="forearm_link",
         joint_type="revolute", axis="X",
-        lower_rad=-2.0, upper_rad=2.0,
+        lower_rad=-_COUPLER_LIMIT, upper_rad=_COUPLER_LIMIT,
         joint_world_y=+_LINKAGE_PIVOT_Y_OFFSET,
         joint_world_z=_LINKAGE_COUPLER_PIVOT_Z,
     ),
@@ -538,7 +553,7 @@ _JOINTS_PHYSICAL: list[JointSpec] = [
         name="rod_right_joint",
         parent="root_link", child="rod_right_link",
         joint_type="revolute", axis="X",
-        lower_rad=-1.0, upper_rad=1.0,
+        lower_rad=_ROD_RIGHT_LOWER, upper_rad=_ROD_RIGHT_UPPER,
         joint_world_y=+_LINKAGE_PIVOT_Y_OFFSET,
         joint_world_z=_LINKAGE_FRAME_PIVOT_Z,
     ),
@@ -553,7 +568,7 @@ _CLOSURE_JOINTS_PHYSICAL: list[JointSpec] = [
         name="coupler_right_joint",
         parent="rod_right_link", child="forearm_link",
         joint_type="revolute", axis="X",
-        lower_rad=-2.0, upper_rad=2.0,
+        lower_rad=-_COUPLER_LIMIT, upper_rad=_COUPLER_LIMIT,
         joint_world_y=-_LINKAGE_PIVOT_Y_OFFSET,
         joint_world_z=_LINKAGE_COUPLER_PIVOT_Z,
     ),

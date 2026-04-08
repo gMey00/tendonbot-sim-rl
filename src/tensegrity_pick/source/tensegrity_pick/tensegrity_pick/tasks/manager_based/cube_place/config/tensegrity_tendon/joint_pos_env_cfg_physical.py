@@ -90,8 +90,8 @@ class PhysicalTendonActionsCfg:
         max_tension=500.0,
         root_body_name="root_link",
         forearm_body_name="forearm_link",
-        root_offsets=ELBOW_TENDON_ROOT_OFFSETS,
-        forearm_offsets=ELBOW_TENDON_FOREARM_OFFSETS,
+        elbow_tendon_root_offsets=ELBOW_TENDON_ROOT_OFFSETS,
+        elbow_tendon_forearm_offsets=ELBOW_TENDON_FOREARM_OFFSETS,
         wrist_jacobian_transpose=WRIST_JACOBIAN_TRANSPOSE,
     )
 
@@ -185,6 +185,9 @@ class PhysicalTendonObservationsCfg:
             },
         )
         actions = ObsTerm(func=mdp.last_action)
+
+        # Task completion flag — lets the policy know when to return to neutral
+        was_placed = ObsTerm(func=task_rew.was_placed_obs)
 
         def __post_init__(self) -> None:
             self.enable_corruption = False

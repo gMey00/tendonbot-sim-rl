@@ -14,6 +14,9 @@ NOTE: The 5-DOF physical USD must be assembled in Robot Assembler before
 these configs can be instantiated.
 """
 
+import math
+
+import torch
 from isaaclab.utils import configclass
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.actuators import ImplicitActuatorCfg
@@ -26,6 +29,44 @@ from tensegrity_pick.robots.tendon_robot_cfg import CONTROLLED_JOINT_NAMES_5DOF_
 from tensegrity_pick.tasks.manager_based.shared.proj_base_scene_cfg import TENSEGRITY_MOUNT_HEIGHT_M
 from tensegrity_pick.tasks.manager_based.reach import mdp
 from tensegrity_pick.tasks.manager_based.reach.reach_env_cfg import ReachEnvCfg
+
+# ── Antiparallelogram 4-bar linkage constants (Klein 2023, §3.2) ──────────
+_L_E = 0.150   # rod length [m]
+_K_E = 0.060   # frame / coupler pivot spacing [m]
+_THETA_0 = math.asin(_K_E / _L_E)  # equilibrium rod angle ≈ 23.6°
+
+
+def antiparallelogram_joint_coupling(positions: torch.Tensor) -> torch.Tensor:
+    """Enforce antiparallelogram closure on FK-sampled joint positions.
+
+    Joint order (matching ``CONTROLLED_JOINT_NAMES_5DOF_PHYSICAL``):
+        [0] base_y, [1] base_z, [2] rod_left, [3] rod_right,
+        [4] coupler_left, [5] wrist_y, [6] wrist_x
+
+    The 4-bar has 1 DOF — ``rod_left`` is the free parameter.
+    From ``build_tensegrity_arm_usd.py`` (§ Joint Limits):
+
+        coupler_left = rod_right   (antiparallelogram symmetry)
+        coupler_right = rod_left   (enforced by PhysX loop-closure)
+
+    The closure equation (USD coords, zero = equilibrium):
+
+        θ = rod_left_usd + θ₀
+        φ = θ + 2·atan2(−k_e·cos θ, l_e − k_e·sin θ)
+        rod_right_usd = coupler_left_usd = φ + θ₀
+    """
+    rod_usd = positions[:, 2]
+
+    theta = rod_usd + _THETA_0
+    phi = theta + 2.0 * torch.atan2(
+        -_K_E * torch.cos(theta),
+        _L_E - _K_E * torch.sin(theta),
+    )
+    coupled_usd = phi + _THETA_0
+    positions[:, 3] = coupled_usd  # rod_right  from closure
+    positions[:, 4] = coupled_usd  # coupler_left = rod_right
+
+    return positions
 
 
 @configclass
@@ -87,7 +128,8 @@ class TensegrityReachPhysicalTendonEnvCfg(ReachEnvCfg):
         # override commands
         self.commands.ee_pose.body_name = TARGET_LINK_NAME
         self.commands.ee_pose.joint_names = CONTROLLED_JOINT_NAMES
-        self.commands.ee_pose.joint_range_margin = 0.25
+        self.commands.ee_pose.joint_range_margin = 0.35
+        self.commands.ee_pose.joint_coupling_fn = antiparallelogram_joint_coupling
         # re-declare actions for the physical tendon arm
         self.actions = PhysicalTendonReachActionsCfg()
         # override rewards

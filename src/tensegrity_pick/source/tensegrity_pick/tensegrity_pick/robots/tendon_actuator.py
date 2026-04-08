@@ -14,16 +14,16 @@ Tendon arrangement (xacro Force frames)
   - Tendon 0  (Force1): attachment at x = +0.0725 m on forearm → positive elbow torque
   - Tendon 1  (Force2): attachment at x = -0.0725 m on forearm → negative elbow torque
 
-* **Wrist triplet** (120° spacing on r ≈ 0.016 m circle):
-  - Tendon 2  (Force3): (x, y) = (+0.008, +0.013856)
-  - Tendon 3  (Force4): (x, y) = (-0.016,  0.0     )
-  - Tendon 4  (Force5): (x, y) = (+0.008, -0.013856)
+* **Wrist triplet** (120° spacing on r = 0.020 m circle, Klein §3.2.2 p.42):
+  - Tendon 2  (Force3): (x, y) = (+0.010, +0.017321)
+  - Tendon 3  (Force4): (x, y) = (-0.020,  0.0     )
+  - Tendon 4  (Force5): (x, y) = (+0.010, -0.017321)
 
 Torque mapping (zero-config Jacobian transpose)::
 
     τ_elbow   =  +0.0725·T₀  − 0.0725·T₁
-    τ_wrist_y = −0.013856·T₂              + 0.013856·T₄
-    τ_wrist_x =  +0.008·T₂   − 0.016·T₃  + 0.008·T₄
+    τ_wrist_y = −0.017321·T₂              + 0.017321·T₄
+    τ_wrist_x =  +0.010·T₂   − 0.020·T₃  + 0.010·T₄
 
 Tensions are non-negative.  The RL agent outputs actions in [-1, 1] which
 are affine-mapped to [0, max_tension].
@@ -61,9 +61,9 @@ logger = logging.getLogger(__name__)
 # ── Default Jacobian transpose (3 joints × 5 tendons) ─────────────────────
 # Derived from xacro Force1–5 attachment coordinates (see module docstring).
 DEFAULT_JACOBIAN_TRANSPOSE: list[list[float]] = [
-    [+0.0725, -0.0725,  0.0,       0.0,      0.0],      # elbow
-    [ 0.0,     0.0,     -0.013856,  0.0,     +0.013856],  # wrist_y
-    [ 0.0,     0.0,     +0.008,    -0.016,   +0.008],     # wrist_x
+    [+0.0725, -0.0725,  0.0,       0.0,      0.0],       # elbow
+    [ 0.0,     0.0,     -0.017321,  0.0,     +0.017321],  # wrist_y (r=20 mm, Klein §3.2.2 p.42)
+    [ 0.0,     0.0,     +0.010,    -0.020,   +0.010],     # wrist_x
 ]
 
 NUM_TENDONS = 5
@@ -229,8 +229,8 @@ ELBOW_TENDON_FOREARM_OFFSETS: list[list[float]] = [
 # Wrist-only Jacobian transpose (2 wrist joints × 3 wrist tendons).
 # Rows: wrist_y, wrist_x.  Columns: T2, T3, T4.
 WRIST_JACOBIAN_TRANSPOSE: list[list[float]] = [
-    [-0.013856,  0.0,     +0.013856],   # wrist_y
-    [+0.008,    -0.016,   +0.008],      # wrist_x
+    [-0.017321,  0.0,     +0.017321],   # wrist_y (r=20 mm, Klein §3.2.2 p.42)
+    [+0.010,    -0.020,   +0.010],      # wrist_x
 ]
 
 NUM_ELBOW_TENDONS = 2

@@ -110,13 +110,34 @@ python scripts/skrl/train.py   --task=Template-Tensegrity-Reach-Tendon-v0      -
 python scripts/skrl/play.py    --task=Template-Tensegrity-Reach-Tendon-Play-v0 --num_envs=10
 
 # ---------------------------------------------------------------------------
-# Shirt Place (template)  —  Template-Tensegrity-Shirt-Place-v0
+# Shirt Place (PD)  —  Template-Tensegrity-Shirt-Place-v0 / -Play-v0
 # ---------------------------------------------------------------------------
-# Place a T-shirt into a drum (cloth simulation).
-# TODO: Not yet implemented — cloth deformable objects pending.
+# Place a T-shirt (rigid proxy cube) into a drum.
+# 6-phase reward pipeline: reach → grasp → lift → transport → release → success.
+# Currently uses rigid proxy; cloth simulation integration pending.
 
-# python scripts/zero_agent.py   --task=Template-Tensegrity-Shirt-Place-v0      --num_envs=10
-# python scripts/skrl/train.py   --task=Template-Tensegrity-Shirt-Place-v0      --headless
+python scripts/zero_agent.py   --task=Template-Tensegrity-Shirt-Place-v0      --num_envs=10
+python scripts/random_agent.py --task=Template-Tensegrity-Shirt-Place-v0      --num_envs=10
+
+python scripts/skrl/train.py   --task=Template-Tensegrity-Shirt-Place-v0      --headless
+python scripts/skrl/train.py   --task=Template-Tensegrity-Shirt-Place-v0      --headless --num_envs=2048
+
+python scripts/skrl/play.py    --task=Template-Tensegrity-Shirt-Place-Play-v0 --num_envs=10
+
+# ---------------------------------------------------------------------------
+# Shirt Place (Physical Tendon)  —  Template-Tensegrity-Shirt-Place-Physical-Tendon-v0 / -Play-v0
+# ---------------------------------------------------------------------------
+# Same task as Shirt Place but the 3-DOF arm is driven by 5 tendon tensions
+# (body-force elbow tendons + Jacobian-transpose wrist tendons).
+# Action dim: 5 tendons + 1 gripper + 2 base = 8.
+
+python scripts/zero_agent.py   --task=Template-Tensegrity-Shirt-Place-Physical-Tendon-v0      --num_envs=10
+python scripts/random_agent.py --task=Template-Tensegrity-Shirt-Place-Physical-Tendon-v0      --num_envs=10
+
+python scripts/skrl/train.py   --task=Template-Tensegrity-Shirt-Place-Physical-Tendon-v0      --headless
+python scripts/skrl/train.py   --task=Template-Tensegrity-Shirt-Place-Physical-Tendon-v0      --headless --num_envs=2048
+
+python scripts/skrl/play.py    --task=Template-Tensegrity-Shirt-Place-Physical-Tendon-Play-v0 --num_envs=10
 
 # ---------------------------------------------------------------------------
 # Shirt Sort (template)  —  Template-Tensegrity-Shirt-Sort-v0

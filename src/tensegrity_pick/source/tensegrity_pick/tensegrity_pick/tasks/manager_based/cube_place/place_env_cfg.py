@@ -45,8 +45,10 @@ from .mdp import rewards as task_rew
 
 # ── Scene-level constants (shared by all robot variants) ──────────────────
 
-# Spawn box: cubes appear on a narrow line directly below the robot mount
-# so the arm can always reach every spawn position.
+# Spawn box: cubes start in a narrow band and widen via curriculum.
+# Initial y_range ±0.10 matches Iter 2 baseline (proven breakthrough at 12k).
+# The widen_spawn curriculum linearly widens to ±0.30 (75% belt width).
+# ±0.40 caused grasp_rate to drop to 55% (workspace limit); ±0.30 achieves 86%.
 _SPAWN_BOX = task_rew.SpawnBox(
     x_range=(0.10, 0.20),
     y_range=(-0.10, 0.10),
@@ -191,6 +193,9 @@ class ObservationsCfg:
 
         # Last actions
         actions = ObsTerm(func=mdp.last_action)
+
+        # Task completion flag — lets the policy know when to return to neutral
+        was_placed = ObsTerm(func=task_rew.was_placed_obs)
 
         def __post_init__(self) -> None:
             self.enable_corruption = False
@@ -398,11 +403,37 @@ class RewardsCfg:
     # to push red aside first, then focus on green.
     red_clearance = RewTerm(
         func=task_rew.red_clearance_from_drum,
-        weight=3.0,
+        weight=5.0,
         params={
             "red_name": "red_cube",
             "drum_name": "drum_target",
             "std": 0.4,
+        },
+    )
+
+    # ── 7c. Red-green separation: push red away from green ─────────
+    # Drives a push-aside phase before grasping, especially when red
+    # is on top of green.  Only active before grasping (!was_grasped).
+    red_green_separation = RewTerm(
+        func=task_rew.red_green_separation,
+        weight=3.0,
+        params={
+            "green_name": "green_cube",
+            "red_name": "red_cube",
+            "std": 0.15,
+        },
+    )
+
+    # ── 8. Return to neutral after task completion ───────────────────
+    # Active once the cube is placed in the drum (gated on was_placed).
+    # Drives the arm back to its default (zero) joint positions to
+    # prevent collisions with the drum rim.
+    return_to_neutral = RewTerm(
+        func=task_rew.return_to_neutral,
+        weight=25.0,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=MISSING),
+            "std": 1.0,
         },
     )
 
@@ -425,7 +456,7 @@ class RewardsCfg:
     # tensegrity: 3 rev arm joints).
     arm_utilization = RewTerm(
         func=task_rew.arm_velocity_bonus,
-        weight=0.5,
+        weight=0.25,
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=MISSING),
             "max_velocity": 5.0,
@@ -447,7 +478,7 @@ class RewardsCfg:
     # ── Joint torque: penalise high effort on arm joints ─────────────
     joint_torque = RewTerm(
         func=task_rew.joint_torque_penalty,
-        weight=-0.05,
+        weight=-0.025,
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=MISSING),
         },
@@ -483,13 +514,14 @@ class RewardsCfg:
         },
     )
 
-    # ── Conveyor penalty: penalise cubes knocked off the belt ────────
+    # ── Conveyor penalty: penalise GREEN cube knocked off the belt ────
+    # Red cube is intentionally excluded — the agent may push red off
+    # the belt during the push-aside phase and that’s acceptable.
     cube_off_conveyor = RewTerm(
         func=task_rew.cube_off_conveyor_penalty,
         weight=-5.0,
         params={
             "green_name": "green_cube",
-            "red_name": "red_cube",
             "bounds": _CONVEYOR_BOUNDS,
         },
     )
@@ -529,20 +561,25 @@ class TerminationsCfg:
 
 @configclass
 class CurriculumCfg:
-    """Curriculum: ramp up regularisation + introduce the red cube."""
+    """Curriculum: narrow→wide spawn, ramp regularisation, introduce red cube."""
+
+    widen_spawn = CurrTerm(
+        func=task_rew.widen_spawn_curriculum,
+        params={"initial_y": 0.10, "final_y": 0.30, "num_steps": 75000, "delay_steps": 25000},
+    )
 
     activate_red = CurrTerm(
         func=task_rew.activate_red_cube_curriculum,
-        params={"num_steps": 100000},
+        params={"num_steps": 125000},  # delay red until agent stabilizes at ±0.30 (spawn done at 100k)
     )
 
     action_rate = CurrTerm(
         func=mdp.modify_reward_weight,
-        params={"term_name": "action_rate", "weight": -2e-3, "num_steps": 200000},
+        params={"term_name": "action_rate", "weight": -2e-3, "num_steps": 150000},
     )
     joint_vel = CurrTerm(
         func=mdp.modify_reward_weight,
-        params={"term_name": "joint_vel", "weight": -2e-3, "num_steps": 200000},
+        params={"term_name": "joint_vel", "weight": -2e-3, "num_steps": 150000},
     )
 
 
@@ -633,6 +670,7 @@ class PlaceEnvCfg(ManagerBasedRLEnvCfg):
         rew.joint_vel.params["asset_cfg"].joint_names = controlled_joints
         rew.arm_utilization.params["asset_cfg"].joint_names = arm_joints
         rew.joint_torque.params["asset_cfg"].joint_names = arm_joints
+        rew.return_to_neutral.params["asset_cfg"].joint_names = arm_joints
 
         # -- Events --
         self.events.reset_arm.params["asset_cfg"].joint_names = arm_joints

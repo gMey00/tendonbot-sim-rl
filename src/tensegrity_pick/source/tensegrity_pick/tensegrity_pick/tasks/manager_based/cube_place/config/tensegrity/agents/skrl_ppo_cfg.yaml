@@ -40,9 +40,9 @@ memory:
 # https://skrl.readthedocs.io/en/latest/api/agents/ppo.html
 agent:
   class: PPO
-  rollouts: 48
+  rollouts: 128  # 1024×128=131k transitions per update, reduced from 192 for memory safety
   learning_epochs: 5
-  mini_batches: 8
+  mini_batches: 4  # reduced from 8 → larger mini-batch for better gradient estimate
   discount_factor: 0.99
   lambda: 0.95
   learning_rate: 1.0e-04

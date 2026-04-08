@@ -64,6 +64,7 @@ class TensegrityReachEnvCfg(ReachEnvCfg):
         # override commands
         self.commands.ee_pose.body_name = TARGET_LINK_NAME
         self.commands.ee_pose.joint_names = CONTROLLED_JOINT_NAMES
+        self.commands.ee_pose.joint_range_margin = 0.01
         # Use JointPositionToLimitsAction: maps policy output [-1,1] -> joint limits
         # This prevents PD-driven velocity divergence from out-of-limit targets
         self.actions.arm_action = mdp.JointPositionToLimitsActionCfg(
