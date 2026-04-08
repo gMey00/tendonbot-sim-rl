@@ -76,9 +76,9 @@ enabling label-based sorting with vectorised boolean masks.
 |---|---|---|---|
 | `base_y_joint` | Prismatic | ±0.5 m | (−0.5, 0.5) |
 | `base_z_joint` | Prismatic | −0.5 … 0.0 m | (−0.5, 0.0) |
-| `elbow_joint` | Revolute | ±1.5 rad | (−1.5, 1.5) |
-| `wrist_y_joint` | Revolute | ±0.8 rad | (−0.8, 0.8) |
-| `wrist_x_joint` | Revolute | ±0.8 rad | (−0.8, 0.8) |
+| `elbow_joint` | Revolute | ±1.2217 rad | (−1.2217, 1.2217) |
+| `wrist_y_joint` | Revolute | ±0.8727 rad | (−0.8727, 0.8727) |
+| `wrist_x_joint` | Revolute | ±0.8727 rad | (−0.8727, 0.8727) |
 | `finger_joint` | Revolute | — | Binary (open=0.0, close=0.7854) |
 
 ## Actions (6 dims)

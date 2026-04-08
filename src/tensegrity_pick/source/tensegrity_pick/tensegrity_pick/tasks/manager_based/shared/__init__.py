@@ -32,3 +32,11 @@ from .gripper_cfg import (  # noqa: F401
     SpawnBox,
     ConveyorBounds,
 )
+
+from .cloth_object import (  # noqa: F401
+    ClothBackend,
+    ClothObject,
+    ClothObjectCfg,
+    PBDClothParams,
+    apply_cloth_startup_event,
+)

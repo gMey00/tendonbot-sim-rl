@@ -16,8 +16,8 @@ All paths referenced in the Python robot configurations point into this director
 
 ## Notes
 
-- Robot USD files are generated via Isaac Sim's URDF importer; see
-  [`Tensegrity/README.md`](Tensegrity/README.md) for the import procedure.
+- Robot USD files are hand-assembled from original CAD models. See
+  [`Tensegrity/README.md`](Tensegrity/README.md) for the assembly procedure.
 - The `PROJ_ASSETS_PATH` constant in the robot config modules points to
   this directory (`res/`).
 
