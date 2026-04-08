@@ -1,0 +1,144 @@
+// §4.4 Reinforcement Learning Setup — Policy Learning Pipeline
+// Content moved from Background §2.5 to Methodology, as it describes
+// the specific MDP instantiation and IsaacLab workflow used in this project.
+#import "../../../../shared/formatting/macros.typ": *
+#import "../../../../shared/formatting/acronyms.typ": *
+#import "../../../../shared/formatting/diagrams.typ": mdp-managers
+
+In this thesis, #ac("PPO") is used as the primary learning algorithm, together with #ac("GAE") for advantage estimation, following standard actor--critic practice~@Schulman2015GAE @Schulman2017PPO. The training loop is implemented with the `skrl` library, which provides modular #ac("PPO") components (policy, value function, rollout storage, and optimization routines) and supports integration with simulator-based environments~@SerranoMunoz2023skrl. This allows the thesis to focus on environment formulation (observation design, action parameterization, reward shaping, termination conditions, and robustness measures such as randomization) while relying on a consistent and reproducible #ac("PPO") implementation~@SerranoMunoz2023skrl.
+
+#ac("RL")-based control is typically realized as an iterative interaction loop between an agent (policy) and an environment (simulation), in which behavior is improved by maximizing an expected return defined over episodes~@SuttonBarto2018 @Puterman1994. In IsaacLab, task construction is formalized through an explicit #ac("MDP") specification and a software architecture that decomposes environment logic into reusable terms for observations, actions, rewards, terminations, events, and curriculum scheduling~@nvidia_isaaclab_mdp_managers_getting_started @isaaclab_task_design_workflows @isaaclab_mdp_terms_api. This section describes the #ac("RL") pipeline under this workflow and derives an #ac("MDP") formulation suitable for the reach and place tasks in simulation.
+
+=== Agent--Environment Cycle and Markov Decision Processes
+
+An #ac("MDP") is commonly defined as a tuple $cal(M) = (cal(S), cal(A), cal(P), r, gamma)$, where $cal(S)$ denotes the state space, $cal(A)$ denotes the action space, $cal(P)(s' | s, a)$ denotes the transition kernel, $r(s, a, s')$ denotes the immediate reward, and $gamma in [0, 1)$ denotes the discount factor~@Puterman1994 @SuttonBarto2018. The #ac("RL") objective is formulated as maximizing the expected discounted return under a policy $pi$:
+$ J(pi) = bb(E) [sum_(t=0)^(T-1) gamma^t r(s_t, a_t, s_(t+1))], quad a_t tilde pi(dot | o_t), quad s_(t+1) tilde cal(P)(dot | s_t, a_t), $ <eq:mdp_objective_discounted_return>
+where $T$ denotes the episode horizon and $o_t$ denotes the agent's observation at time step $t$~@SuttonBarto2018 @Puterman1994.
+
+For robotic manipulation tasks, especially those involving deformable objects, the _true_ state $s_t$ (e.g., all cloth vertex/particle states and contact states) is typically not directly observable, and the policy is conditioned on a partial observation $o_t = g(s_t)$ constructed from sensors or engineered features~@Lin2021SoftGym @Kadi2023ClothLikeReview. This setting is naturally described as a partially observable #ac("MDP") (#ac("POMDP")), in which observations are related probabilistically to the hidden state and optimal decision making may require memory or state estimation~@Spaan2012POMDP. In practice, many manipulation policies are implemented as _memoryless_ mappings $pi(a | o)$, such that the observation vector (or a short history of observations) is treated as the effective policy input~@SuttonBarto2018 @Lin2021SoftGym.
+
+The standard on-policy learning pipeline alternates between (i)~collecting rollouts by executing the current policy in the environment and (ii)~updating the policy parameters by optimizing a surrogate objective using the collected trajectories~@Schulman2017PPO. For example, #ac("PPO") explicitly follows this alternation and performs multiple epochs of minibatch optimization over a clipped surrogate objective to stabilize policy gradient updates~@Schulman2017PPO. Regardless of the specific algorithm, this structure implies that the environment must provide: batched observations $o_t$, the ability to apply actions $a_t$, a reward signal $r_t$, and episode termination flags to delineate trajectories for return/advantage estimation~@SuttonBarto2018 @Schulman2017PPO.
+
+=== IsaacLab MDP Workflow for Task Construction
+
+IsaacLab provides two task design workflows: a _manager-based_ workflow, in which environment functionality is decomposed into modular managers, and a _direct_ workflow, in which environment logic is implemented in a single class in a more monolithic style~@isaaclab_task_design_workflows @nvidia_isaaclab_mdp_managers_getting_started. The manager-based workflow is explicitly organized around #ac("MDP") components such as observations, actions, rewards, terminations, and curriculum, where each component is represented by configuration classes (implemented with a Python `\@configclass` pattern) and is coordinated by the environment instance~@nvidia_isaaclab_mdp_managers_getting_started @isaaclab_task_design_workflows @isaaclab_mdp_terms_api.
+
+#figure(
+  mdp-managers(),
+  caption: [Conceptual decomposition of an IsaacLab #ac("MDP") into managers. In the manager-based workflow, action processing, observation computation, reward accumulation, and termination checks are implemented as modular terms and orchestrated by the environment step loop.],
+) <fig:isaaclab_manager_based_mdp_workflow>
+
+In the manager-based workflow, IsaacLab defines reusable _term functions_ (e.g., joint-state observations, generic reward primitives, and standard termination checks) in a dedicated #ac("MDP") module, which is designed to be consumed by corresponding managers~@isaaclab_mdp_terms_api @isaaclab_managers_api. Concretely, observation terms are configured via an observation manager, action terms via an action manager, reward terms via a reward manager, and termination terms via a termination manager~@isaaclab_mdp_terms_api @isaaclab_managers_api. Additionally, an event manager is typically used for randomization and episodic events, and a curriculum manager is provided to schedule changes to environment parameters or term weights over training~@isaaclab_mdp_terms_api @isaaclab_managers_api.
+
+The direct workflow is supported for cases where decomposition is inconvenient or where large blocks of logic are implemented in optimized kernels, but it retains the same high-level requirements imposed by #ac("RL"): an environment class must provide observations, apply actions, compute rewards, and implement reset/termination logic~@isaaclab_task_design_workflows @isaaclab_envs_api. Both workflows are compatible with ecosystem interfaces influenced by the OpenAI Gym API, which standardizes methods such as `reset()` and `step()` for #ac("RL") benchmarking and algorithm development~@Brockman2016OpenAIGym @isaaclab_wrap_env.
+
+=== MDP Definition for Cloth Manipulation
+
+The cloth manipulation task considered in this thesis is characterized by (i)~high-dimensional deformable-object dynamics, (ii)~contact-rich interactions during grasping, and (iii)~task objectives that are naturally expressed through geometric measures such as cloth spread/coverage, corner-to-corner distances, and alignment with a target configuration~@Lin2021SoftGym @Kadi2023ClothLikeReview @Seita2020FabricSmoothing. While the _true_ simulator state may include all internal cloth degrees of freedom, the #ac("MDP") induced for learning is typically specified through an observation function, an action parameterization, a shaped reward, and explicit termination conditions.
+
+#figure(
+  table(
+    columns: 3,
+    stroke: none,
+    table.hline(),
+    table.header([*Component*], [*Design choice*], [*Rationale*]),
+    table.hline(),
+    [Observations $o_t$], [Proprioception + cloth features / vision], [Partial observability and high #ac("DoF") cloth state],
+    [Actions $a_t$], [Joint targets or EE deltas + gripper], [Continuous control with constrained actuation],
+    [Reward $r_t$], [Coverage/stretching + grasp success + penalties], [Dense shaping for sparse geometric goals],
+    [Termination], [Timeout + success + safety/failure events], [Stable episodes and safety constraints],
+    table.hline(),
+  ),
+  kind: table,
+  caption: [Recommended #ac("MDP") specification elements for cloth grasp-and-stretch in simulation.],
+) <tab:cloth_mdp_summary>
+
+==== State and observations
+
+*Underlying state.*
+In an #ac("MDP") formulation, the state $s_t in cal(S)$ is assumed to satisfy the Markov property, i.e., $s_(t+1)$ is conditionally independent of past states given $(s_t, a_t)$~@Puterman1994 @SuttonBarto2018. For deformable-object manipulation, $s_t$ may be conceptualized as a concatenation of robot states (joint positions/velocities, tendon states, actuator internal states) and cloth states (e.g., all cloth vertex/particle positions and velocities, plus contact and constraint states)~@Lin2021SoftGym @Kadi2023ClothLikeReview. This state is generally too high-dimensional to use directly for learning on real hardware, and it is often not directly measurable even in simulation when the goal is to preserve a realistic sensing setup~@Lin2021SoftGym @Kadi2023ClothLikeReview.
+
+*Observation design.*
+The policy input is therefore defined as an observation vector $o_t in cal(O)$ constructed from simulated sensors and engineered features. In cloth-like deformable object tasks, a central difficulty is that sufficient low-dimensional state representations are hard to define and that observation is typically partial or noisy, motivating #ac("POMDP") modelling assumptions~@Lin2021SoftGym @Spaan2012POMDP. In simulation, observations may be selected along a spectrum from privileged (full cloth state) to realistic (vision/tactile-based). The following observation groups are commonly used for cloth manipulation and align with IsaacLab's modular observation manager concept~@Lin2021SoftGym @Kadi2023ClothLikeReview @isaaclab_mdp_terms_api @isaaclab_managers_api:
+
+- *Robot proprioception:* Joint positions/velocities, end-effector pose, gripper opening, and optionally actuator-related signals (e.g., efforts) to support closed-loop manipulation~@Siciliano2009Robotics @isaaclab_mdp_terms_api.
+- *Cloth configuration features:* Reduced descriptors such as cloth corner positions, edge/contour points, keypoint sets, or a heightmap/coverage estimate, reflecting the observation biases reported in cloth-shaping systems that track corners and contours~@Kadi2023ClothLikeReview.
+- *Visual observations:* RGB, depth, or RGB-D camera inputs. Image-based policies have been trained to infer grasp points and pull vectors for fabric smoothing, and depth has been shown to provide valuable information in such settings~@Seita2020FabricSmoothing. Benchmark studies also emphasize that learning purely from visual observations can be substantially more challenging than learning from ground-truth state in deformable tasks~@Lin2021SoftGym.
+- *Contact and event signals:* Binary/continuous indicators derived from contact sensing (e.g., cloth grasp detected, contact forces above threshold) to disambiguate grasp success and failure events under partial observability~@isaaclab_task_design_workflows.
+
+In IsaacLab manager-based environments, these observation components are operationalized by defining observation terms and grouping them into observation groups, which are then evaluated each environment step to produce the policy input tensor~@isaaclab_mdp_terms_api @isaaclab_managers_api.
+
+==== Action space
+
+*Low-level versus higher-level actions.*
+For robotic manipulation, the action space $cal(A)$ can be defined at different abstraction levels. At the lowest level, actions may be joint torques $bold(tau) in bb(R)^n$ applied to an $n$-#ac("DoF") manipulator, corresponding to direct actuation in the robot dynamics model~@Siciliano2009Robotics. Alternatively, actions may be expressed as joint velocity commands, joint position targets, or incremental joint displacements, which are then realized through an internal controller in the simulator or robot stack~@Siciliano2009Robotics. In deformable manipulation, action abstraction is frequently used to reduce exploration complexity and to stabilize contact interactions, since learning directly in torque space can induce highly non-smooth exploration when contact constraints and deformable dynamics are present~@Kadi2023ClothLikeReview.
+
+*Action spaces compatible with IsaacLab terms.*
+IsaacLab explicitly supports action terms that map normalized policy outputs to robot commands via an action manager~@isaaclab_mdp_terms_api @isaaclab_managers_api. This interface enables several action parameterizations relevant to cloth grasp-and-stretch:
+
+- *Joint-level continuous control:* Actions are mapped to joint targets (e.g., position or velocity) for selected joint subsets through configured action terms~@isaaclab_mdp_terms_api. The general batched action tensor is processed per environment instance and applied during the physics step loop~@isaaclab_envs_api.
+- *Cartesian end-effector motion primitives:* Actions are defined as incremental end-effector translations/rotations (and gripper commands), which are converted to joint targets through inverse kinematics or task-space controllers~@NVIDIA2025IsaacLab @isaaclab_task_design_workflows.
+- *Robust gripper open/close actions:* For grasping-heavy tasks, IsaacLab provides an action term that converts a continuous gripper input into binary open/close commands using a threshold mechanism~@isaaclab_mdp_terms_api.
+
+For cloth manipulation with a parallel-jaw gripper, a practical action vector is often defined as
+$ bold(a)_t = [Delta bold(x)_t^top quad Delta bold(phi)_t^top quad a_t^"grip"]^top, $
+where $Delta bold(x)_t in bb(R)^3$ and $Delta bold(phi)_t in bb(R)^3$ denote incremental Cartesian translation and rotation commands, and $a_t^"grip"$ denotes a gripper command (continuous or binary)~@Seita2020FabricSmoothing @isaaclab_mdp_terms_api. In IsaacLab, such a design is realized by composing multiple action terms under the action manager, allowing joint-space actuation and gripper commands to be processed consistently in a single step~@isaaclab_managers_api @isaaclab_task_design_workflows.
+
+==== Reward function design
+
+*Success criteria for cloth grasping and stretching.*
+Reward design for cloth manipulation is difficult because task success is geometric and often sparse (e.g., "the cloth is sufficiently spread"), while exploration under contact and occlusion is challenging~@Lin2021SoftGym @Kadi2023ClothLikeReview. In deformable-object benchmarks, spreading or smoothing tasks have been operationalized using coverage/area metrics computed from top-down projections of the cloth configuration~@Lin2021SoftGym. Similarly, sequential fabric smoothing work has used the objective of maximizing cloth coverage as a success measure when learning pick-and-pull actions from visual observations~@Seita2020FabricSmoothing.
+
+*Dense reward decomposition.*
+To support stable learning, a dense reward can be constructed as a weighted sum of interpretable terms:
+$ r_t = w_"grasp" r_t^"grasp" + w_"stretch" r_t^"stretch" + w_"align" r_t^"align" - w_"act" r_t^"act" - w_"viol" r_t^"viol", $ <eq:cloth_reward_decomposition>
+where each term targets a specific behavioral component and weights are tuned to balance shaping strength~@SuttonBarto2018 @isaaclab_task_design_workflows.
+
+A concrete instantiation suitable for grasp-and-stretch includes:
+
+- *Grasp acquisition $r_t^"grasp"$:* A sparse positive reward is assigned when the cloth is successfully grasped (e.g., when the gripper is closed and cloth contact/grasp conditions are satisfied), since grasp failure prevents downstream stretching behavior~@Kadi2023ClothLikeReview.
+- *Spreading/stretching $r_t^"stretch"$:* A natural choice is a coverage-based metric, such as the top-down area covered by the cloth, which is explicitly used as the reward in the SoftGym `SpreadCloth` task~@Lin2021SoftGym. When the task is formulated as stretching between grasp points, $r_t^"stretch"$ may alternatively be defined as the increase in distance between target cloth keypoints~@Seita2020FabricSmoothing.
+- *Alignment/placement $r_t^"align"$:* If the cloth is required to be stretched into a target pose, an auxiliary term can penalize deviations between current and desired keypoint positions. Distance-based terms are widely used in deformable manipulation benchmarks~@Lin2021SoftGym.
+- *Action regularization $r_t^"act"$:* Smoothness penalties (e.g., $||a_t||^2$) or effort penalties discourage high-frequency control signals and can improve numerical stability and hardware transfer compatibility~@Siciliano2009Robotics.
+- *Constraint/safety violations $r_t^"viol"$:* Penalties can be applied when joint limits are approached, self-collisions occur, or the cloth leaves the workspace~@isaaclab_mdp_terms_api.
+
+In IsaacLab manager-based tasks, each component in @eq:cloth_reward_decomposition is implemented as a reward term with an associated weight and optional parameters, enabling systematic ablations and incremental shaping~@isaaclab_task_design_workflows @isaaclab_mdp_terms_api.
+
+==== Episode termination conditions
+
+*Timeout and truncation.*
+Finite-horizon episodes are typically enforced through a maximum episode length $T$ to bound return estimation and stabilize training statistics~@SuttonBarto2018. IsaacLab provides a standard termination term that triggers episode termination when the episode length exceeds the configured limit (`time_out`)~@isaaclab_mdp_terms_api.
+
+*Success termination.*
+A success condition for cloth grasp-and-stretch is most naturally defined as achieving a threshold on a geometric metric, such as: (i)~area coverage exceeding a fraction of the maximum possible area~@Lin2021SoftGym, or (ii)~keypoint alignment error falling below a tolerance~@Lin2021SoftGym.
+
+*Failure termination.*
+To prevent unproductive exploration and to approximate physical safety constraints, failure termination conditions are typically included, such as:
+- *Robot constraint violations:* Episode termination when joint positions exceed soft limits, supported by built-in termination primitives (e.g., `joint_pos_out_of_limit`)~@isaaclab_mdp_terms_api.
+- *Task failure events:* Termination when the cloth leaves the workspace, when grasp is lost irrecoverably, or when excessive collisions occur~@isaaclab_task_design_workflows.
+
+=== Reward Shaping and Curriculum Strategies
+
+*Reward shaping and policy invariance.*
+Reward shaping refers to modifying or augmenting the environment reward signal to accelerate learning by providing denser feedback for intermediate behaviors~@SuttonBarto2018. A sufficient condition for policy preservation is potential-based shaping, in which an additional shaping reward is constructed from a potential function $Phi: cal(S) -> bb(R)$ such that
+$ F(s_t, s_(t+1)) = gamma Phi(s_(t+1)) - Phi(s_t), $ <eq:potential_based_shaping>
+and the shaped reward is defined as $r'_t = r_t + F(s_t, s_(t+1))$~@Ng1999RewardShaping @Asmuth2008PotentialBasedShaping. Under this construction, the optimal policy of the shaped #ac("MDP") is preserved while learning dynamics and exploration behavior can be improved~@Asmuth2008PotentialBasedShaping.
+
+*Curriculum learning.*
+Curriculum learning formalizes the idea that training can be accelerated by presenting tasks in an order of increasing difficulty, rather than sampling uniformly from the full difficulty distribution from the outset~@Bengio2009Curriculum. In a cloth grasp-and-stretch setting, a curriculum can be instantiated by gradually increasing: (i)~initial cloth disorder (wrinkles, random folds), (ii)~friction/contact difficulty, (iii)~domain randomization ranges (material parameters, observation noise), or (iv)~task precision requirements (tighter alignment tolerances).
+
+*Curriculum support in IsaacLab.*
+IsaacLab natively supports curriculum specification through a curriculum manager, and includes built-in curriculum terms that modify reward weights or environment parameters according to step-wise schedules (e.g., `modify_reward_weight`, `modify_env_param`)~@isaaclab_mdp_terms_api. This enables curriculum learning to be operationalized without restructuring the core environment logic~@isaaclab_mdp_terms_api @isaaclab_managers_api.
+
+=== GPU-Vectorized Training and Environment Wrappers
+
+*Vectorized environments on the GPU.*
+High sample throughput is essential for deep #ac("RL") in robotics, particularly for contact-rich tasks with deformable dynamics. #ac("GPU")-accelerated simulation frameworks have demonstrated substantial speedups by executing many environment instances in parallel and by avoiding CPU--GPU transfer bottlenecks between simulation and learning~@Makoviychuk2021IsaacGym @NVIDIA2025IsaacLab. Isaac Gym established an end-to-end GPU pipeline in which physics simulation and neural network training reside on the GPU and communicate through tensor interfaces, enabling large-scale batched rollouts~@Makoviychuk2021IsaacGym. IsaacLab is positioned as the successor to this paradigm, extending GPU-native simulation with additional capabilities while remaining oriented toward large-scale parallel learning~@NVIDIA2025IsaacLab.
+
+In IsaacLab, #ac("RL") environments are designed to run as vectorized simulations with a configurable number of sub-environments (`num_envs`), where observations and actions are batched per step~@isaaclab_envs_api.
+
+*Environment wrappers and library integration.*
+The OpenAI Gym interface popularized the concept of wrapping environments to modify observations, rewards, and logging behavior without changing the underlying task implementation~@Brockman2016OpenAIGym. IsaacLab follows this design pattern and provides wrappers that convert the environment I/O to match the expectations of multiple #ac("RL") libraries~@isaaclab_wrap_env @isaaclab_training_rl_agent. This design preserves a single environment implementation while enabling interchangeability of training backends~@isaaclab_task_design_workflows @isaaclab_rl_api.
+
+*Scene replication for parallelism.*
+Vectorization at the simulation level is enabled by scene replication. Isaac Sim provides a "Cloner" interface designed to simplify constructing scenes with many replicated environment instances and includes utilities for generating clone paths, computing transforms, and filtering collisions between clones~@isaacsim_cloner_tutorial. Together with IsaacLab's batched environment APIs, this supports scalable data collection for policy learning in simulation~@isaaclab_envs_api @NVIDIA2025IsaacLab.

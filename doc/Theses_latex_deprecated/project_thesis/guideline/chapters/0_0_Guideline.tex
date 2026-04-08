@@ -1,0 +1,503 @@
+\setcounter{chapter}{-1}
+\chapter{Guideline}\label{ch:guideline}
+\markboth{Guideline}{}
+
+\section{Format and Style}
+
+\subsection{Page Layout and Typography}
+\begin{itemize}
+    \item Paper format: white DIN A4 paper
+    \item Font: Arial, 12pt (in this LaTeX template, the sans-serif option achieves this)
+    \item Line spacing: 1.2 (the template uses 1.25)
+    \item Text alignment: justified (Blocksatz) with automatic hyphenation enabled
+    \item Font emphasis: use only in exceptional cases; headings follow the template style and must not be underlined
+    \item Bullet points: only square bullet points (FAPS green), never round ones; use the template's built-in list style
+    \item FAPS color scheme: FAPS-Grün (RGB 151, 193, 57) and white
+\end{itemize}
+
+\subsection{Page Numbering and Binding}
+\begin{itemize}
+    \item Page numbering starts with the introduction (Arabic numerals)
+    \item Directories (table of contents, list of figures, etc.) receive separate Roman numeral numbering; the cover page is not counted
+    \item Print single-sided unless otherwise agreed with the supervisor
+    \item Two bound copies required: adhesive binding with clear cover foil and green (FAPS green) back sheet
+    \item Each copy must include a CD/DVD containing:
+    \begin{itemize}
+        \item Digital version of the thesis (PDF)
+        \item All digital sources (papers, scanned documents, websites)
+        \item All images, tables, measurement data, models, and other data
+    \end{itemize}
+\end{itemize}
+
+\subsection{Section and Chapter Formatting}
+\begin{itemize}
+    \item Chapters are numbered numerically with at most three levels (e.g., 1.1.1); no trailing dot after the last digit
+    \item If a subsection X.1 exists, there must also be at least an X.2 (applies to all levels)
+    \item Main chapters should have at least 3 subchapters; aim for a balanced structure (e.g., 5 chapters at level 1, each with ~4 at level 2, each with ~3 at level 3)
+    \item Headings in the table of contents must match the headings in the text verbatim
+    \item Every heading must be followed by actual content (including introductory text at the start of main chapters)
+\end{itemize}
+
+\subsection{Paragraphs, Spacing, and Whitespace}
+\begin{itemize}
+    \item Each paragraph must consist of at least two sentences
+    \item No blank line between paragraphs within a chapter; one blank line before the next heading at the end of a chapter
+    \item No double spaces anywhere in the document; use search-and-replace to eliminate them before submission
+    \item Use non-breaking spaces (in LaTeX: \textasciitilde) between:
+    \begin{itemize}
+        \item Titles and names: ``Prof.~Dr.~Beispielhausen''
+        \item Date expressions: ``19.~September~2007''
+        \item Abbreviations: ``z.\,B.'', ``u.\,a.'', ``d.\,h.''
+        \item Numbers and units: ``44~mm''
+        \item Numbers and words: ``1.350~Personen'', ``Nr.~5''
+        \item Citation references
+    \end{itemize}
+    \item Check automatic hyphenation carefully for errors (e.g., incorrect compound-word breaks)
+\end{itemize}
+
+\subsection{Figures}
+\begin{itemize}
+    \item Every figure receives a caption below it (Unterschrift), formulated so the figure is understandable without the surrounding text
+    \item All figures are numbered consecutively with Arabic numerals and listed in the list of figures
+    \item Every figure must be referenced in the body text
+    \item Title image: no caption, no numbering, not included in the list of figures
+    \item Appendix figures: numbered within each appendix separately (e.g., Appendix A -- Figure 1); not included in the list of figures
+    \item Ensure sufficient image quality; recreate figures if originals are blurry, low-resolution, or scanned
+    \item Use the same font in figures as in body text (Arial); font size 10pt is acceptable but must be consistent across all figures
+    \item All figure components must be fully labeled: photo components, axes, parameters, legends with complete process parameters
+    \item Fill areas with color only if the color conveys meaningful information; otherwise keep figures clean and minimal
+    \item For recreated/modified figures from sources, cite with ``in Anlehnung an [xy]'' (based on [xy])
+    \item Use a consistent color scheme across all figures; preferably FAPS colors unless industry cooperation requires otherwise
+    \item Use a self-created graphic on the first page of the thesis
+\end{itemize}
+
+\subsection{Tables}
+\begin{itemize}
+    \item Every table receives a caption above it (Überschrift) with a meaningful, descriptive title
+    \item Tables are numbered consecutively with Arabic numerals and listed in the table directory
+    \item Every table must be referenced in the body text
+    \item Use the same font as in body text; maintain consistent font size across all tables
+    \item Preferred alignment inside tables: left-aligned or centered (not justified)
+    \item If a table spans a page break, do not break within a row; repeat the table header on the new page
+    \item Extensive tables belong in the appendix
+\end{itemize}
+
+\subsection{Diagrams}
+\begin{itemize}
+    \item Follow DIN 461 for axis labeling in diagrams
+    \item Label axes with an arrow in the direction of increase (except for trial numbers etc.)
+    \item Replace the axis label at the second-to-last tick mark with the unit
+    \item Display all relevant information within the diagram
+    \item Place a frame around diagrams
+    \item Use Arial font inside diagrams with a legible font size
+    \item Diagrams are captioned and numbered as figures (no separate numbering type)
+\end{itemize}
+
+\subsection{Formulas}
+\begin{itemize}
+    \item Formula numbers are enclosed in round parentheses
+    \item Numbering is chapter-based in the form X.Y (X = chapter number, Y = formula number within the chapter)
+    \item Numbering restarts within each main chapter
+    \item Variables used in a formula must be explained directly below the formula in tabular form
+\end{itemize}
+
+\subsection{Appendix}
+\begin{itemize}
+    \item Technical drawings, extensive tables, supplementary documents, etc.\ go into appendices
+    \item Each appendix starts on a new page and may span multiple pages
+    \item Appendices are numbered with consecutive uppercase Latin letters (Appendix A, Appendix B, etc.)
+\end{itemize}
+
+\subsection{Eidesstattliche Erkl\"arung (Statutory Declaration)}
+\begin{itemize}
+    \item A signed declaration of independent authorship must be included on a separate page without a page number, placed after the cover page
+    \item It must be signed by hand
+\end{itemize}
+
+% ============================================================================
+
+\section{Thesis Structure and Content}
+
+\subsection{Required Document Order}
+\begin{enumerate}
+    \item Deckblatt (Cover Page)
+    \item Erkl\"arung des Kandidaten (Statutory Declaration)
+    \item Inhaltsverzeichnis (Table of Contents)
+    \item Abbildungsverzeichnis (List of Figures)
+    \item Tabellenverzeichnis (List of Tables)
+    \item Abk\"urzungsverzeichnis (List of Abbreviations)
+    \item Einleitung und Zielstellung (Introduction and Objective)
+    \item Grundlagen / Stand der Technik (Background / State of the Art)
+    \item Handlungsbedarf (Research Gap / Need for Action)
+    \item Methodenteil (Methodology)
+    \item Ergebnisteil (Results)
+    \item Diskussionsteil (Discussion)
+    \item Zusammenfassung und Ausblick (Summary and Outlook)
+    \item Literaturverzeichnis (Bibliography)
+    \item Anhang (Appendix)
+    \item Lebenslauf (Curriculum Vitae)
+\end{enumerate}
+
+\subsection{Page Count Guidelines}
+\begin{itemize}
+    \item Bachelorarbeit: ca.\ 60--80 pages
+    \item Projekt-/Studienarbeit: ca.\ 60--80 pages
+    \item Master-/Diplomarbeit: ca.\ 80--120 pages
+    \item These counts exclude appendices and directories
+\end{itemize}
+
+\subsection{Red Thread (Roter Faden)}
+\begin{itemize}
+    \item A clear red thread must run through the entire thesis, starting from the central research question in the introduction
+    \item The reader must always be able to see how any part of the thesis relates to the research question
+    \item The thesis must proceed purposefully and not lose itself in tangential topics
+    \item All claims and statements must be causally justified; results must not merely be listed but convincingly explained
+    \item Each main chapter must begin with a short introduction motivating the content and end with a transition to the next
+    \item Verify the red thread by checking all headings alone (without reading the text) --- the logical flow should be recognizable
+\end{itemize}
+
+\subsection{Chapter: Einleitung und Zielstellung (Introduction)}
+\begin{itemize}
+    \item Length: approximately 2 pages, maximum 3 pages
+    \item Purpose: establish contact with the reader; provide orientation (``What can the reader expect?'')
+    \item Content requirements:
+    \begin{itemize}
+        \item Introduce the topic and its general background; explain why it is relevant
+        \item Present the specific research question
+        \item Justify the scope and boundaries of the thesis (what is included, what is excluded, and why)
+        \item Optionally describe the state of research (to show what exists and where gaps are)
+        \item Explain the methodological approach
+        \item Outline the structure of the thesis for the reader
+    \end{itemize}
+\end{itemize}
+
+\subsection{Chapter: Grundlagen und Stand der Technik (Background and State of the Art)}
+\begin{itemize}
+    \item Clarify central concepts and define relevant terms
+    \item Present the current state of the art objectively and without judgment (evaluation happens in the next chapter)
+    \item Only cover theories, definitions, and knowledge directly relevant to the research question; avoid overly broad coverage
+    \item If multiple competing theories exist, provide an overview
+    \item Definitions are only needed for terms not commonly known by domain experts
+    \item Present content in your own words; near-verbatim copying or translation from sources counts as insufficient
+    \item Use primarily English-language sources where possible
+    \item Prefer journal articles and conference papers over websites
+    \item Avoid popular-science sources (e.g., Schülerduden, Brockhaus); only quote newspapers for current events
+    \item Internet sources are acceptable only if no current literature exists elsewhere (e.g., software documentation); verify their credibility
+\end{itemize}
+
+\subsection{Chapter: Handlungsbedarf (Research Gap)}
+\begin{itemize}
+    \item Critically discuss the literature from the previous chapter regarding unsolved problems and errors
+    \item Derive current deficits and research gaps; formulate the specific research question
+    \item Explain who considers the problem significant and what its broader impact is
+    \item Describe the contribution the thesis makes to both research (theory, models, methods, facts) and practice
+    \item Narrow the problem statement into a concrete, achievable objective with clear expected outcomes
+\end{itemize}
+
+\subsection{Chapter: Methodenteil (Methodology)}
+\begin{itemize}
+    \item Together with Results and Discussion, this forms the main body (~2/3 of the thesis)
+    \item Describe the investigation plan, procedures, and all steps and tools in sufficient detail for reproducibility
+    \item Justify why specific methods were chosen over alternatives (pros/cons analysis)
+    \item For experimental studies: describe the population and sample in all relevant characteristics; justify sample adequacy
+    \item Scientific criteria for methods: objectivity, reliability, and validity
+    \item The description must enable other researchers to reproduce the investigation
+    \item Only describe analysis procedures in detail if they are novel or non-standard
+\end{itemize}
+
+\subsection{Chapter: Ergebnisteil (Results)}
+\begin{itemize}
+    \item Present results of the investigation objectively and without interpretation
+    \item Structure the chapter logically, aligned with the theory and methodology sections
+    \item Use figures, tables, and diagrams to visualize results
+    \item No interpretation or evaluation at this stage
+\end{itemize}
+
+\subsection{Chapter: Diskussionsteil (Discussion)}
+\begin{itemize}
+    \item Summarize and critically discuss the results
+    \item Evaluate and interpret results in relation to the original problem and objective from the introduction
+    \item Argue the significance for scientific discourse and practical implications
+\end{itemize}
+
+\subsection{Chapter: Zusammenfassung und Ausblick (Summary and Outlook)}
+\begin{itemize}
+    \item Maximum 3 pages
+    \item Reconnect to the central problem and objective from the introduction
+    \item Compactly summarize the most important results
+    \item Place results in a broader context
+    \item Address:
+    \begin{itemize}
+        \item What are the key findings with respect to the research questions?
+        \item How can the results be interpreted or evaluated?
+        \item What questions remain open, and why?
+        \item What do the results mean for future work on this topic?
+        \item Where are opportunities for further research?
+    \end{itemize}
+    \item Discuss the limitations of the investigation
+    \item Provide suggestions for future work and improvements based on newly emerged questions
+\end{itemize}
+
+% ============================================================================
+
+\section{Scientific Writing Style}
+
+\subsection{General Principles}
+\begin{itemize}
+    \item Write in present tense (Pr\"asens) and nominal style (Nominalstil)
+    \item Use impersonal form throughout; never use ``ich'' (I) or ``man'' (one/you)
+    \item Develop the red thread of argumentation before formulating sentences
+    \item Every sentence and every claim must be precise and well-placed
+    \item Write result-oriented: ``Die Einfl\"usse f\"uhren zu Ver\"anderungen.'' not ``Im Rahmen der Arbeit wurden untersucht\ldots''
+\end{itemize}
+
+\subsection{Sentence Construction}
+\begin{itemize}
+    \item Use passive voice sparingly --- prefer active formulations
+    \item Avoid sentences with ``man'' entirely
+    \item Be careful with infinitive constructions
+    \item Avoid chaining too many nouns together (``Substantivaneinanderreihungsproblem'')
+    \item No nested or overly complex sentences (Schachtels\"atze)
+\end{itemize}
+
+\subsection{Grammar}
+\begin{itemize}
+    \item Avoid relative time references (``k\"urzlich'', ``sp\"ater'', ``modern'') since the thesis should remain valid for years
+    \item Do not use subjunctive mood (k\"onnte, sollte, m\"usste, d\"urfte)
+\end{itemize}
+
+\subsection{Technical Language}
+\begin{itemize}
+    \item Use precise adjectives; avoid vague terms like ``innovativ'' or ``intelligent''
+    \item No pleonasms (redundant word pairs)
+    \item Do not artificially inflate terms
+    \item Be cautious with superlatives and comparative forms
+    \item Do not invent words
+    \item Use anglicisms and foreign words sparingly; only when no equivalent German term exists
+    \item Use precise technical terminology; avoid colloquial language
+    \item Use technical terms consistently throughout (e.g., always ``CAD-Modell'', never alternating with ``CAD Modell'')
+\end{itemize}
+
+\subsection{Expression and Phrasing}
+\begin{itemize}
+    \item Spell out numbers from zero to twelve; use digits from 13 onward
+    \item Avoid colloquialisms and journalistic clichés
+    \item Do not use rhetorical questions; make clear statements instead
+    \item Avoid vague qualifiers: ``im Allgemeinen'', ``in der Regel'', ``beispielsweise'', ``teilweise''
+    \item Avoid filler words: ``n\"amlich'', ``also'', ``so'', ``eben''
+    \item Avoid repetition of both words and arguments
+    \item Always formulate concretely and precisely; define unambiguously; enumerate completely; avoid generalizations
+    \item Use nominal style: instead of ``wird bearbeitet'', write ``Zur bedarfsgerechten Bearbeitung ist auf die Einhaltung von xy zu achten.''
+\end{itemize}
+
+\subsection{Content Guidelines}
+\begin{itemize}
+    \item Do not document iterative development processes or suboptimal intermediate solutions; present only the final approach
+    \item Do not describe device/hardware development in excessive detail; focus on scientifically relevant, generalizable, transferable aspects
+    \item Use direct quotes rarely and only pointedly; prefer evaluating and developing ideas further in your own words
+    \item Introduce abbreviations only when necessary for space; spell out on first use and include in the abbreviation index
+    \item Emphasize scientific quality rather than engineering challenges
+    \item Emphasize fundamental, generalizable, and transferable findings rather than application-specific details
+    \item Instead of giving examples, enumerate completely, structure, and evaluate
+    \item Make all enumerations and representations as complete and non-overlapping as possible (MECE principle)
+    \item Always support claims with your own analyses or cited sources
+    \item No implied personal opinion (e.g., ``jedoch'', ``\"uberaus'') and no subjective assessments except in the Outlook section
+    \item Where possible, summarize each chapter's key message in a figure for quick reference
+\end{itemize}
+
+\subsection{Introductions and Transitions Between Sections}
+\begin{itemize}
+    \item Every main chapter or main section must begin with a brief introduction and end with an outlook/transition to the next section
+    \item Example introduction: ``Hasen und Igel sind, betrachtet man ihre Laufgeschwindigkeit, auf einem vollkommen unterschiedlichen Niveau.''
+    \item Example transition: ``Deshalb wird im folgenden Abschnitt der Wettlauf zwischen Hase und Igel n\"aher betrachtet.''
+    \item When introducing detailed explanations, name all relevant points in the introductory sentence
+    \item Bad: ``Im Folgenden werden die beiden Protagonisten n\"aher betrachtet.''
+    \item Good: ``Im Folgenden werden die beiden Protagonisten Hase und Igel n\"aher betrachtet.''
+\end{itemize}
+
+\subsection{Consistency and Formatting Rules}
+\begin{itemize}
+    \item Introduce each abbreviation exactly once and then use it consistently
+    \item Never write a paragraph consisting of only one sentence (minimum two sentences)
+    \item Never write a list with only one bullet point (minimum two)
+    \item Use nominal style for bullet-point items
+    \item Maintain consistent spelling of expressions throughout (e.g., always ``Aerosol-Jet-Druck'', never ``Aerosoljet-Druck'')
+\end{itemize}
+
+% ============================================================================
+
+\section{Citations and Bibliography}
+
+\subsection{Citation Style}
+\begin{itemize}
+    \item Citation style: DIN ISO 690 (FAPS custom style via \texttt{bibstyleFAPS.bst})
+    \item Reference sources in the text using numbers in square brackets: [xy]
+    \item Page numbers are not required in citations
+    \item Multiple consecutive citations use separate brackets: [xy] [yz], not [xy; yz]
+    \item The bibliography is ordered chronologically and numbered consecutively; no grouping by source type
+    \item Only actually cited works appear in the bibliography
+\end{itemize}
+
+\subsection{Citation Placement}
+\begin{itemize}
+    \item A citation before the period refers to the specific sentence [xy].
+    \item A citation after the period of the last sentence refers to the entire paragraph. [xy]
+\end{itemize}
+
+\subsection{Direct Quotes}
+\begin{itemize}
+    \item Must be letter-perfect and character-perfect reproductions
+    \item Enclose in quotation marks; cite the source at the end: ``\ldots'' [20]
+    \item Quote foreign-language texts in the original language; do not translate
+    \item Mark own additions or rearrangements with square brackets
+    \item Mark omissions with [\ldots]
+    \item Quotes longer than three lines: indent as a block, set in italic, omit quotation marks
+    \item Do not correct errors in the original; mark them with [!] or [sic!]
+    \item Emphasis within quotes: append [Hervorhebung durch Verfasser]
+\end{itemize}
+
+\subsection{Indirect Quotes}
+\begin{itemize}
+    \item Paraphrased ideas from other sources; not placed in quotation marks
+    \item Still require a source reference in the same placement rules as above
+\end{itemize}
+
+\subsection{Secondary Citations}
+\begin{itemize}
+    \item Always prefer citing the original source
+    \item Use secondary citations only when the original is unavailable; reference the secondary source in the bibliography
+\end{itemize}
+
+\subsection{Plagiarism}
+\begin{itemize}
+    \item Provide a source reference for every piece of knowledge that goes beyond common knowledge
+    \item Originality and independence are the most important quality criteria
+    \item Even when rephrasing or summarizing, the source must be cited
+    \item It must be unambiguously clear to the reader at all times what is borrowed intellectual property
+\end{itemize}
+
+\subsection{Source Quality Requirements}
+\begin{itemize}
+    \item Every source must be: (1) citeable (publicly accessible), (2) citeworthy (scientific quality), and (3) relevant
+    \item Prefer English-language sources
+    \item Prefer journal articles and conference papers over websites
+    \item Avoid websites as sources wherever possible; especially avoid Wikipedia, hausarbeiten.de, and similar
+    \item If no conventional sources exist (e.g., for software topics), internet sources are permissible with critical evaluation
+    \item Prioritize current sources from renowned journals or scientists over older work
+    \item Quality indicators: scientific question, clear structure, precise terminology, theoretical foundation, appropriate methodology
+\end{itemize}
+
+\subsection{Electronic Sources}
+\begin{itemize}
+    \item Books, journals, and publications that also exist in print are not ``electronic sources'' even when accessed online
+    \item Each source entry must answer: Who? What? Where? When?
+    \item Use DOI when available; otherwise provide the full URL and access date
+    \item Do not insert hyphens in URLs (could be misinterpreted as part of the address)
+    \item If author is unknown: use ``o.\,V.'' (ohne Verfasser); if date is unknown: use ``o.\,J.'' or ``o.\,D.''
+    \item Schema: Nachname, Vorname (Jahr): Titel. [ggf.\ weitere Angaben]. DOI oder online unter: URL (Abrufdatum). No period after DOI.
+\end{itemize}
+
+% ============================================================================
+
+\section{Literature Research}
+
+\begin{itemize}
+    \item Recommended databases: OPAC (FAU library), Google Scholar, IEEE Digital Library, Scopus
+    \item Strategy: create a search table with key terms, synonyms (abstract and specific) across multiple columns
+    \item Use primarily English-language sources where possible
+    \item Prefer journal articles and conference papers; avoid websites
+    \item Submit a detailed outline and relevant literature to the supervisor within 2 weeks (for Abschlussarbeiten)
+\end{itemize}
+
+% ============================================================================
+
+\section{Figures and Graphics --- Additional Rules}
+
+\begin{itemize}
+    \item Use a self-created graphic on the first page of each chapter or major section
+    \item If independent creation is not possible or the graphic is assembled from multiple sources, provide a source note on the first page where it appears
+    \item Poorly formatted, inconsistent, blurry, or illegible graphics create a bad impression; avoid copies and scans
+    \item Recreate relevant graphics, diagrams, formulas, and tables to ensure uniform formatting and meet formal requirements
+    \item Maintain a balanced ratio of text to graphics (e.g., avoid placing two graphics directly after each other)
+    \item Ensure consistent design across all graphics: shapes, fonts/sizes, colors
+\end{itemize}
+
+% ============================================================================
+
+\section{Review Checklist Before Submission}
+
+\subsection{Content Review}
+\begin{itemize}
+    \item Verify all headings form a coherent red thread (recognizable without reading the text)
+    \item Verify transitions and introductions exist at the beginning of every main chapter
+    \item Is the central research question clearly developed in the introduction?
+    \item Is the relevant literature reviewed with appropriate focus (not quantity, but quality of selection)?
+    \item Can the derivation of the target concept from the analysis be followed?
+    \item Are strengths and development potentials considered in the solution space?
+    \item Is the proposed solution feasible and implementable?
+    \item Does the outlook present innovative approaches for future work?
+    \item Are all tables and figures clear and understandable?
+    \item Is the context of existing literature properly established?
+    \item Is there a concise summary that still covers all essential points?
+    \item Is the overall structure clear and comprehensible?
+    \item Is the scope sufficient yet as concise as possible?
+    \item Were all key work items of the thesis topic fulfilled and the objectives achieved?
+\end{itemize}
+
+\subsection{Language and Expression Review}
+\begin{itemize}
+    \item Check for scientific, objective tone throughout
+    \item Check for linguistic expression quality
+    \item Run spell-check and grammar-check
+    \item Have at least one other person proofread the thesis
+\end{itemize}
+
+\subsection{Visual and Formatting Review}
+\begin{itemize}
+    \item Check in single-page view for equal spacing between sections
+    \item Verify balanced ratio of text and graphics (no dense clustering of figures)
+    \item Verify consistent design of all graphics (shapes, fonts, sizes, colors)
+    \item Eliminate all double spaces
+    \item Check for sensible page breaks (no orphan headings, no broken table rows)
+\end{itemize}
+
+% ============================================================================
+
+\section{Grading Criteria}
+
+\begin{itemize}
+    \item Systematic approach and methodology
+    \item Personal effort and creativity
+    \item Fulfillment of the thesis assignment
+    \item Independence during the work
+    \item Application of domain expertise
+    \item Discussion and critical evaluation of results
+    \item Presentation of the initial situation
+    \item Thoroughness, completeness, and comprehensibility of the presentation
+    \item External form and appearance of the thesis
+    \item Expression and style
+    \item Spelling and grammar
+    \item Performance is measured as work divided by time --- high quality within deadlines demonstrates strong performance
+\end{itemize}
+
+% ============================================================================
+
+\section{Presentation Guidelines (BA/PA)}
+
+\begin{itemize}
+    \item Duration: 20 minutes $\pm$ 10\% deviation
+    \item Bring your own laptop; have a backup on a USB drive
+    \item Submit slides to the supervisor several days before the presentation date for review
+    \item Follow FAPS presentation guidelines
+    \item Dress code: at minimum business casual
+    \item Structure:
+    \begin{enumerate}
+        \item Title slide
+        \item Motivation slide (between title and table of contents)
+        \item Table of contents slide (all relevant topics except bibliography)
+        \item Content slides
+        \item Summary slide
+        \item Closing slide
+        \item Bibliography (hidden; only shown if asked during Q\&A). Cite sources on individual slides in (Author, Year) format
+    \end{enumerate}
+\end{itemize}

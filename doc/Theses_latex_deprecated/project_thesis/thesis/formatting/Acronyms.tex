@@ -1,0 +1,319 @@
+% Acronyms and symbols
+% -----------------------------------------------------------------------------
+% Define all abbreviations and symbols here using \DeclareAcronym.
+% Use tags to separate lists:
+%   - tag=abbrev  -> Abkürzungsverzeichnis
+%   - tag=symbol  -> Symbolverzeichnis
+%
+% ========================== Abbreviations ==========================
+
+\DeclareAcronym{RL}{
+  short=RL,
+  long=Reinforcement Learning,
+  tag=abbrev,
+  sort=RL
+}
+
+\DeclareAcronym{PPO}{
+  short=PPO,
+  long=Proximal Policy Optimization,
+  tag=abbrev,
+  sort=PPO
+}
+
+\DeclareAcronym{MDP}{
+  short=MDP,
+  long=Markov Decision Process,
+  tag=abbrev,
+  sort=MDP
+}
+
+\DeclareAcronym{GAE}{
+  short=GAE,
+  long=Generalised Advantage Estimation,
+  tag=abbrev,
+  sort=GAE
+}
+
+\DeclareAcronym{PBD}{
+  short=PBD,
+  long=Position-Based Dynamics,
+  tag=abbrev,
+  sort=PBD
+}
+
+\DeclareAcronym{XPBD}{
+  short=XPBD,
+  long=Extended Position-Based Dynamics,
+  tag=abbrev,
+  sort=XPBD
+}
+
+\DeclareAcronym{VBD}{
+  short=VBD,
+  long=Vertex Block Descent,
+  tag=abbrev,
+  sort=VBD
+}
+
+\DeclareAcronym{FEM}{
+  short=FEM,
+  long=Finite Element Method,
+  tag=abbrev,
+  sort=FEM
+}
+
+\DeclareAcronym{MPM}{
+  short=MPM,
+  long=Material Point Method,
+  tag=abbrev,
+  sort=MPM
+}
+
+\DeclareAcronym{GPU}{
+  short=GPU,
+  long=Graphics Processing Unit,
+  tag=abbrev,
+  sort=GPU
+}
+
+\DeclareAcronym{ROS}{
+  short=ROS,
+  long=Robot Operating System,
+  tag=abbrev,
+  sort=ROS
+}
+
+\DeclareAcronym{CPU}{
+  short=CPU,
+  long=Central Processing Unit,
+  tag=abbrev,
+  sort=CPU
+}
+
+\DeclareAcronym{DoF}{
+  short=DoF,
+  long=Degree of Freedom,
+  long-plural=Degrees of Freedom,
+  tag=abbrev,
+  sort=DoF
+}
+
+\DeclareAcronym{URDF}{
+  short=URDF,
+  long=Unified Robot Description Format,
+  tag=abbrev,
+  sort=URDF
+}
+
+\DeclareAcronym{USD}{
+  short=USD,
+  long=Universal Scene Description,
+  tag=abbrev,
+  sort=USD
+}
+
+\DeclareAcronym{MJCF}{
+  short=MJCF,
+  long=MuJoCo XML Format,
+  tag=abbrev,
+  sort=MJCF
+}
+
+\DeclareAcronym{CAD}{
+  short=CAD,
+  long=Computer-Aided Design,
+  tag=abbrev,
+  sort=CAD
+}
+
+\DeclareAcronym{PD}{
+  short=PD,
+  long=Proportional-Derivative,
+  tag=abbrev,
+  sort=PD
+}
+
+\DeclareAcronym{PID}{
+  short=PID,
+  long=Proportional-Integral-Derivative,
+  tag=abbrev,
+  sort=PID
+}
+
+\DeclareAcronym{PGS}{
+  short=PGS,
+  long=Projected Gauss--Seidel,
+  tag=abbrev,
+  sort=PGS
+}
+
+\DeclareAcronym{FK}{
+  short=FK,
+  long=Forward Kinematics,
+  tag=abbrev,
+  sort=FK
+}
+
+\DeclareAcronym{IK}{
+  short=IK,
+  long=Inverse Kinematics,
+  tag=abbrev,
+  sort=IK
+}
+
+\DeclareAcronym{POMDP}{
+  short=POMDP,
+  long=Partially Observable Markov Decision Process,
+  tag=abbrev,
+  sort=POMDP
+}
+
+\DeclareAcronym{RGBD}{
+  short=RGB-D,
+  long=Red-Green-Blue plus Depth,
+  tag=abbrev,
+  sort=RGBD
+}
+
+\DeclareAcronym{DR}{
+  short=DR,
+  long=Domain Randomization,
+  tag=abbrev,
+  sort=DR
+}
+
+\DeclareAcronym{MPC}{
+  short=MPC,
+  long=Model Predictive Control,
+  tag=abbrev,
+  sort=MPC
+}
+
+\DeclareAcronym{IL}{
+  short=IL,
+  long=Imitation Learning,
+  tag=abbrev,
+  sort=IL
+}
+
+\DeclareAcronym{DVRK}{
+  short=dVRK,
+  long=da Vinci Research Kit,
+  tag=abbrev,
+  sort=DVRK
+}
+
+\DeclareAcronym{XML}{
+  short=XML,
+  long=Extensible Markup Language,
+  tag=abbrev,
+  sort=XML
+}
+
+\DeclareAcronym{API}{
+  short=API,
+  long=Application Programming Interface,
+  tag=abbrev,
+  sort=API
+}
+
+\DeclareAcronym{SDF}{
+  short=SDF,
+  long=Signed Distance Field,
+  tag=abbrev,
+  sort=SDF
+}
+
+\DeclareAcronym{TGS}{
+  short=TGS,
+  long=Temporal Gauss--Seidel,
+  tag=abbrev,
+  sort=TGS
+}
+
+% ========================== Symbols ==========================
+
+\DeclareAcronym{sym:gamma}{
+  short=\ensuremath{\gamma},
+  long=Discount factor,
+  tag=symbol,
+  sort=gamma
+}
+
+\DeclareAcronym{sym:theta}{
+  short=\ensuremath{\theta},
+  long=Policy parameters,
+  tag=symbol,
+  sort=theta
+}
+
+\DeclareAcronym{sym:pi}{
+  short=\ensuremath{\pi_\theta},
+  long=Policy (parameterized by \ensuremath{\theta}),
+  tag=symbol,
+  sort=pi
+}
+
+\DeclareAcronym{sym:J}{
+  short=\ensuremath{J(\theta)},
+  long=Expected discounted return,
+  tag=symbol,
+  sort=J
+}
+
+\DeclareAcronym{sym:Ahat}{
+  short=\ensuremath{\hat{A}_t},
+  long=Advantage estimator,
+  tag=symbol,
+  sort=A
+}
+
+\DeclareAcronym{sym:epsilon}{
+  short=\ensuremath{\epsilon},
+  long=Clipping parameter (PPO),
+  tag=symbol,
+  sort=epsilon
+}
+
+\DeclareAcronym{sym:S}{
+  short=\ensuremath{\mathcal{S}},
+  long=State space,
+  tag=symbol,
+  sort=S
+}
+
+\DeclareAcronym{sym:A}{
+  short=\ensuremath{\mathcal{A}},
+  long=Action space,
+  tag=symbol,
+  sort=A
+}
+
+\DeclareAcronym{sym:r}{
+  short=\ensuremath{r(s_t, a_t)},
+  long=Reward function,
+  tag=symbol,
+  sort=r
+}
+
+\DeclareAcronym{sym:h}{
+  short=\ensuremath{h},
+  long=Simulation time step,
+  tag=symbol,
+  sort=h
+}
+
+\DeclareAcronym{sym:kj}{
+  short=\ensuremath{k_j},
+  long=Stiffness parameter (PBD),
+  tag=symbol,
+  sort=k
+}
+
+\DeclareAcronym{sym:M}{
+  short=\ensuremath{\mathbf{M}},
+  long=Mass matrix,
+  tag=symbol,
+  sort=M
+}

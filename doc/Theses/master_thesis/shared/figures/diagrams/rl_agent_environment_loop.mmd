@@ -1,0 +1,9 @@
+flowchart LR
+    Agent["Agent<br/><i>π(a | o)</i>"]
+    Env["Environment<br/><i>MDP</i>"]
+
+    Agent -- "action <i>a<sub>t</sub></i>" --> Env
+    Env -- "observation <i>o<sub>t+1</sub></i><br/>reward <i>r<sub>t</sub></i>" --> Agent
+
+    style Agent fill:#296193,color:#FFFFFF,stroke:#1E4F6E
+    style Env fill:#97C139,color:#2B2B2B,stroke:#5F5F5F

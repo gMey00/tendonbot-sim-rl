@@ -1,0 +1,78 @@
+// MA-Thesis — Master Thesis Main Document
+#import "../../shared/formatting/template.typ": *
+#import "../../shared/formatting/macros.typ": *
+#import "../../shared/formatting/acronyms.typ": *
+#import "../../shared/formatting/colors.typ": *
+#import "../../shared/coversheet/deckblatt.typ": faps-coversheet
+#import "../../shared/erklaerung.typ": erklaerung
+#import "../../shared/CV/curriculum_vitae.typ": curriculum-vitae
+
+// ──────────────────────────────────────────────────────
+// Metadata
+// ──────────────────────────────────────────────────────
+#let title = "Multi-Agent Reinforcement Learning for Condition-Based Textile Sorting with a Tendon-Driven and Collaborative Robot System"
+#let thesis-type = "Master Thesis"
+#let program = "Computational Engineering M. Sc."
+#let author = "Georg Meyer"
+#let student-id = "22791103"
+#let duration = "x"
+#let deadline = "TBD"
+#let title-image = "../../shared/coversheet/titelbild_wip.png"
+
+// ──────────────────────────────────────────────────────
+// Apply template
+// ──────────────────────────────────────────────────────
+#show: faps-thesis.with(
+  title: title,
+  author: author,
+)
+
+// ──────────────────────────────────────────────────────
+// Cover page and declaration
+// ──────────────────────────────────────────────────────
+#faps-coversheet(
+  title: title,
+  thesis-type: thesis-type,
+  program: program,
+  author: author,
+  student-id: student-id,
+  duration: duration,
+  deadline: deadline,
+  title-image: title-image,
+)
+
+#erklaerung(name: author)
+
+// ──────────────────────────────────────────────────────
+// Front matter
+// ──────────────────────────────────────────────────────
+#show: faps-frontmatter
+#faps-toc()
+#faps-lof()
+#faps-lot()
+#print-abbreviations()
+#print-symbols()
+
+// ──────────────────────────────────────────────────────
+// Main matter
+// ──────────────────────────────────────────────────────
+#show: faps-header-footer
+#counter(page).update(1)
+
+#include "chapters/1_0_Introduction.typ"
+#include "chapters/2_0_Background.typ"
+#include "chapters/3_0_ResearchGap.typ"
+#include "chapters/4_0_Methodology.typ"
+#include "chapters/5_0_Results.typ"
+#include "chapters/6_0_Discussion.typ"
+#include "chapters/7_0_Conclusion.typ"
+
+// ──────────────────────────────────────────────────────
+// Bibliography
+// ──────────────────────────────────────────────────────
+#bibliography(("../../shared/bibliography/literature.bib", "../../shared/bibliography/sources.bib"), style: "../../shared/bibliography/iso690-numeric-alphabetical.csl")
+
+// ──────────────────────────────────────────────────────
+// Appendix and CV
+// ──────────────────────────────────────────────────────
+#curriculum-vitae()

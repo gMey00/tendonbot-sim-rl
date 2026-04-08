@@ -1,0 +1,4 @@
+Der angepasste FAPS-Zitationsstil muss nun noch innerhalb von Citavi integriert werden, dazu
+
+* Stil in das Verzeichnis für eigene Zitationsstile kopieren, der Standard-Pfad lautet: Eigene Dokumente\Citavi 6\Custom Citation Styles
+* Nun in Citavi den Stil anwählen: Zitation > Zitationsstil wechseln > Stil suchen und hinzufügen > FAPS-Stil auswählen > OK 

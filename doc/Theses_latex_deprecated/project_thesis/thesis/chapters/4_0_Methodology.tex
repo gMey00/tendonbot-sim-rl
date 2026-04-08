@@ -1,0 +1,137 @@
+%===================================================================%
+%===================================================================%
+\chapter{Methodology}\label{ch:methodology}
+\markboth{Methodology}{}
+% Methodology and Implementation
+%===================================================================%
+%===================================================================%
+%--- Approx Length ---%
+% ~15-18 pages
+%---------------------%
+
+%===================================================================%
+\section{Overview of Approach}
+%===================================================================%
+
+%===================================================================%
+\section{Simulation Environment Setup}
+%===================================================================%
+
+%===================================================================%
+\section{Robot Model Integration} % (Tendon-Driven Arm)
+%===================================================================%
+
+In this section, the simulation setup for the custom tendon-driven robotic manipulator is presented. The complete robot model (Figure~\ref{fig:robot-structure}) consists of three modular components: a 2-\ac{DoF} articulated base providing linear motion, a 3-\ac{DoF} tendon-driven arm mounted atop the base, and a Robotiq 2F-140 two-finger gripper as the end-effector. All components are integrated in NVIDIA Isaac Sim 5.1.0, under the project's Methodology and Implementation framework, to emulate the physical robot's behavior in a virtual environment. The following subsections detail each component's design and integration, the assembly of the full manipulator using Isaac Sim's tools, and the validation of its control setup.
+
+\begin{figure}[ht!]
+\centering
+\fbox{\parbox{0.8\textwidth}{\centering \vspace{0.1in}Placeholder for \textit{simplified robot structure} image\vspace{0.1in}}}
+\caption[Integrated tendon-driven robot model]{Simplified structure of the integrated robot model in Isaac~Sim, showing the 2-\acs{DoF} linear base, the 3-\acs{DoF} tendon-driven arm, and the Robotiq 2F-140 gripper attached as end-effector.}\label{fig:robot-structure}
+\end{figure}
+
+\subsection{2-\acs{DoF} Articulated Base (Linear Y--Z Stage)}\label{subsec:base}
+
+The articulated base is a two-degree-of-freedom linear stage that provides planar positioning for the arm along the horizontal $Y$-axis and vertical $Z$-axis. It is designed exclusively in simulation, with no direct real-world counterpart, serving as a versatile foundation to adjust the arm's position within the workspace. The base's prismatic joints allow translation of the arm $\pm0.4$m laterally ($Y$ direction) and $-0.5$m downward in height ($Z$ direction) from a defined origin (with $Z=0$ at the upper limit) - see Table\ref{tab:joint-limits} for a summary of joint travel ranges. These limits yield a horizontal span of 0.8m and a vertical adjustment of 0.5~m, chosen to cover the required operating area of the project's frame while avoiding singular configurations or collisions at extremes.
+
+In implementation, the base was constructed from scratch within Isaac~Sim using the native \ac{USD} robot schema definitions (rather than importing from \ac{URDF}). It consists of rigid link geometry (modeled as simple shapes) and two linear actuators defined as prismatic joints along the global $Y$ and $Z$ axes. Each prismatic joint is configured with a physics drive (stiffness and damping) for position control, and appropriate limit stops at the specified travel range. The entire base assembly was built to fit the physical dimensions of the project's frame and mounting interface, ensuring that when the arm is attached, its workspace aligns with the intended real-world environment. Because the base is purely virtual, it enabled rapid prototyping of different mounting heights and lateral positions for the arm without hardware modifications. All structural components of the base were kept simple and lightweight in simulation to maintain real-time performance.
+
+\subsection{3-\acs{DoF} Tendon-Driven Arm}\label{subsec:arm}
+
+Mounted on the base's vertical slider is the tendon-driven manipulator arm with three actuated degrees of freedom. This arm's design and geometry are derived from a prior \ac{CAD} model developed in a master's thesis by Klein (2023)\cite{Klein2023}. The original arm is a cable-driven (tendon-driven) mechanism inspired by a human arm's musculo-tendon structure, featuring an upper arm, forearm, and wrist. In our simulation, the arm was imported via a modified \ac{URDF} file based on Klein's \ac{CAD} model. The \ac{URDF} was adjusted for compatibility with IsaacSim - for example, custom transmission elements representing the tendon routing were simplified or removed, and each tendon-driven joint was defined as a standard revolute joint with direct actuation. The arm is rigidly attached to the top of the base (on the moving $Z$-axis platform) so that its shoulder reference frame coincides with the base's moving frame.
+
+Each of the arm's three joints is modeled in IsaacSim as a revolute articulation with a position/force drive to emulate the tendon actuation. In the physical design, these joints would be driven by tendons via remote actuators, but in simulation they are controlled directly by setting joint angle targets and applying spring-damper forces. The first joint (shoulder/elbow pitch) allows approximately $140^\circ$ of rotation ($\pm 70^\circ$, i.e.\ $\pm 1.2217\,\mathrm{rad}$, from neutral), corresponding to the practical measured workspace of the ``elbow'' in the vertical plane as reported by Klein~\cite{Klein2023} (§4.2, p.\,79). The wrist mechanism of the arm is implemented as two consecutive revolute joints (perpendicular axes) representing the wrist's flexion/extension and abduction/adduction; each of these has a range of $\pm 50^\circ$ ($\pm 0.8727\,\mathrm{rad}$). These ranges are based on the practical measured workspace reported in the original design~\cite{Klein2023}. For simulation stability, hard joint limits are imposed in the \ac{URDF}/\ac{USD} definition to prevent the solver from pushing the joints beyond their intended travel.
+
+Tendon Actuation Modeling: Instead of using PhysX's built-in tendon simulation feature for articulations, the tendon-driven joints are simulated with direct joint drives. NVIDIA's documentation notes that the PhysX articulation tendon feature can exhibit inadequate fidelity and unstable behavior under certain conditions~\cite{IsaacSimDoc}. In particular, spatial tendon constraints may lead to solver instabilities or unrealistic force feedback. To avoid these issues, we opted not to use PhysX ``physxTendon'' elements. Instead, each joint is given a \ac{PD} control (a stiff spring with damping) that attempts to maintain the target angle, thereby mimicking the effect of a pretensioned tendon pulling the joint into position. The drive stiffness and damping values were initially chosen based on the estimated elasticity and friction in the tendons, and later fine-tuned using the Gain Tuning tool (see Section~\ref{subsec:gain-tuning}). This approach provides a stable yet simplified representation of tendon actuation: the joints behave as if driven by motors with compliance, without modeling cable stretch or complex tendon dynamics. We acknowledge that the tendon dynamics (e.g., stretch, backlash, and multi-joint coupling) are not explicitly simulated at this stage - incorporating a more realistic tendon model or a dedicated cable simulation is left for future work.
+
+Collision Geometry: The arm's collision shapes were generated using convex hull approximations of the \ac{CAD} model geometry. Each link (upper arm, forearm, wrist links) is assigned a convex collision mesh computed from its visual mesh. Using convex hulls simplifies the collision geometry and is recommended for better physics performance in Isaac~Sim. This ensures robust contact simulation while avoiding the computational cost and potential instability of complex mesh collisions. The convex colliders reasonably approximate the arm's shape (covering joint protrusions, etc.) and were verified to avoid interpenetration in all valid joint configurations. With these collision models in place, the arm can interact with the environment (e.g., grasped objects or potential obstacles) in simulation without excessive physics solver load.
+
+\subsection{Robotiq 2F-140 Gripper Integration}\label{subsec:gripper}
+
+For the end-effector, the Robotiq 2F-140 adaptive gripper was selected from IsaacSim's built-in asset library. This is a two-finger parallel gripper well-suited to the project's manipulation tasks. The 2F-140 model was chosen for its wide stroke and proven compatibility: it can grip a range of object sizes with an adjustable finger span up to 140mm, and it provides a significant grip force for secure holding. According to the manufacturer's specifications, the 2F-140 offers a maximum stroke of 140mm and an adjustable grip force from about 10N up to 125N\cite{Robotiq2F140Datasheet}. It is rated for handling payloads up to roughly 2.5kg in a form-fit grasp, while the gripper's own weight is about 1kg. These characteristics make it capable of picking and holding typical objects in our application (such as mixed waste items) without exceeding the arm's load capacity.
+
+In simulation, the Robotiq gripper is loaded as a self-contained articulated asset (with its finger linkage and drive mechanism pre-defined by NVIDIA's asset). This greatly simplified integration: rather than modeling a custom gripper, the ready-made 2F-140 module was attached to the robot arm and controlled through its single actuated degree of freedom (the synchronized motion of the two fingers). The gripper's coupling interface follows the standard ISO-50 flange, and it was directly compatible with the mounting point on the wrist of the tendon-driven arm. Notably, this gripper has been used in other Isaac Sim and Isaac Lab setups (e.g., with Universal Robots UR10 arms), indicating robust support and reliability in the simulation environment. Its inclusion here not only meets the functional requirements (adaptive gripping of various objects) but also leverages existing calibration and tuning knowledge from prior implementations. The official product sheet and instruction manual provided further technical details and usage guidelines, which were consulted to ensure the simulated gripper's behavior (speed, force, fingertip friction, etc.) aligns with the real device~\cite{Robotiq2F140Datasheet}.
+
+\subsection{Modular Assembly via Isaac Sim's Robot Assembler}\label{subsec:assembly}
+
+With the base, arm, and gripper defined as separate components, the complete robot was assembled within IsaacSim using the Robot Assembler tool. The Robot Assembler is an interactive utility provided by IsaacSim that allows users to combine multiple robot sub-assemblies into a single coherent model by creating fixed joints between them. In our case, we performed a two-step assembly: (1) attaching the 3-\ac{DoF} tendon-driven arm onto the linear base, and (2) attaching the 2F-140 gripper onto the arm's wrist flange. IsaacSim's documentation explicitly supports these use cases - for example, assembling a robot arm to a moving base, or attaching a gripper to a robot arm, are typical workflows\cite{IsaacSimDoc}. Using the Robot Assembler UI (accessible via Tools~$\to$ Robotics~$\to$ Asset Editor~$\to$ Robot Assembler in Isaac Sim), the base was designated as the ``Base Robot,'' and the arm was added as the ``Attach Robot'' at the appropriate attach point on the base (the top plate of the $Z$-axis slider). The attach point corresponded to a pre-defined locator frame on the base where the arm's bottom joint should coincide. Once the arm was assembled to the base, the combined base+arm was treated as a new single robot. Then, similarly, the gripper asset was attached to the arm: the arm's \ac{URDF} included a tool flange link at the wrist, which we used as the attach point for the gripper (with the gripper as ``Attach Robot'' in the tool). The assembler automatically created a fixed joint linking the gripper's base to the arm's flange, aligning them based on their coordinate frames. After each assembly operation, the resulting composite robot (base+arm+gripper) was saved to a new \ac{USD} file so that it can be loaded in the future as one complete manipulator model without needing to repeat the manual assembly steps.
+
+Because the Robot Assembler uses a physically simulated fixed joint to bond the parts, the attached components behave as a single articulated body during simulation. This means the base, arm, and gripper move together without drift when physics is enabled, but they also remain modular in the project structure. One major advantage of this modular assembly approach is the flexibility for future hardware replacement or reconfiguration. Each subsystem (base, arm, gripper) can be swapped out or modified independently. For instance, if a different gripper model is to be tested in the future, it can replace the 2F-140 in the assembly with minimal effort; or if the project evolves to use a physical linear axis or a different arm, those could be integrated by the same method. The assembled manipulator's design is therefore not monolithic - it is reconfigurable by design. Figure~\ref{fig:robot-exploded} illustrates an exploded view of the robot, showing the three modules (linear base, tendon arm, and gripper) and their attachment relationships. Such a view highlights the modular interfaces: the mounting plate between base and arm, and the wrist flange between arm and gripper.
+
+\begin{figure}[htb]
+\centering
+\fbox{\parbox{0.8\textwidth}{\centering \vspace{0.1in}Placeholder for \textit{exploded view of assembly} image\vspace{0.1in}}}
+\caption[Exploded view of robot assembly]{Exploded view of the robot assembly, showing (from bottom) the 2-\acs{DoF} linear base, the 3-\acs{DoF} tendon-driven arm, and the Robotiq 2F-140 gripper. The arrows indicate the attachment points: the arm mounts onto the base's top slide, and the gripper attaches to the arm's wrist flange. This modular design allows each component to be independently developed or replaced.}\label{fig:robot-exploded}
+\end{figure}
+
+After assembly, the final integrated robot has a total of five controlled joints (two prismatic joints in the base and three revolute joints in the arm, not counting the underactuated motion of the gripper's fingers which are driven by one actuator). Table~\ref{tab:joint-limits} summarizes the joint types and their ranges of motion in the integrated model. These ranges reflect both the mechanical design limits and the safety constraints imposed in simulation. By verifying the combined kinematic chain, we ensured that the robot can reach the required workspace for the intended tasks (e.g., covering the sorting area and adjusting to various bin heights) while respecting joint limits. All joints are configured with appropriate drive parameters and limit enforcement as discussed previously. In the next subsection, we address how the control gains for these joints were tuned and validated.
+
+\begin{table}[htb]
+    \centering
+    \caption{Actuated joints of the integrated robot and their motion ranges.}\label{tab:joint-limits}
+    \begin{tabular}{l c c}
+    \hline
+    \textbf{Joint} & \textbf{Type \& Axis} & \textbf{Range of Motion} \\
+    \hline
+    Base Linear Y & Prismatic (horizontal slide)    & $-0.4\,\mathrm{m}$ to $+0.4\,\mathrm{m}$ \\
+    Base Linear Z & Prismatic (vertical lift)       & $-0.5\,\mathrm{m}$ to $0.0\,\mathrm{m}$ (downwards) \\
+    Arm Joint 1   & Revolute (shoulder/elbow pitch) & $-70^\circ$ to $+70^\circ$ ($\pm 1.2217\,\mathrm{rad}$) \\
+    Arm Joint 2   & Revolute (wrist tilt X-axis)    & $-50^\circ$ to $+50^\circ$ ($\pm 0.8727\,\mathrm{rad}$) \\
+    Arm Joint 3   & Revolute (wrist tilt Y-axis)    & $-50^\circ$ to $+50^\circ$ ($\pm 0.8727\,\mathrm{rad}$) \\
+    \hline
+    \end{tabular}
+\end{table}
+
+\subsection{Control Gain Tuning and Validation}\label{subsec:gain-tuning}
+
+Once the robot model was assembled, a critical step was to validate and tune the joint control gains to achieve stable and accurate motion. We utilized IsaacSim's Gain Tuner extension for this purpose. The Gain Tuner provides tools to adjust the proportional position stiffness and damping parameters of each joint's drive and to test the robot's response to control inputs in simulation. According to NVIDIA's documentation, the Gain Tuner is intended to help find a pair of stiffness and damping gains for each joint such that the robot can follow commanded trajectories with the expected behavior\cite{IsaacSimDoc}. In practice, we performed automated gain testing on all five joints: the tool applied small-amplitude sinusoidal position commands and step changes within each joint's allowable range, while we observed the joint's motion response. For each joint, the stiffness (analogous to a P-gain) was increased until the joint responded quickly to commands without significant steady-state error, and the damping (D-gain) was adjusted to critically damp the response (minimizing overshoot and oscillation). Isaac~Sim's Gain Tuner provided visual feedback in the form of plots comparing commanded vs. actual joint trajectories, which was invaluable for iterative tuning and verifying stability.
+
+Through this gain tuning process, we confirmed that the base's linear axes and the arm's revolute joints could be moved under position control with smooth and stable behavior. In particular, the heavy vertical axis (base Z) required a higher damping ratio to counteract gravity-induced oscillations, and the relatively lightweight wrist joints could use lower stiffness to reflect their tendon-driven compliance. After tuning, the robot's joints exhibit near-critical damping: when given a step command, each joint reaches the target quickly (~ within 0.1-0.3~s settling time) with minimal overshoot (typically $<5\%$ of the motion range) and no sustained oscillation. These tuned gains were then fixed in the simulation configuration for all subsequent experiments. This control validation step was essential to ensure that high-level control or planning algorithms (addressed in later chapters) would interact with a robot model that behaves in a realistic and predictable manner. By using the Gain Tuner, we effectively calibrated the simulated actuators to mimic a well-tuned physical controller, thereby laying a sound foundation for the robot's performance in simulation.
+
+
+% % Citations (placeholders for documentation, datasheet, thesis)
+% \begin{thebibliography}{99}\setlength{\itemsep}{0pt}
+% \bibitem{Klein2023} M.~Klein, \emph{Arbeitsraumanalyse, Simulation und Bewegungsplanung eines seilgetriebenen robotischen Manipulators}, Master's Thesis, FAU Erlangen-Nürnberg, 2023.
+% \bibitem{IsaacSimDoc} NVIDIA, \emph{Isaac Sim 2023.1 Documentation}, NVIDIA Omniverse/Isaac Sim Docs, 2023.
+% \bibitem{Robotiq2F140Datasheet} Robotiq Inc., \emph{2F-85 and 2F-140 Adaptive Gripper Instruction Manual -- Specifications}, 2019.
+% \end{thebibliography}
+
+%===================================================================%
+\section{Reinforcement Learning Setup}\label{sec:rl_setup}
+%===================================================================%
+
+% NOTE: The general MDP/POMDP formalism, IsaacLab manager-based MDP workflow,
+% observation/action/reward design principles, reward shaping theory, curriculum
+% learning concepts, and GPU-vectorized training details were previously located
+% in the Background chapter (§2.5 "Policy Learning Pipeline"). They have been
+% moved here because they describe the specific MDP instantiation and training
+% pipeline used in this project, not general background theory.
+% The general RL formalism (MDPs, PPO, advantage estimation) remains in
+% Background §2.1.
+
+\input{chapters/methodology/4_4_RLSetup}
+
+%===================================================================%
+\section{Initial Experiments} % (Reach pose, simple pick and place)
+%===================================================================%
+
+To work towards the final implementation, initial experiments were conducted focusing on basic tasks such as reaching a specified pose and performing simple pick-and-place operations. 
+These experiments served to validate the robot model and the reinforcement learning setup within the simulation environment.
+As comparison points, baseline results example implementations from IsaacLab with the UR10 robot arm were utilized.
+
+\subsection{Reach Pose Task}
+The reach pose task involved training the tendon-driven robot to move its end-effector to a designated position in 3D space. 
+The performance was evaluated based on the accuracy of reaching the target position within a defined tolerance.
+
+\subsection{Simple Pick and Place Task}
+In the simple pick-and-place task, the robot was trained to grasp an object from one location and place it at another specified location. 
+The success of this task was measured by the robot's ability to securely grasp the object and accurately place it at the target location.
+
+\subsection{}
+
+%===================================================================%
+\section{Advanced Task Implementation} % (Cloth Grasping and Stretching)
+%===================================================================%
+
+%===================================================================%
+\section{Software and Hardware Integration} % (ROS 2)
+%===================================================================%

@@ -1,0 +1,73 @@
+// Chapter 3: State of the Art and Research Gap
+// Combines prior work review with research gap identification
+#import "../../../shared/formatting/macros.typ": *
+#import "../../../shared/formatting/acronyms.typ": *
+
+= State of the Art and Research Gap <ch:research_gap>
+
+This chapter reviews prior work along four dimensions that converge in the present thesis: (i)~#acl("RL")-based manipulation in #ac("GPU")-accelerated simulators, (ii)~simulation and control of tendon- and cable-driven robots, (iii)~tensegrity-inspired and linkage-based robot design, and (iv)~workspace analysis methods for custom manipulators. The review focuses on contributions that directly inform the methodological choices made in this thesis and concludes by identifying the specific gap that the present work addresses.
+
+== GPU-Accelerated Reinforcement Learning for Manipulation <sec:prior_gpu_rl>
+
+==== Isaac Gym and large-scale parallel training
+Makoviychuk _et~al._ demonstrated that running both PhysX simulation and neural-network training entirely on GPU eliminates CPU--GPU data transfer bottlenecks and yields two to three orders of magnitude training speedup over CPU-based simulators~@Makoviychuk2021IsaacGym. In their Franka cube stacking benchmark, 16#sym.space.thin{}384 parallel agents trained with #ac("PPO") converged in under 25~minutes on a single A100 GPU, and a Shadow Hand cube rotation task achieved 20 consecutive successful rotations in approximately one hour. These results established Isaac Gym as the foundational platform for GPU-accelerated #ac("RL") and underpin the Isaac Sim/IsaacLab ecosystem used in the present work~@Makoviychuk2021IsaacGym.
+
+==== Contact-rich manipulation and assembly
+Narang _et~al._ introduced _Factory_, a suite of Isaac Gym environments for contact-rich assembly tasks that achieves a reported 20#sym.space.thin{}000-fold speedup over prior state-of-the-art contact simulation through signed-distance-function collisions, contact reduction from approximately one million naive contacts to approximately 10#sym.space.thin{}000, and a Gauss--Seidel solver~@Narang2022Factory. Building on Factory, Tang _et~al._ (_IndustReal_) transferred peg-insertion and gear-assembly policies from simulation to a real Franka Panda, reporting 83--99% success rates over 600 physical trials with realistic part clearances of $lt.eq 0.5$--$0.6 "mm"$. IndustReal introduced a simulation-aware policy update mechanism that detects unreliable simulator states and a sampling-based curriculum for progressive task difficulty---techniques that are directly adoptable for conveyor-based pick-and-place policy design~@Tang2023IndustReal.
+
+==== Sim-to-real transfer for dexterous manipulation
+Allshire _et~al._ achieved an 83% real-world success rate for 6-#ac("DoF") cube reposing on a TriFinger robot, trained entirely in simulation on a single GPU using #ac("PPO") with asymmetric actor-critic and keypoint-based pose representations~@Allshire2022TriFinger. The keypoint representation was shown to provide more stable gradients than position-plus-quaternion encoding, and domain randomization over friction, mass, and sensor noise enabled zero-shot sim-to-real transfer with 16#sym.space.thin{}384 parallel environments. Handa _et~al._ (_DeXtreme_) extended this line of work to agile in-hand manipulation with an Allegro Hand using automatic domain randomization, which dynamically adjusts randomization ranges without manual tuning. Both works employ #ac("PPO") with asymmetric actor-critic, providing the privileged critic with full simulation state while limiting the actor to real-world-available observations~@Allshire2022TriFinger @Handa2023DeXtreme.
+
+==== Frameworks: Orbit, Isaac Lab, and skrl
+Mittal _et~al._ presented _Orbit_, a modular design powered by NVIDIA Isaac Sim with GPU-based parallelization, wrapping four #ac("RL") libraries (rl_games, RSL-RL, Stable-Baselines3, skrl) and providing 20+ benchmark tasks~@Mittal2023Orbit. Orbit evolved into _Isaac Lab_ in March~2024, achieving up to 1.6~million frames per second for state-based manipulation tasks and adding mimic joint support, closed-loop kinematic chains, and a deformable-object solver~@Mittal2025IsaacLab. The `skrl` library provides native first-class support for Isaac Lab environments with competitive performance to rl_games on standard benchmarks while offering greater modularity through seven standalone components~@SerranoMunoz2023skrl. In the present thesis, Isaac Lab serves as the development framework and skrl provides the #ac("PPO") training backend.
+
+== Tendon- and Cable-Driven Robot Simulation <sec:prior_tendon_sim>
+
+==== Rigid-link tendon-driven manipulation
+Or _et~al._ presented _Robostrich_, a 24-cable, 15-#ac("DoF") rigid-link tendon-driven manipulator trained with curriculum-based #ac("RL") in MuJoCo, demonstrating that progressive target difficulty outperforms flat training for underactuated tendon arms~@Or2023Robostrich. Guist _et~al._ (PAMY2) applied model-based #ac("RL") to a 4-#ac("DoF") pneumatic-tendon arm, achieving safe and accurate high-speed motions through a learned dynamics model embedded in a trajectory optimizer~@Guist2024PAMY2. Both works use MuJoCo's native tendon elements and general actuators, which support tendon contraction-to-joint-actuation coupling including routing sites and moment arms~@Or2023Robostrich @Guist2024PAMY2. Shahid _et~al._ modeled a bio-inspired tendon arm in MuJoCo with curriculum-based SAC, confirming that curriculum training outperforms vanilla SAC for reaching tasks on underactuated manipulators~@Shahid2023CurriculumTendon. Saito and Morimoto compared a 9-tendon continuum arm with a 7-#ac("DoF") rigid manipulator, finding that continuum arms excel in uncertainty-rich tasks while rigid arms are superior for precision tasks, with sim-to-real validation on a real pneumatic continuum robot~@Saito2022ContinuumRL.
+
+==== Cable-driven parallel robot simulation with RL
+Dhakate _et~al._ (_CaRoSaC_) used Unity3D with Obi Rope for flexible cable simulation via #ac("XPBD"), validated against a real industrial 4-cable-suspended parallel robot. The TD3-based #ac("RL") controller outperformed classical kinematic solvers in trajectory tracking, especially near workspace boundaries where force-distribution assumptions break down~@Dhakate2025CaRoSaC. Garrido Campos _et~al._ validated a cable-driven parallel robot simulation against a hardware prototype, achieving a peak position divergence of only 0.27% across various speed scenarios~@Garrido2024CDPR.
+
+==== Tendon-driven modeling benchmarks
+Lilge and Burgner-Kahrs comprehensively benchmarked four tendon-driven continuum robot modeling approaches---constant curvature, pseudo-rigid-body, and Cosserat rod formulations---under varying loads. A key finding is that tendon force expressions differ across the literature and yield divergent results under external loading, establishing accuracy-versus-computation-time trade-offs that inform which level of fidelity a physics engine should reproduce~@Lilge2021BenchmarkTDCR.
+
+==== Gap observation: no tendon-driven RL in Isaac Sim
+All rigid-link tendon #ac("RL") work reviewed above uses MuJoCo (Robostrich, PAMY2, Shahid) or Unity (CaRoSaC) as the simulation backend. No published work, as of March~2026, trains #ac("RL") policies for tendon-driven rigid-link robots within the Isaac Sim / IsaacLab ecosystem, despite its GPU-native training advantages.
+
+== Tensegrity-Inspired and Linkage-Based Robot Design <sec:prior_tensegrity>
+
+==== Tensegrity manipulators
+Shah _et~al._~@ShahTensegrityRobotics2022 survey the application of tensegrity to robotics, categorizing designs into locomotion platforms, continuum arms, and rigid-link serial mechanisms. For manipulation specifically, Lessard _et~al._~@Lessard2016TensegrityManipulator demonstrated a bio-inspired tensegrity arm with structurally compliant joints. Furet and Wenger~@FuretWenger2019 proposed a planar tensegrity 2-X manipulator using antiparallelogram joints and derived the kinetostatic analysis including coupled cable tensions. Fasquelle _et~al._~@Fasquelle2020BioInspired3DOF @Fasquelle2022IdentControl extended this to a physical 3-#ac("DoF") prototype, performing system identification and closed-loop position control. Muralidharan and Wenger~@MuralidharanWenger2021 compared antagonistically actuated X-joints with R-joints regarding workspace coverage, stiffness modulation, and singularity-free design.
+
+==== Antiparallelogram joints in robot mechanisms
+Four-bar linkages and specifically the antiparallelogram appear in several robotic joint designs. Hamon and Aoustin~@HamonAoustin2010 used crossed four-bar linkages for the knees of a planar bipedal robot, exploiting the nonlinear torque transmission. Yoon _et~al._~@Yoon2021DLRWrist applied spatial antiparallelogram linkages to a 2-#ac("DoF") wrist mechanism for the DLR robot. Muralidharan _et~al._~@Muralidharan2025Orientation provided a comprehensive workspace comparison between 2-X and 2-R tensegrity manipulators, establishing that the X-joint variant achieves substantially larger orientation range for the same link lengths.
+
+==== Tensegrity RL (locomotion only)
+#ac("RL") has been applied to tensegrity robots exclusively in the locomotion domain. Zhang _et~al._ applied model-based #ac("RL") (MDGPS) to the SUPERball tensegrity locomotive, and subsequent work used GNN-based SAC for tensegrity locomotion with varying morphologies. No published work applies #ac("RL") to tensegrity _manipulation_ or serial arm control.
+
+==== FAPS tensegrity manipulator
+Walter _et~al._~@Walter2023Tensegrity introduced the cable-driven tensegrity manipulator used in this thesis and demonstrated 83% impact force isolation in hardware experiments. Klein~@Klein2023 established the initial workspace analysis and Isaac~Sim simulation model for this robot but did not employ learning-based control.
+
+== Workspace Analysis Methods <sec:prior_workspace>
+
+==== Manipulability measures
+Yoshikawa defined manipulability as $w = sqrt(det(bold(J) bold(J)^top))$, where $bold(J)$ is the manipulator Jacobian, quantifying how well a manipulator can change end-effector position and orientation from a given configuration. The resulting manipulability ellipsoid has the singular values of $bold(J)$ as semi-axes, and $w = 0$ identifies singular configurations~@Yoshikawa1985Manipulability. Vahrenkamp and Asfour extended this measure by penalizing Jacobian entries based on proximity to joint limits and self-collision distances, yielding a constrained manipulability metric that naturally reduces near workspace boundaries. This constraint-penalized approach is directly applicable to tendon-driven manipulators, where cable tension limits act analogously to joint limits~@Vahrenkamp2015ConstrainedManipulability.
+
+==== Computational workspace determination
+Rastegar and Fardanesh established the Monte Carlo forward-kinematics sampling method for workspace determination, in which random joint-angle vectors are uniformly sampled within joint limits and mapped through forward kinematics to produce a workspace point cloud~@Rastegar1990WorkspaceMonteCarlo. A known limitation is non-uniform density: uniform joint-space sampling produces denser coverage near the workspace center and sparser coverage at boundaries. Peidró _et~al._ addressed this limitation with a Gaussian Growth method that iteratively densifies boundary regions, achieving significantly more accurate workspace boundaries for high-#ac("DoF") robots at comparable computation cost~@Peidro2017GaussianGrowth. Cao _et~al._ performed workspace analysis specifically on tendon-driven continuum robots, determining maximum bending angles from physical interference between tendon paths and the elastic backbone, and using a superposition method to combine individual module configuration spaces~@Cao2017WorkspaceTDCR.
+
+== Identified Research Gap <sec:research_gap_id>
+
+The literature reviewed above reveals three distinct bodies of work that have not been combined. First, GPU-accelerated #ac("RL") for manipulation has advanced rapidly within the Isaac Gym / Isaac Sim ecosystem, with demonstrated sim-to-real transfer for contact-rich tasks involving conventional rigid-body robots~@Makoviychuk2021IsaacGym @Narang2022Factory @Tang2023IndustReal @Allshire2022TriFinger @Handa2023DeXtreme. Second, tendon- and cable-driven robot simulation for #ac("RL") has been explored predominantly in MuJoCo~@Or2023Robostrich @Guist2024PAMY2 @Shahid2023CurriculumTendon @Saito2022ContinuumRL or in specialized engines~@Dhakate2025CaRoSaC, but not in Isaac Sim. Third, tensegrity-inspired manipulators with antiparallelogram joints have been studied from a mechanism-design perspective~@FuretWenger2019 @Fasquelle2020BioInspired3DOF @MuralidharanWenger2021, and #ac("RL") for tensegrity robots has been limited to locomotion, with no work addressing #ac("RL")-based manipulation with tensegrity-inspired serial arms.
+
+No published work, as of March~2026, combines antiparallelogram-jointed tensegrity arm design with tendon actuation modeling in the Isaac Sim / IsaacLab ecosystem and #ac("RL")-based policy training. Furthermore, the FAPS-internal predecessor work by Klein~@Klein2023 established workspace analysis and simulation for this cable-driven manipulator but did not employ learning-based control. The present thesis addresses this gap by constructing a validated tendon-driven tensegrity robot model in Isaac Sim, formulating progressive #ac("RL") tasks within Isaac Lab, and training manipulation policies using `skrl` #ac("PPO")~@SerranoMunoz2023skrl @Schulman2017PPO.
+
+== Success Criteria
+
+The following criteria define successful completion of the thesis objectives:
+
++ The simulated robot model reproduces the kinematic workspace of the physical design by Klein~@Klein2023, validated through Monte Carlo workspace analysis and step-response testing.
++ #ac("RL") policies trained with #ac("PPO") converge to functional reach and cube-place behavior for at least one actuation variant (PD or tendon-driven).
++ Comparative evaluation of #ac("PD")-driven and tendon-driven actuation variants provides quantitative metrics (success rate, convergence speed, final reward) enabling informed selection.
++ The simulation infrastructure is documented and reproducible, providing a foundation for the subsequent master thesis.

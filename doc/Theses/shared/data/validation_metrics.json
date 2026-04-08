@@ -1,0 +1,101 @@
+[
+  {
+    "joint": "elbow_joint",
+    "amplitude": 20,
+    "klein_nrmse": 39.1,
+    "pd_nrmse": 9.51595859881596,
+    "tendon_nrmse": 12.91317788915592,
+    "pd_settling_ms": 108.33334922790527,
+    "tendon_settling_ms": 141.66665077209473,
+    "pd_rise_ms": 58.33333730697632,
+    "tendon_rise_ms": 100.00002384185791
+  },
+  {
+    "joint": "elbow_joint",
+    "amplitude": 30,
+    "klein_nrmse": 11.7,
+    "pd_nrmse": 9.540987644351127,
+    "tendon_nrmse": 15.041176655817768,
+    "pd_settling_ms": 116.66667461395264,
+    "tendon_settling_ms": 191.66666269302368,
+    "pd_rise_ms": 58.33333730697632,
+    "tendon_rise_ms": 125.0
+  },
+  {
+    "joint": "elbow_joint",
+    "amplitude": 40,
+    "klein_nrmse": 12.1,
+    "pd_nrmse": 9.545201526297316,
+    "tendon_nrmse": 17.01918507538481,
+    "pd_settling_ms": 116.66667461395264,
+    "tendon_settling_ms": 233.33334922790527,
+    "pd_rise_ms": 58.33333730697632,
+    "tendon_rise_ms": 166.6666865348816
+  },
+  {
+    "joint": "wrist_y_joint",
+    "amplitude": 10,
+    "klein_nrmse": 19.2,
+    "pd_nrmse": 8.295465282241498,
+    "tendon_nrmse": 9.681777766851459,
+    "pd_settling_ms": 100.00002384185791,
+    "tendon_settling_ms": 149.9999761581421,
+    "pd_rise_ms": 50.000011920928955,
+    "tendon_rise_ms": 83.33331346511841
+  },
+  {
+    "joint": "wrist_y_joint",
+    "amplitude": 20,
+    "klein_nrmse": 11.6,
+    "pd_nrmse": 8.297086468049043,
+    "tendon_nrmse": 12.398902029125082,
+    "pd_settling_ms": 100.00002384185791,
+    "tendon_settling_ms": 183.33333730697632,
+    "pd_rise_ms": 50.000011920928955,
+    "tendon_rise_ms": 100.00002384185791
+  },
+  {
+    "joint": "wrist_y_joint",
+    "amplitude": 30,
+    "klein_nrmse": 12.5,
+    "pd_nrmse": 8.298290262717018,
+    "tendon_nrmse": 14.794178675457276,
+    "pd_settling_ms": 100.00002384185791,
+    "tendon_settling_ms": 225.0000238418579,
+    "pd_rise_ms": 50.000011920928955,
+    "tendon_rise_ms": 133.33332538604736
+  },
+  {
+    "joint": "wrist_x_joint",
+    "amplitude": 10,
+    "klein_nrmse": 25.5,
+    "pd_nrmse": 8.296485551576833,
+    "tendon_nrmse": 9.726926525536378,
+    "pd_settling_ms": 100.00002384185791,
+    "tendon_settling_ms": 158.33336114883423,
+    "pd_rise_ms": 50.000011920928955,
+    "tendon_rise_ms": 74.99998807907104
+  },
+  {
+    "joint": "wrist_x_joint",
+    "amplitude": 20,
+    "klein_nrmse": 9.9,
+    "pd_nrmse": 8.298091706686721,
+    "tendon_nrmse": 12.400809443642862,
+    "pd_settling_ms": 100.00002384185791,
+    "tendon_settling_ms": 183.33333730697632,
+    "pd_rise_ms": 50.000011920928955,
+    "tendon_rise_ms": 108.33334922790527
+  },
+  {
+    "joint": "wrist_x_joint",
+    "amplitude": 30,
+    "klein_nrmse": 11.2,
+    "pd_nrmse": 8.299186755427675,
+    "tendon_nrmse": 14.790563950161859,
+    "pd_settling_ms": 100.00002384185791,
+    "tendon_settling_ms": 225.0000238418579,
+    "pd_rise_ms": 50.000011920928955,
+    "tendon_rise_ms": 141.6667103767395
+  }
+]

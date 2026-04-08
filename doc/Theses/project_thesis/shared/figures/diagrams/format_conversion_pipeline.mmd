@@ -1,0 +1,31 @@
+flowchart LR
+    subgraph RobotFormats["Robot Description"]
+        direction TB
+        URDF["URDF<br/><i>Kinematics, Inertials,<br/>Joint Limits</i>"]
+    end
+
+    subgraph Importers["Isaac Sim"]
+        direction TB
+        URDFImp["URDF Importer"]
+    end
+
+    subgraph USDStage["Composed USD Stage"]
+        direction TB
+        Robot["Robot Asset<br/><i>UsdPhysics</i>"]
+        Scene["Environment<br/><i>Objects, Lights</i>"]
+        PhysX["PhysX Schema<br/><i>Solver Config</i>"]
+    end
+
+    URDF --> URDFImp
+    URDFImp --> Robot
+    Robot --- Scene
+    Robot --- PhysX
+
+    style URDF fill:#E6E6E6,color:#2B2B2B,stroke:#5F5F5F
+    style URDFImp fill:#97C139,color:#2B2B2B,stroke:#5F5F5F
+    style Robot fill:#296193,color:#FFFFFF,stroke:#1E4F6E
+    style Scene fill:#296193,color:#FFFFFF,stroke:#1E4F6E
+    style PhysX fill:#296193,color:#FFFFFF,stroke:#1E4F6E
+    style RobotFormats fill:#F2F2F2,stroke:#5F5F5F,color:#296193
+    style Importers fill:#F2F2F2,stroke:#5F5F5F,color:#296193
+    style USDStage fill:#F2F2F2,stroke:#5F5F5F,color:#296193
