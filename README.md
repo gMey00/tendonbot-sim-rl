@@ -153,7 +153,7 @@ cd /home/robot/Isaac/IsaacLab
     --headless --num-envs 1 --output-dir ./step_response_results
 ```
 
-> See [`doc/tendon_simulation.md`](doc/tendon_simulation.md) for full details on the
+> See [`doc/Tensegrity_robot/tendon_simulation.md`](doc/Tensegrity_robot/tendon_simulation.md) for full details on the
 > tendon simulation, validation methodology, and reference data from Klein (2023).
 
 ---
@@ -164,13 +164,16 @@ cd /home/robot/Isaac/IsaacLab
 |----------|-------------|
 | [`doc/README.md`](doc/README.md) | Documentation index |
 | [`doc/nv_isaac.md`](doc/nv_isaac.md) | NVIDIA Isaac Sim / Isaac Lab resources and links |
-| [`doc/tendon_simulation.md`](doc/tendon_simulation.md) | Tendon simulation: physics, architecture, validation |
+| [`doc/Tensegrity_robot/README.md`](doc/Tensegrity_robot/README.md) | Tensegrity robot documentation: kinematics, tendon simulation, model validation, workspace analysis |
+| [`doc/Tensegrity_robot/tendon_simulation.md`](doc/Tensegrity_robot/tendon_simulation.md) | Tendon simulation: physics, architecture, validation |
 | [`doc/remote_desktop_setup.md`](doc/remote_desktop_setup.md) | Remote desktop setup (Tailscale + RustDesk) |
 | [`doc/reinforcement_learning.md`](doc/reinforcement_learning.md) | Reinforcement learning notes |
 | [`doc/robot_gripper_comparison.md`](doc/robot_gripper_comparison.md) | Robot and gripper comparison datasheet (UR10e, UR10, Kinova Gen3, tensegrity) |
-| [`doc/literatur/README.md`](doc/literatur/README.md) | Annotated bibliography: tendon robots, simulation, RL, cloth manipulation, sim-to-real, control & kinematics, workspace analysis |
+| [`doc/workflow_guide.md`](doc/workflow_guide.md) | Development workflow for Manipulator RL tasks from scratch |
+| [`doc/Literatur/README.md`](doc/Literatur/README.md) | Annotated bibliography: tendon robots, tensegrity, linkage mechanisms, grasping, simulation, RL, cloth manipulation, sim-to-real, control & kinematics, workspace analysis |
 | [`res/Tensegrity/README.md`](res/Tensegrity/README.md) | Robot specification: kinematic chain, joint limits, tendon geometry |
 | [`src/tensegrity_pick/README.md`](src/tensegrity_pick/README.md) | Isaac Lab extension: tasks, scripts, project structure |
+| [`tools/README.md`](tools/README.md) | Installation scripts, USD builder, training monitor |
 | [`test/README.md`](test/README.md) | Test suite: actuator math, config validation, environment smoke tests |
 
 ### Theses

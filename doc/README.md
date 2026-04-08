@@ -9,7 +9,8 @@ Project documentation for the tensegrity robot simulation and reinforcement lear
 | Document | Description |
 |----------|-------------|
 | [nv_isaac.md](nv_isaac.md) | NVIDIA Isaac Sim and Isaac Lab — overview, links, and learning resources |
-| [tendon_simulation.md](tendon_simulation.md) | Tendon-driven simulation: physical model, software architecture, validation |
+| [Tensegrity_robot/](Tensegrity_robot/README.md) | Tensegrity robot: kinematics, tendon simulation, model validation, workspace analysis |
+| [Tensegrity_robot/tendon_simulation.md](Tensegrity_robot/tendon_simulation.md) | Tendon-driven simulation: physical model, software architecture, validation |
 | [remote_desktop_setup.md](remote_desktop_setup.md) | Secure remote desktop setup with Tailscale and RustDesk |
 | [reinforcement_learning.md](reinforcement_learning.md) | Reinforcement learning notes and evaluation methodology |
 | [robot_gripper_comparison.md](robot_gripper_comparison.md) | Robot and gripper comparison datasheet (UR10e, UR10, Kinova Gen3, tensegrity) |
@@ -28,13 +29,16 @@ Annotated bibliographies organized by topic, located in [`literatur/`](literatur
 
 | File | Topic |
 |------|-------|
-| [reinforcement_learning.md](literatur/reinforcement_learning.md) | Reinforcement learning and robotics |
-| [simulation.md](literatur/simulation.md) | Simulation frameworks and benchmarks |
-| [control_kinematics.md](literatur/control_kinematics.md) | Control and kinematics of robotic systems |
-| [tendon_robots.md](literatur/tendon_robots.md) | Tendon-driven / cable-driven robots |
-| [cloth_manipulation.md](literatur/cloth_manipulation.md) | Cloth and deformable object manipulation |
-| [sim_to_real.md](literatur/sim_to_real.md) | Sim-to-real transfer |
-| [workspace_analysis.md](literatur/workspace_analysis.md) | Workspace analysis |
+| [tendon_robots.md](Literatur/tendon_robots.md) | Tendon-driven / cable-driven robots |
+| [tensegrity_robots.md](Literatur/tensegrity_robots.md) | Tensegrity robots & compliant mechanisms |
+| [linkage_mechanisms.md](Literatur/linkage_mechanisms.md) | Linkage mechanisms & closed-loop kinematics |
+| [grasping_manipulation.md](Literatur/grasping_manipulation.md) | Grasping & manipulation |
+| [simulation.md](Literatur/simulation.md) | Simulation & physics engines |
+| [reinforcement_learning.md](Literatur/reinforcement_learning.md) | Reinforcement learning |
+| [cloth_manipulation.md](Literatur/cloth_manipulation.md) | Cloth & deformable object manipulation |
+| [sim_to_real.md](Literatur/sim_to_real.md) | Sim-to-real transfer |
+| [control_kinematics.md](Literatur/control_kinematics.md) | Robot control & kinematics |
+| [workspace_analysis.md](Literatur/workspace_analysis.md) | Workspace analysis |
 
 ## Related
 
