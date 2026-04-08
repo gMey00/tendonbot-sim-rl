@@ -48,7 +48,7 @@ at the end of this document.
 | **Safety certification** | ISO 13849-1 PLd Cat. 3, ISO 10218-1 [1] | EN ISO 13849-1 PLd, EN ISO 10218-1 [2] | CE (collaborative) [3] | None (research prototype) |
 | **Mounting** | Any orientation (floor, ceiling, wall) [1] | Any orientation (floor, ceiling, wall) [2] | Any orientation [3] | Ceiling-mounted (inverted gantry, 1840 mm height) [7] |
 | **Materials** | Aluminium, plastic, steel | Aluminium, ABS plastic, PP plastic [2] | Carbon fibre, aluminium | Aluminium profiles, PLA (3D-printed parts) [7] |
-| **Joint limits** | ±360° all joints [1] | ±360° all joints [2] | Infinite rotation (software-limited on joints 2, 4, 6) [3] | Elbow: ±75°; Wrist X/Y: ±55° [7] |
+| **Joint limits** | ±360° all joints [1] | ±360° all joints [2] | Infinite rotation (software-limited on joints 2, 4, 6) [3] | Elbow: ±70°; Wrist X/Y: ±50° (practical workspace, Klein 2023 §4.2 p.79) [7] |
 | **Footprint** | Ø190 mm [1] | Ø190 mm [2] | Ø154 mm [3] | N/A (ceiling gantry) [7] |
 | **Typical use case** | Machine tending, palletising, packaging | Machine tending, palletising, packaging | Mobile robotics, research, lightweight manipulation | Conveyor-based waste sorting (K3I Cycling project) |
 
@@ -59,7 +59,7 @@ It consists of a ceiling-mounted gantry (cantilever frame, 700 mm extension, 184
 
 - **Linear base:** 2-DOF prismatic joints (Y-axis: along conveyor; Z-axis: vertical), providing a translatory workspace extension.
 - **Elbow:** 1-DOF anti-parallelogram joint, actuated by 2 antagonistic cables (lever arm ±72.5 mm).
-- **Wrist:** 2-DOF cable-driven spherical joint (3 cables at 120° spacing on r ≈ 16 mm circle), based on the design by Nemoto et al.
+- **Wrist:** 2-DOF cable-driven spherical joint (3 cables at 120° spacing on r = 20 mm circle), based on the design by Nemoto et al.
 
 Link lengths from the Klein (2023) thesis DH parameters: upper arm d₂ = 430 mm, forearm d₃ = 350 mm, end-effector d₄ = 180 mm, cantilever a₁ = 560 mm.
 The end-effector mass (including IMU) is 0.32 kg.

@@ -46,12 +46,19 @@ torques via the Jacobian transpose.
 
 | Gym ID | Description |
 |--------|-------------|
+| `Template-Reach-Tensegrity-v0` | Move end-effector to a random 6-DOF target pose |
+| `Template-Reach-Tensegrity-Tendon-v0` | Reach with tendon-driven arm (J^T mapping) |
+| `Template-Reach-Tensegrity-Physical-Tendon-v0` | Reach with physical tendon model (body-force elbow) |
+| `Template-Reach-UR10e-v0` | Reach with UR10e + Robotiq 2F-140 (PG-6 baseline) |
+| `Template-Reach-Kinova-v0` | Reach with Kinova Gen3 + Robotiq 2F-140 (PG-6 baseline) |
 | `Template-Tensegrity-Cube-Sort-v0` | Cube sorting — pick green cubes off a conveyor, ignore red |
-| `Template-Tensegrity-Reach-v0` | Move end-effector to a random 6-DOF target pose |
-| `Template-Tensegrity-Reach-Tendon-v0` | Reach with tendon-driven arm (performance comparison) |
 | `Template-Tensegrity-Cube-Place-v0` | Place a green cube into a drum (with curriculum) |
 | `Template-Tensegrity-Cube-Place-Tendon-v0` | Cube Place with tendon-driven arm |
+| `Template-Tensegrity-Cube-Place-Physical-Tendon-v0` | Cube Place with physical tendon model |
+| `Template-UR10e-Cube-Place-v0` | Cube Place with UR10e + Robotiq 2F-140 (PG-6 baseline) |
+| `Template-Kinova-Cube-Place-v0` | Cube Place with Kinova Gen3 + Robotiq 2F-140 (PG-6 baseline) |
 | `Template-Tensegrity-Shirt-Place-v0` | *(template)* Shirt place — cloth simulation |
+| `Template-Tensegrity-Shirt-Place-Physical-Tendon-v0` | *(template)* Shirt place with physical tendon model |
 | `Template-Tensegrity-Shirt-Sort-v0` | *(template)* Shirt sort — cloth simulation |
 
 Play/eval variants (`*-Play-v0`) are registered for all applicable tasks.
@@ -119,23 +126,23 @@ python -m pip install -e source/tensegrity_pick
 python scripts/list_envs.py
 
 # 7. Run a quick smoke test
-python scripts/zero_agent.py --task=Template-Tensegrity-Reach-v0 --num_envs=2 --headless
+python scripts/zero_agent.py --task=Template-Reach-Tensegrity-v0 --num_envs=2 --headless
 ```
 
 ### Training
 
 ```bash
 # Headless PPO training (default: 2000 parallel environments)
-python scripts/skrl/train.py --task=Template-Tensegrity-Reach-v0 --headless
+python scripts/skrl/train.py --task=Template-Reach-Tensegrity-v0 --headless
 
 # Override environment count
-python scripts/skrl/train.py --task=Template-Tensegrity-Reach-v0 --headless --num_envs=4096
+python scripts/skrl/train.py --task=Template-Reach-Tensegrity-v0 --headless --num_envs=4096
 ```
 
 ### Evaluation
 
 ```bash
-python scripts/skrl/play.py --task=Template-Tensegrity-Reach-Play-v0 --num_envs=10
+python scripts/skrl/play.py --task=Template-Reach-Tensegrity-Play-v0 --num_envs=10
 ```
 
 ### Step Response Validation
@@ -161,7 +168,7 @@ cd /home/robot/Isaac/IsaacLab
 | [`doc/remote_desktop_setup.md`](doc/remote_desktop_setup.md) | Remote desktop setup (Tailscale + RustDesk) |
 | [`doc/reinforcement_learning.md`](doc/reinforcement_learning.md) | Reinforcement learning notes |
 | [`doc/robot_gripper_comparison.md`](doc/robot_gripper_comparison.md) | Robot and gripper comparison datasheet (UR10e, UR10, Kinova Gen3, tensegrity) |
-| [`doc/literatur/`](doc/literatur/) | Annotated bibliographies (control, learning, simulation, tendons) |
+| [`doc/literatur/README.md`](doc/literatur/README.md) | Annotated bibliography: tendon robots, simulation, RL, cloth manipulation, sim-to-real, control & kinematics, workspace analysis |
 | [`res/Tensegrity/README.md`](res/Tensegrity/README.md) | Robot specification: kinematic chain, joint limits, tendon geometry |
 | [`src/tensegrity_pick/README.md`](src/tensegrity_pick/README.md) | Isaac Lab extension: tasks, scripts, project structure |
 | [`test/README.md`](test/README.md) | Test suite: actuator math, config validation, environment smoke tests |

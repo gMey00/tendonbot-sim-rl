@@ -256,7 +256,7 @@ Wir haben die Verstärkungen nach Klein (2023) abgestimmt: Dämpfung auf null se
 python scripts/step_response_test.py --headless --num-envs 1 --output-dir ./results
 
 # GUI-basierte Gelenksteuerung (interaktiver Schieberegler für jedes Gelenk)
-python scripts/verify_actuation.py --task=Template-Tensegrity-Reach-v0 --num_envs=1
+python scripts/verify_actuation.py --task=Template-Reach-Tensegrity-v0 --num_envs=1
 
 # Modellvalidierungs-Suite (PD + Sehnen-Sprungantworten mit Plots)
 python scripts/model_validation/run_step_response_pd.py
@@ -467,7 +467,7 @@ Dies stellt sicher, dass das Hinzufügen eines neuen Roboters nur einen neuen `c
 
 ```python
 gym.register(
-    id="Template-Tensegrity-Reach-v0",
+    id="Template-Reach-Tensegrity-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     kwargs={
         "env_cfg_entry_point": f"{__name__}.config.tensegrity:TensegrityReachEnvCfg",
@@ -507,22 +507,22 @@ YAML-Agent-Configs liegen neben jeder Task-Variante (z. B. `reach/config/tensegr
 ```bash
 # ─── TRAINING ────────────────────────────────────────────────────
 # Headless-Training (Standard: 4096 Envs aus Config)
-python scripts/skrl/train.py --task=Template-Tensegrity-Reach-v0 --headless
+python scripts/skrl/train.py --task=Template-Reach-Tensegrity-v0 --headless
 
 # Anzahl Umgebungen überschreiben
-python scripts/skrl/train.py --task=Template-Tensegrity-Reach-v0 \
+python scripts/skrl/train.py --task=Template-Reach-Tensegrity-v0 \
     --headless --num_envs=2048
 
 # ─── AUSWERTUNG ──────────────────────────────────────────────────
 # Trainierte Policy abspielen (die -Play-v0-Variante verwenden!)
-python scripts/skrl/play.py --task=Template-Tensegrity-Reach-Play-v0 --num_envs=10
+python scripts/skrl/play.py --task=Template-Reach-Tensegrity-Play-v0 --num_envs=10
 
 # ─── SMOKE TESTS ─────────────────────────────────────────────────
 # Zero-Action-Agent (prüft, ob Szene lädt und Physik läuft)
-python scripts/zero_agent.py --task=Template-Tensegrity-Reach-v0 --num_envs=2 --headless
+python scripts/zero_agent.py --task=Template-Reach-Tensegrity-v0 --num_envs=2 --headless
 
 # Random-Action-Agent (prüft Aktionsraum, Belohnungsberechnung)
-python scripts/random_agent.py --task=Template-Tensegrity-Reach-v0 --num_envs=2 --headless
+python scripts/random_agent.py --task=Template-Reach-Tensegrity-v0 --num_envs=2 --headless
 
 # ─── HILFSPROGRAMME ──────────────────────────────────────────────
 # Alle registrierten Umgebungen auflisten

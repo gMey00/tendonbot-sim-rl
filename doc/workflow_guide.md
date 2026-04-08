@@ -450,7 +450,7 @@ This ensures adding a new robot requires only a new `config/` sub-folder — no 
 
 ```python
 gym.register(
-    id="Template-Tensegrity-Reach-v0",
+    id="Template-Reach-Tensegrity-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     kwargs={
         "env_cfg_entry_point": f"{__name__}.config.tensegrity:TensegrityReachEnvCfg",
@@ -490,22 +490,22 @@ YAML agent configs live alongside each task variant (e.g. `reach/config/tensegri
 ```bash
 # ─── TRAINING ────────────────────────────────────────────────────
 # Headless training (default: 4096 envs from config)
-python scripts/skrl/train.py --task=Template-Tensegrity-Reach-v0 --headless
+python scripts/skrl/train.py --task=Template-Reach-Tensegrity-v0 --headless
 
 # Override environment count
-python scripts/skrl/train.py --task=Template-Tensegrity-Reach-v0 \
+python scripts/skrl/train.py --task=Template-Reach-Tensegrity-v0 \
     --headless --num_envs=2048
 
 # ─── EVALUATION ──────────────────────────────────────────────────
 # Play back a trained policy (use the -Play-v0 variant!)
-python scripts/skrl/play.py --task=Template-Tensegrity-Reach-Play-v0 --num_envs=10
+python scripts/skrl/play.py --task=Template-Reach-Tensegrity-Play-v0 --num_envs=10
 
 # ─── SMOKE TESTS ─────────────────────────────────────────────────
 # Zero-action agent (checks scene loads, physics runs)
-python scripts/zero_agent.py --task=Template-Tensegrity-Reach-v0 --num_envs=2 --headless
+python scripts/zero_agent.py --task=Template-Reach-Tensegrity-v0 --num_envs=2 --headless
 
 # Random-action agent (checks action space, reward computation)
-python scripts/random_agent.py --task=Template-Tensegrity-Reach-v0 --num_envs=2 --headless
+python scripts/random_agent.py --task=Template-Reach-Tensegrity-v0 --num_envs=2 --headless
 
 # ─── UTILITIES ───────────────────────────────────────────────────
 # List all registered environments
