@@ -1,123 +1,123 @@
 {
-  "run": "2026-04-07_05-58-54_ppo_torch",
+  "run": "2026-04-08_23-32-28_ppo_torch",
   "variant": "tensegrity_physical_tendon",
   "completion": {
     "is_complete": true,
     "status": "completed",
-    "target_timesteps": 48000,
-    "checkpoint_max_step": 48000,
-    "event_max_step": 48000
+    "target_timesteps": 150000,
+    "checkpoint_max_step": 150000,
+    "event_max_step": 150000
   },
   "scalars": {
     "Reward / Instantaneous reward (max)": {
-      "final_mean": 0.0029968343675136565,
-      "final_std": 1.3843953784558304e-05,
-      "max_step": 48000
+      "final_mean": 0.0032563996268436314,
+      "final_std": 1.2801212789653133e-05,
+      "max_step": 150000
     },
     "Reward / Instantaneous reward (min)": {
-      "final_mean": -0.024217700026929377,
-      "final_std": 0.00041364570845469907,
-      "max_step": 48000
+      "final_mean": -0.03919450864195824,
+      "final_std": 0.009263839175128597,
+      "max_step": 150000
     },
     "Reward / Instantaneous reward (mean)": {
-      "final_mean": -0.000998457457171753,
-      "final_std": 0.0009027608804504527,
-      "max_step": 48000
+      "final_mean": -0.0012373964069411158,
+      "final_std": 4.663439119674803e-05,
+      "max_step": 150000
     },
     "Info / Episode_Reward/end_effector_position_tracking": {
-      "final_mean": -0.03156287986785174,
-      "final_std": 0.0003240183997129501,
-      "max_step": 48000
+      "final_mean": -0.022867485880851746,
+      "final_std": 0.0045717284912800155,
+      "max_step": 150000
     },
     "Info / Episode_Reward/end_effector_position_tracking_fine_grained": {
-      "final_mean": 0.06553102731704712,
-      "final_std": 0.00043859503807407,
-      "max_step": 48000
+      "final_mean": 0.04273685999214649,
+      "final_std": 0.005025097529928133,
+      "max_step": 150000
     },
     "Info / Episode_Reward/end_effector_orientation_tracking": {
-      "final_mean": -0.045702173560857776,
-      "final_std": 0.0003063671998862469,
-      "max_step": 48000
+      "final_mean": -0.04086245074868202,
+      "final_std": 0.005617786839646297,
+      "max_step": 150000
     },
     "Info / Episode_Reward/position_reached": {
-      "final_mean": 7.259346602950245e-07,
-      "final_std": 2.5993221393080288e-09,
-      "max_step": 48000
+      "final_mean": 4.266167124455933e-07,
+      "final_std": 9.652489605761896e-08,
+      "max_step": 150000
     },
     "Info / Episode_Reward/orientation_reached": {
-      "final_mean": 6.977947805353324e-07,
-      "final_std": 4.837510196181068e-09,
-      "max_step": 48000
+      "final_mean": 5.230863479255276e-07,
+      "final_std": 6.993989194282809e-08,
+      "max_step": 150000
     },
     "Info / Episode_Reward/pose_reached": {
-      "final_mean": 6.116704525993555e-07,
-      "final_std": 5.639474098553973e-09,
-      "max_step": 48000
+      "final_mean": 2.8748809128842366e-07,
+      "final_std": 7.015261943022464e-08,
+      "max_step": 150000
     },
     "Info / Episode_Reward/action_rate": {
-      "final_mean": -0.004649981996044517,
-      "final_std": 9.298024478373326e-05,
-      "max_step": 48000
+      "final_mean": -0.003016881737858057,
+      "final_std": 0.00021448340475911946,
+      "max_step": 150000
     },
     "Info / Episode_Reward/joint_vel": {
-      "final_mean": -0.009503227006644011,
-      "final_std": 3.88219700070386e-05,
-      "max_step": 48000
+      "final_mean": -0.0026251912815496324,
+      "final_std": 0.0002869458846798785,
+      "max_step": 150000
     },
     "Loss / Policy loss": {
-      "final_mean": 0.014336240570992231,
-      "final_std": 0.005533306874007725,
-      "max_step": 48000
+      "final_mean": 0.0045709972968325015,
+      "final_std": 0.0005762494583220623,
+      "max_step": 150000
     },
     "Loss / Value loss": {
-      "final_mean": 0.012994759157299996,
-      "final_std": 0.002112887126428044,
-      "max_step": 48000
+      "final_mean": 0.05731444172561169,
+      "final_std": 0.0017947533302832463,
+      "max_step": 150000
     },
     "Loss / Entropy loss": {
-      "final_mean": 0.015450722351670266,
-      "final_std": 0.0002101087851862887,
-      "max_step": 48000
+      "final_mean": 0.011875458434224129,
+      "final_std": 6.428195367563376e-05,
+      "max_step": 150000
     },
     "Policy / Standard deviation": {
-      "final_mean": 0.06393000781536103,
-      "final_std": 0.0010236986235890389,
-      "max_step": 48000
+      "final_mean": 0.1120264895260334,
+      "final_std": 0.0006906745666204154,
+      "max_step": 150000
     },
     "Learning / Learning rate": {
-      "final_mean": 0.00023163787845987828,
-      "final_std": 2.4205230745344374e-05,
-      "max_step": 48000
+      "final_mean": 0.00022566666157217697,
+      "final_std": 7.874517980004937e-06,
+      "max_step": 150000
     },
     "Reward / Total reward (max)": {
-      "final_mean": -0.027342311525717377,
-      "final_std": 0.024192778145075266,
-      "max_step": 48000
+      "final_mean": 0.44383282363414767,
+      "final_std": 0.06084516597877551,
+      "max_step": 150000
     },
     "Reward / Total reward (min)": {
-      "final_mean": -0.8010525166988373,
-      "final_std": 0.10453761687267836,
-      "max_step": 48000
+      "final_mean": -3.4544695138931276,
+      "final_std": 0.839332667230024,
+      "max_step": 150000
     },
     "Reward / Total reward (mean)": {
-      "final_mean": -0.3160491168498993,
-      "final_std": 0.014827180214662606,
-      "max_step": 48000
+      "final_mean": -0.4425217002630234,
+      "final_std": 0.03574395667517259,
+      "max_step": 150000
     },
     "Episode / Total timesteps (max)": {
       "final_mean": 360.0,
       "final_std": 0.0,
-      "max_step": 48000
+      "max_step": 150000
     },
     "Episode / Total timesteps (min)": {
       "final_mean": 360.0,
       "final_std": 0.0,
-      "max_step": 48000
+      "max_step": 150000
     },
     "Episode / Total timesteps (mean)": {
       "final_mean": 360.0,
       "final_std": 0.0,
-      "max_step": 48000
+      "max_step": 150000
     }
   }
 }

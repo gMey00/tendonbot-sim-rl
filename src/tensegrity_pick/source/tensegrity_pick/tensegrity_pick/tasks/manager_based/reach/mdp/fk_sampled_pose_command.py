@@ -27,6 +27,12 @@ if TYPE_CHECKING:
 class FKSampledPoseCommand(CommandTerm):
     """Generate reachable end-effector pose targets by sampling random joint angles
     and computing forward kinematics through the physics engine.
+
+    When ``fk_reference_asset_name`` is set, a **separate** articulation is used
+    exclusively for FK sampling (the "reference robot").  This is critical for
+    robots whose kinematic chain can break during training (e.g. physical 4-bar
+    linkage): the reference robot is never actuated, so its kinematics stay
+    clean.  The main ``asset_name`` robot is still used for tracking metrics.
     """
 
     cfg: FKSampledPoseCommandCfg
@@ -36,6 +42,19 @@ class FKSampledPoseCommand(CommandTerm):
 
         self.robot: Articulation = env.scene[cfg.asset_name]
         self.body_idx: int = self.robot.find_bodies(cfg.body_name)[0][0]
+
+        # FK reference robot — used only for sampling reachable targets.
+        if cfg.fk_reference_asset_name is not None:
+            self.fk_robot: Articulation = env.scene[cfg.fk_reference_asset_name]
+            fk_body = cfg.fk_reference_body_name or cfg.body_name
+            self.fk_body_idx: int = self.fk_robot.find_bodies(fk_body)[0][0]
+            fk_jnames = cfg.fk_reference_joint_names
+            if fk_jnames is not None:
+                self.fk_joint_ids: list[int] = self.fk_robot.find_joints(fk_jnames)[0]
+            else:
+                self.fk_joint_ids = list(range(self.fk_robot.num_joints))
+        else:
+            self.fk_robot = None
 
         if cfg.joint_names is not None:
             self.joint_ids: list[int] = self.robot.find_joints(cfg.joint_names)[0]
@@ -118,6 +137,73 @@ class FKSampledPoseCommand(CommandTerm):
         return super().reset(env_ids)
 
     def _resample_command(self, env_ids: Sequence[int]) -> None:
+        if self.fk_robot is not None:
+            self._resample_via_reference(env_ids)
+        else:
+            self._resample_via_self(env_ids)
+
+    # ------------------------------------------------------------------
+    # FK sampling using a *separate* reference articulation
+    # ------------------------------------------------------------------
+    def _resample_via_reference(self, env_ids: Sequence[int]) -> None:
+        """Sample targets using the FK reference robot (never actuated → clean kinematics)."""
+        fk = self.fk_robot
+        joint_limits = fk.data.soft_joint_pos_limits[0, self.fk_joint_ids]
+        lower = joint_limits[:, 0].clone()
+        upper = joint_limits[:, 1].clone()
+
+        default_joint_pos = fk.data.default_joint_pos[0, self.fk_joint_ids]
+        fallback_half_range = torch.full_like(default_joint_pos, 0.75)
+        invalid_limit_mask = (
+            ~torch.isfinite(lower)
+            | ~torch.isfinite(upper)
+            | ((upper - lower) <= 1.0e-5)
+            | ((upper - lower) > (8.0 * torch.pi))
+        )
+        lower = torch.where(invalid_limit_mask, default_joint_pos - fallback_half_range, lower)
+        upper = torch.where(invalid_limit_mask, default_joint_pos + fallback_half_range, upper)
+
+        margin = (upper - lower) * self.cfg.joint_range_margin
+        lower = lower + margin
+        upper = upper - margin
+
+        random_joint_positions = lower + (upper - lower) * torch.rand(
+            len(env_ids), len(self.fk_joint_ids), device=self.device
+        )
+
+        # No coupling fn needed — reference robot uses simple revolute joints.
+
+        saved_joint_positions = fk.data.joint_pos[env_ids].clone()
+        saved_joint_velocities = fk.data.joint_vel[env_ids].clone()
+
+        fk.write_joint_position_to_sim(random_joint_positions, joint_ids=self.fk_joint_ids, env_ids=env_ids)
+
+        fk.data._physics_sim_view.update_articulations_kinematic()
+        import isaaclab.utils.math as math_utils_il
+        raw_link_transforms = fk.data._root_physx_view.get_link_transforms().clone()
+        raw_link_transforms[..., 3:7] = math_utils_il.convert_quat(raw_link_transforms[..., 3:7], to="wxyz")
+        body_pose = raw_link_transforms[env_ids, self.fk_body_idx]
+
+        ee_pos_w = body_pose[:, :3]
+        ee_quat_w = body_pose[:, 3:7]
+
+        # Express target relative to the *main* robot's root frame (the one being controlled).
+        root_pos_w = self.robot.data.root_pos_w[env_ids]
+        root_quat_w = self.robot.data.root_quat_w[env_ids]
+        pos_b, quat_b = subtract_frame_transforms(root_pos_w, root_quat_w, ee_pos_w, ee_quat_w)
+
+        self.pose_command_b[env_ids, :3] = pos_b
+        self.pose_command_b[env_ids, 3:] = quat_unique(quat_b) if self.cfg.make_quat_unique else quat_b
+
+        fk.write_joint_position_to_sim(saved_joint_positions, env_ids=env_ids)
+        fk.write_joint_velocity_to_sim(saved_joint_velocities, env_ids=env_ids)
+        fk.data._physics_sim_view.update_articulations_kinematic()
+        fk.data._body_link_pose_w.timestamp = -1
+
+    # ------------------------------------------------------------------
+    # Original FK sampling using the *same* articulation (PD / tendon variants)
+    # ------------------------------------------------------------------
+    def _resample_via_self(self, env_ids: Sequence[int]) -> None:
         joint_limits = self.robot.data.soft_joint_pos_limits[0, self.joint_ids]
         lower = joint_limits[:, 0].clone()
         upper = joint_limits[:, 1].clone()
@@ -235,6 +321,18 @@ class FKSampledPoseCommandCfg(CommandTermCfg):
     return a modified tensor of the same shape.  Useful for robots with closed
     kinematic chains (e.g. antiparallelogram 4-bar linkage) where some joints
     are not independent."""
+
+    fk_reference_asset_name: str | None = None
+    """Scene entity name for a *separate* articulation used exclusively for FK
+    sampling.  When set, the reference robot is teleported to random joint
+    configurations to compute reachable EE poses.  The main ``asset_name``
+    robot is never touched during sampling, so it cannot "break"."""
+
+    fk_reference_body_name: str | None = None
+    """End-effector body on the FK reference robot.  Defaults to ``body_name``."""
+
+    fk_reference_joint_names: list[str] | None = None
+    """Joints to randomise on the FK reference robot.  Defaults to all joints."""
 
     goal_pose_visualizer_cfg: VisualizationMarkersCfg = FRAME_MARKER_CFG.replace(
         prim_path="/Visuals/Command/goal_pose"

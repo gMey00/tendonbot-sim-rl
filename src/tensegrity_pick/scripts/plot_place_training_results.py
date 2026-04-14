@@ -49,7 +49,7 @@ VARIANT_LOG_DIRS: Final[dict[str, Path]] = {
     # with existing training runs logged before the config restructuring.
     "tensegrity": Path("logs/skrl/cube_place"),
     "tensegrity_tendon": Path("logs/skrl/cube_place/tensegrity_tendon"),
-    "tensegrity_physical_tendon": Path("logs/skrl/cube_place/tensegrity_tendon"),
+    \"tensegrity_physical_tendon\": Path(\"logs/skrl/cube_place/tensegrity_physical_tendon\"),
     "ur10e": Path("logs/skrl/cube_place/ur10e"),
     "kinova": Path("logs/skrl/cube_place/kinova"),
 }

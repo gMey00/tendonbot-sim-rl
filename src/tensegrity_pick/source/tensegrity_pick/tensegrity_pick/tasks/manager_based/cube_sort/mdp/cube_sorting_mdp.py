@@ -89,6 +89,15 @@ def all_active_passed_x(
         return torch.all(ok, dim=1)
 
 
+def all_targets_placed(env) -> torch.Tensor:
+    """True when all active target cubes have been placed in the drum.
+
+    Relies on ``_targets_placed`` and ``_num_active_green`` tracked by
+    :class:`TensegrityCubeSortEnv`.
+    """
+    return env._targets_placed >= max(env._num_active_green, 1)
+
+
 # ---------------------------
 # Cube reset
 # ---------------------------
@@ -237,8 +246,18 @@ def apply_conveyor_velocity_to_cubes(
     belt_center_y: float = 0.0,
     belt_half_width: float = 0.40,
     parking_x_threshold: float = 50.0,
+    stop_when_target_in_reach: bool = False,
+    target_label: int = 0,
+    workspace_x_min: float = -0.05,
+    workspace_x_max: float = 0.35,
 ):
-    """Inject belt velocity to on-belt cubes in a single collection."""
+    """Inject belt velocity to on-belt cubes in a single collection.
+
+    When *stop_when_target_in_reach* is True the belt pauses for any
+    environment where the most-upstream active target cube (label ==
+    *target_label*) has entered the workspace (local x > *workspace_x_min*).
+    This gives the agent time to handle each cube before it passes.
+    """
     if belt_speed is None:
         extras = getattr(env, "extras", None)
         if extras is not None and isinstance(extras, dict) and belt_speed_key in extras:
@@ -250,6 +269,28 @@ def apply_conveyor_velocity_to_cubes(
         speeds = torch.full((env.num_envs,), float(belt_speed), device=env.device)
     else:
         speeds = belt_speed
+
+    # ── Conveyor-stop logic ───────────────────────────────────────────
+    if stop_when_target_in_reach:
+        cubes_all = _asset(env, collection_name)
+        pos_all = cubes_all.data.object_pos_w
+        if pos_all.ndim == 2:
+            pos_all = pos_all[:, None, :]
+        local_all = pos_all - env.scene.env_origins[:, None, :]
+        labels = env.cube_labels  # (M,)
+
+        is_target = labels == target_label  # (M,)
+        is_active = local_all[..., 0] < parking_x_threshold  # (N, M)
+        # Most-upstream = smallest local x among active targets
+        target_active = is_active & is_target[None, :]  # (N, M)
+        local_x = local_all[..., 0]  # (N, M)
+        local_x_masked = torch.where(
+            target_active, local_x, torch.full_like(local_x, float("inf")),
+        )
+        most_upstream_x = local_x_masked.min(dim=1).values  # (N,)
+        # Stop when most-upstream target has entered workspace
+        should_stop = most_upstream_x > workspace_x_min  # (N,)
+        speeds = torch.where(should_stop, torch.zeros_like(speeds), speeds)
 
     axis_idx = 0 if belt_axis.lower() == "x" else 1
     speeds_bc = speeds[:, None]

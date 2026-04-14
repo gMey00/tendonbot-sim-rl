@@ -130,6 +130,114 @@ def _nearest_active_by_label(
 
 
 # ---------------------------------------------------------------------------
+# k-nearest helper (sorted by distance, padded with zeros)
+# ---------------------------------------------------------------------------
+
+def _k_nearest_active_by_label(
+    env: "ManagerBasedRLEnv",
+    reference_pos: torch.Tensor,
+    collection_name: str,
+    label: int,
+    k: int,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Find the *k* nearest active cubes of *label* per env, sorted by distance.
+
+    Returns ``(positions, indices, valid_mask)`` where:
+      positions:  (N, k, 3) world positions, zero-padded for missing cubes
+      indices:    (N, k)    indices into the collection, -1 for missing
+      valid_mask: (N, k)    bool — True where a cube exists at that slot
+    """
+    coll = env.scene[collection_name]
+    pos = coll.data.object_pos_w  # (N, M, 3)
+    valid = _active_label_mask(env, collection_name, label)  # (N, M)
+
+    N, M = pos.shape[0], pos.shape[1]
+    device = pos.device
+
+    # Squared distances; set invalid cubes to inf
+    d2 = torch.sum((pos - reference_pos[:, None, :]) ** 2, dim=-1)  # (N, M)
+    d2_masked = torch.where(valid, d2, torch.full_like(d2, float("inf")))
+
+    # Get top-k nearest (k might exceed M, clamp)
+    actual_k = min(k, M)
+    _, top_idx = torch.topk(d2_masked, actual_k, dim=1, largest=False)  # (N, actual_k)
+
+    # Build output tensors
+    out_pos = torch.zeros(N, k, 3, device=device)
+    out_idx = torch.full((N, k), -1, dtype=torch.long, device=device)
+    out_valid = torch.zeros(N, k, dtype=torch.bool, device=device)
+
+    arange = torch.arange(N, device=device)
+    for i in range(actual_k):
+        idx_i = top_idx[:, i]  # (N,)
+        is_valid = torch.isfinite(d2_masked[arange, idx_i])
+        out_pos[:, i] = torch.where(is_valid[:, None], pos[arange, idx_i], torch.zeros(N, 3, device=device))
+        out_idx[:, i] = torch.where(is_valid, idx_i, torch.tensor(-1, device=device))
+        out_valid[:, i] = is_valid
+
+    return out_pos, out_idx, out_valid
+
+
+# ---------------------------------------------------------------------------
+# k-nearest observations (label-parameterised)
+# ---------------------------------------------------------------------------
+
+def k_nearest_cubes_rel(
+    env: "ManagerBasedRLEnv",
+    ee_cfg: SceneEntityCfg,
+    collection_name: str,
+    label: int,
+    k: int,
+) -> torch.Tensor:
+    """Relative positions of the *k* nearest active cubes w.r.t. grasp centre (N, k*3)."""
+    ee = grasp_center_w(env.scene[ee_cfg.name], ee_cfg)
+    positions, _idx, valid = _k_nearest_active_by_label(env, ee, collection_name, label, k)
+    rel = positions - ee[:, None, :]  # (N, k, 3)
+    rel = torch.where(valid[:, :, None], rel, torch.zeros_like(rel))
+    return rel.reshape(rel.shape[0], -1)  # (N, k*3)
+
+
+def k_nearest_cubes_fingertip_rel(
+    env: "ManagerBasedRLEnv",
+    ee_cfg: SceneEntityCfg,
+    finger_cfg: SceneEntityCfg,
+    collection_name: str,
+    label: int,
+    k: int,
+) -> torch.Tensor:
+    """Relative positions of *k* nearest cubes w.r.t. dynamic fingertip (N, k*3)."""
+    robot: Articulation = env.scene[ee_cfg.name]
+    tip = dynamic_finger_tip_w(robot, ee_cfg, finger_cfg)
+    positions, _idx, valid = _k_nearest_active_by_label(env, tip, collection_name, label, k)
+    rel = positions - tip[:, None, :]  # (N, k, 3)
+    rel = torch.where(valid[:, :, None], rel, torch.zeros_like(rel))
+    return rel.reshape(rel.shape[0], -1)  # (N, k*3)
+
+
+def k_nearest_cubes_velocity(
+    env: "ManagerBasedRLEnv",
+    ee_cfg: SceneEntityCfg,
+    collection_name: str,
+    label: int,
+    k: int,
+) -> torch.Tensor:
+    """Linear velocities of the *k* nearest active cubes (N, k*3)."""
+    ee = grasp_center_w(env.scene[ee_cfg.name], ee_cfg)
+    _pos, indices, valid = _k_nearest_active_by_label(env, ee, collection_name, label, k)
+    vel = env.scene[collection_name].data.object_lin_vel_w  # (N, M, 3)
+    N = vel.shape[0]
+    device = vel.device
+
+    out = torch.zeros(N, k, 3, device=device)
+    arange = torch.arange(N, device=device)
+    for i in range(k):
+        idx_i = indices[:, i].clamp(min=0)
+        v = vel[arange, idx_i]
+        out[:, i] = torch.where(valid[:, i : i + 1], v, torch.zeros_like(v))
+    return out.reshape(N, -1)  # (N, k*3)
+
+
+# ---------------------------------------------------------------------------
 # Observations (label-parameterised)
 # ---------------------------------------------------------------------------
 
@@ -251,7 +359,10 @@ def cube_grasp_reward(
     label: int,
     std: float = 0.08,
 ) -> torch.Tensor:
-    """Closure x proximity to nearest active cube of *label*."""
+    """Closure x proximity to nearest active cube of *label*.
+
+    Gated: only active when gripper is NOT holding a cube (grasp_active=False).
+    """
     robot: Articulation = env.scene[ee_cfg.name]
     tip = dynamic_finger_tip_w(robot, ee_cfg, finger_cfg)
     pos, _idx, has_any = _nearest_active_by_label(env, tip, collection_name, label)
@@ -261,7 +372,20 @@ def cube_grasp_reward(
     finger_pos = robot.data.joint_pos[:, finger_cfg.joint_ids[0]]
     closure = torch.clamp(finger_pos / FINGER_JOINT_CLOSE_POS, 0.0, 1.0)
     reward = closure * proximity
-    return torch.where(has_any, reward, torch.zeros_like(reward))
+    result = torch.where(has_any, reward, torch.zeros_like(reward))
+    if hasattr(env, "grasp_active"):
+        result = result * (~env.grasp_active).float()
+    return result
+
+
+def cube_held_reward(
+    env: "ManagerBasedRLEnv",
+    asset_cfg: SceneEntityCfg,
+) -> torch.Tensor:
+    """Per-step reward while the gripper is holding a cube (grasp_active=True)."""
+    if hasattr(env, "grasp_active"):
+        return env.grasp_active.float()
+    return torch.zeros(env.num_envs, device=env.device)
 
 
 # ── 3. Lift ───────────────────────────────────────────────────────────────
@@ -496,10 +620,12 @@ def target_in_drum_reward(
     releasing clearly more valuable than holding near the drum.  Gated on
     ``was_grasped`` to prevent credit from accidentally bumped cubes.
 
-    Normalised by the number of active cubes of this label so that placing
-    1/6 cubes gives 1/6 of the max per-step reward, incentivising the
-    robot to go back and pick more cubes rather than coasting after placing
-    only the first one.
+    Returns the raw count of placed cubes (not normalised) so that each
+    placed cube contributes a full 1.0 × weight per step. This is critical
+    for multi-cube: with normalisation, placing 1/4 cubes gives only
+    weight/4 per step which cannot compete with per-step holding rewards.
+    Without normalisation, each placed cube adds +weight per step, making
+    "place and return for more" clearly beneficial.
 
     Uses the label mask directly (not _active_mask) because placed cubes
     are intentionally excluded from the active set for reaching/grasping
@@ -513,9 +639,7 @@ def target_in_drum_reward(
     count = (inside & label_mask).to(torch.float32).sum(dim=1)
     if hasattr(env, "was_grasped"):
         count = count * env.was_grasped.to(torch.float32)
-    # Normalise by number of active cubes so max reward = 1.0
-    num_active = getattr(env, "_num_active_green", 1)
-    return count / max(num_active, 1)
+    return count
 
 
 def cubes_missed(

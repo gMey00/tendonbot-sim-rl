@@ -3,31 +3,6 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-import gymnasium as gym
+"""Cube-sorting environments."""
 
-from . import agents
-
-##
-# Register Gym environments.
-##
-
-
-gym.register(
-    id="Template-Tensegrity-Cube-Sort-v0",
-    entry_point=f"{__name__}.cube_sort_env:TensegrityCubeSortEnv",
-    disable_env_checker=True,
-    kwargs={
-        "env_cfg_entry_point": f"{__name__}.cube_sort_env_cfg:TensegrityCubeSortEnvCfg",
-        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
-    },
-)
-
-gym.register(
-    id="Template-Tensegrity-Cube-Sort-Play-v0",
-    entry_point=f"{__name__}.cube_sort_env:TensegrityCubeSortEnv",
-    disable_env_checker=True,
-    kwargs={
-        "env_cfg_entry_point": f"{__name__}.cube_sort_env_cfg:TensegrityCubeSortEnvCfg_PLAY",
-        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
-    },
-)
+from . import config  # noqa: F401
