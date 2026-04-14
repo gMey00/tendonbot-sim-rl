@@ -21,7 +21,7 @@ where $q^*$ is the target position, $q$ is the measured position, and $tau_g$ is
 $ tau_g = m_e dot g dot l_c dot sin(theta_"elbow") $ <eq:gravity_comp>
 with $m_e = 2.49 "kg"$ (disc, forearm, and end-effector links combined), $g = 9.81 "m/s"^2$, $l_c = 0.26 "m"$ (combined center of mass from elbow axis), and $theta_"elbow"$ the current elbow angle. For the wrist joints, gravity compensation uses $m_e = 0.40 "kg"$ and $l_c = 0.068 "m"$.
 
-The PID gains used in Isaac Sim are scaled approximately $133 times$ from Klein's original Gazebo gains ($K_p = 0.3$, $K_i = 0.03$, $K_d = 0.02$). This scaling compensates for the different effective rotational inertia representation between the two simulators (Gazebo uses ODE/DART with generalized-coordinate dynamics; Isaac Sim uses PhysX with reduced-coordinate articulations that exhibit different numerical conditioning, yielding an effective rotational inertia of approximately $0.103 "kg" dot "m"^2$ for the elbow). @tab:step_test_matrix summarizes the test parameters.
+The PID gains used in Isaac Sim are scaled approximately $133 times$ from Klein's original Gazebo gains ($K_p = 0.3$, $K_i = 0.03$, $K_d = 0.02$). This scaling compensates for the different effective rotational inertia representation between the two simulators (Gazebo uses ODE/DART with generalized-coordinate dynamics; Isaac Sim uses PhysX with reduced-coordinate articulations that exhibit different numerical conditioning, yielding an effective rotational inertia of approximately $0.103 "kg" dot "m"^2$ for the elbow). @tab:step_test_matrix summarizes the test parameters. Note that in the validation scripts, the wrist saturation bound was experimentally set to 600~N to guarantee instantaneous tracking, whereas the final robot model configuration safely restricts individual wrist limits to 500~N and 3.0~Nm.
 
 #faps-table(
   table(
@@ -61,20 +61,10 @@ The analytical critical damping for the elbow ($J_"eff" approx 0.22 "kg" dot "m"
 
 === Monte Carlo Workspace Analysis <subsec:workspace_analysis>
 
-The reachable workspace and its quality are characterized using Monte Carlo forward-kinematics sampling, following the methodology of Rastegar and Fardanesh~@Rastegar1990WorkspaceMonteCarlo.
+The reachable workspace and its quality are characterized using Monte Carlo forward-kinematics sampling, following the methodology of Rastegar and Fardanesh~@Rastegar1990WorkspaceMonteCarlo, with the three per-voxel quality metrics defined in @sec:workspace_analysis_sampling_metrics: reachability density, Yoshikawa manipulability, and inverse condition number.
 
-==== Sampling procedure
-$N = 2 000 000$ joint configurations are sampled uniformly within the joint limits from @tab:joint_ranges across 4,096 parallel simulation environments. For each sample, the Isaac Sim physics engine computes the forward kinematics and the geometric Jacobian at the end-effector body. A gripper-tip offset of $(0, 0, -0.225) "m"$ along the end-effector body's local $Z$ axis accounts for the Robotiq 2F-140 fingertip position. The resulting point cloud is partitioned into a regular 3D voxel grid (cell size $Delta = 0.02 "m"$).
-
-==== Quality metrics
-Two per-voxel metrics are computed:
-
-- *Reachability density*: The number of sample configurations mapping to a given voxel, normalized by the total sample count. Dense regions indicate portions of the workspace that are kinematically accessible from many configurations~@Dong2013WorkspaceDensity.
-- *Yoshikawa manipulability*~@Yoshikawa1985Manipulability: $w = sqrt(det(bold(J)(bold(q)) bold(J)^top (bold(q))))$, where $bold(J)$ is the $6 times 5$ geometric Jacobian. This scalar quantifies the directional ease of end-effector motion; $w = 0$ indicates a kinematic singularity.
-
-The inverse condition number ($kappa^(-1) = sigma_min / sigma_max$)~@Salisbury1982ArticulatedHands is not used because the 5-#ac("DoF") manipulator's $6 times 5$ Jacobian is rank-deficient by construction ($sigma_min = 0$), making $kappa^(-1) = 0$ everywhere.
+==== GPU-parallelized sampling in Isaac Sim
+The sampling procedure exploits Isaac Sim's GPU-parallelized scene cloning to evaluate forward kinematics at scale. A total of $N = 2 000 000$ joint configurations are sampled uniformly within the joint limits from @tab:joint_ranges, distributed across 4,096 parallel simulation environments running on a single GPU. For each sample, Isaac Sim's articulation API computes the forward kinematics and the $6 times 5$ geometric Jacobian at the end-effector body in a single batched tensor operation. A gripper-tip offset of $(0, 0, -0.225) "m"$ along the end-effector body's local $Z$ axis accounts for the Robotiq 2F-140 fingertip position. The resulting point cloud is partitioned into a regular 3D voxel grid (cell size $Delta = 0.02 "m"$), and per-voxel metrics are averaged over all sample configurations mapping to that voxel, producing a volumetric quality map of the workspace.
 
 ==== Model selection
-Only the disc-approximation arm variant is used for workspace analysis. As demonstrated in @fig:elbow_comparison, the disc model underestimates the physical elbow's reach because its fixed pivot cannot reproduce the outward shift of the antiparallelogram's migrating instantaneous center of rotation. The disc-based workspace therefore represents a conservative lower bound on the physical robot's reachable volume. Reliable FK sampling of the physical four-bar variant proved infeasible: the PhysX loop-closure constraint (`excludeFromArticulation`) degrades stochastically under large Monte Carlo batches, causing the body-chain integrity filter to reject an unpredictable fraction of samples.
-
-The per-voxel metrics are averaged over all sample configurations mapping to that voxel, producing a volumetric quality map of the workspace.
+Only the disc-approximation arm variant is used for workspace analysis. As demonstrated in @fig:elbow_comparison, the disc model underestimates the physical elbow's reach because its fixed pivot cannot reproduce the outward shift of the antiparallelogram's migrating instantaneous center of rotation. The disc-based workspace therefore represents a conservative lower bound on the physical robot's reachable volume.

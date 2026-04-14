@@ -204,6 +204,28 @@ def wrist_static_figure(
         z=np.append(bz, [-h_b]),
         color=FAPS_LIGHT, opacity=0.15, showlegend=False))
 
+    # Platform cone: semi-translucent cone from origin to platform circle
+    n_cone = 40
+    cone_angles = np.linspace(0, 2 * np.pi, n_cone, endpoint=False)
+    cone_base_x = r * np.cos(cone_angles)
+    cone_base_y = r * np.sin(cone_angles)
+    cone_base_z = np.full(n_cone, -h)
+    cone_x = np.append(cone_base_x, 0.0)
+    cone_y = np.append(cone_base_y, 0.0)
+    cone_z = np.append(cone_base_z, 0.0)
+    apex_idx = n_cone
+    i_tri, j_tri, k_tri = [], [], []
+    for ci in range(n_cone):
+        cj = (ci + 1) % n_cone
+        i_tri.append(apex_idx)
+        j_tri.append(ci)
+        k_tri.append(cj)
+    fig.add_trace(go.Mesh3d(
+        x=cone_x, y=cone_y, z=cone_z,
+        i=i_tri, j=j_tri, k=k_tri,
+        color=FAPS_GREEN, opacity=0.12,
+        name="Platform cone", showlegend=False))
+
     title = (
         "Cable-Driven Wrist — Static Overview<br>"
         f"<sup>Nemoto (2022): R={R:.0f}, r={r:.0f}, h={h:.0f}, "
@@ -338,8 +360,33 @@ def wrist_animated_figure(
         marker=dict(size=5, color="black", symbol="cross"),
         name="Rotation center", showlegend=True))
 
-    # Dynamic indices: platform ring (2), active cables (3,4,5), markers (8)
-    dyn_indices = [2, 3, 4, 5, 8]
+    # 10: platform cone (animated) — tip at origin, base at platform ring
+    n_cone = 40
+    cone_angles = np.linspace(0, 2 * np.pi, n_cone, endpoint=False)
+    cone_body = np.column_stack([
+        r * np.cos(cone_angles),
+        r * np.sin(cone_angles),
+        np.full(n_cone, -h),
+    ])
+    cone_world_ini = platform_anchors_world(psi_seq[0], theta_seq[0], cone_body)
+    cone_x = np.append(cone_world_ini[:, 0], 0.0)
+    cone_y = np.append(cone_world_ini[:, 1], 0.0)
+    cone_z = np.append(cone_world_ini[:, 2], 0.0)
+    apex_idx = n_cone
+    i_tri, j_tri, k_tri = [], [], []
+    for ci in range(n_cone):
+        cj = (ci + 1) % n_cone
+        i_tri.append(apex_idx)
+        j_tri.append(ci)
+        k_tri.append(cj)
+    traces.append(go.Mesh3d(
+        x=cone_x, y=cone_y, z=cone_z,
+        i=i_tri, j=j_tri, k=k_tri,
+        color=FAPS_GREEN, opacity=0.12,
+        showlegend=False))
+
+    # Dynamic indices: platform ring (2), active cables (3,4,5), markers (8), cone (10)
+    dyn_indices = [2, 3, 4, 5, 8, 10]
 
     # ── Frames ──────────────────────────────────────────────────
     frames = []
@@ -366,6 +413,13 @@ def wrist_animated_figure(
             x=fd["p_active"][:, 0],
             y=fd["p_active"][:, 1],
             z=fd["p_active"][:, 2]))
+
+        # Animated cone
+        cone_world = platform_anchors_world(psi, theta, cone_body)
+        frame_traces.append(go.Mesh3d(
+            x=np.append(cone_world[:, 0], 0.0),
+            y=np.append(cone_world[:, 1], 0.0),
+            z=np.append(cone_world[:, 2], 0.0)))
 
         psi_d = np.degrees(psi)
         theta_d = np.degrees(theta)

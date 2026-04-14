@@ -55,3 +55,19 @@
 | Ref | Authors | Title | Year | Impl. | Thesis | Cred. | Summary |
 |-----|---------|-------|------|-------|--------|-------|---------|
 | Tomishiro2019 | Tomishiro, K. et al. | "Design of Robot Leg with Variable Reduction Ratio Crossed Four-bar Linkage Mechanism" | 2019 | 🔴 | 🟡 | 🟢 | Variable-ratio crossed four-bar knee joint design with increased reduction ratio for legged robots. |
+
+## Hamon and Aoustin (HamonAoustin2010)
+**Citation:** Hamon, A. and Aoustin, Y. (2010). "Cross Four-Bar Linkage for the Knees of a Planar Bipedal Robot." *2010 IEEE-RAS International Conference on Humanoid Robots (Humanoids)*, Nashville, TN, pp. 379–384. IEEE. *(Note: Extended in a 2014 Multibody System Dynamics journal paper with co-author S. Caro)*.
+**Summary Highlights:**
+- Proposes a crossed (antiparallelogram) four-bar linkage for the knee joint of a planar bipedal robot to replicate the translating Instantaneous Center of Rotation (ICR) of the human knee (guided by cruciate ligaments).
+- Compares optimized walking gaits between robots using crossed-linkage knees and standard revolute knees.
+- Demonstrates that the crossed-linkage knee performs worse at low velocities but better at higher walking speeds (beneficial for dynamic locomotion).
+- Serves as the most direct early precedent for using an antiparallelogram as a robotic joint actuated by tendons, providing explicit biomechanical motivation.
+
+## Yoon et al. (Yoon2021DLRWrist)
+**Citation:** Yoon, D., Kang, L., Manzoor, S., and Choi, Y. (2021). "The Improved DLR Wrist: Design and Analysis of 2-Degrees-of-Freedom Rotational Mechanism Using Spatial Antiparallelogram Linkages." *ASME Journal of Mechanical Design*, 143(5), 053303. DOI: 10.1115/1.4048719.
+**Summary Highlights:**
+- Analyzes and improves the 2-DOF wrist mechanism of the DLR robot arm, which utilizes spatial antiparallelogram linkages.
+- Investigates the elliptical rolling motion of the overconstrained antiparallelogram and provides axode analysis of the instantaneous screw axis.
+- Shows that an improved mechanism achieves a wider range of motion, reduced parasitic motion, and approximately decoupled output by substituting a small-displacement joint with a flexible hinge.
+- Highlights that parasitic motion and kinematic coupling are the primary challenges when extending antiparallelogram joints from planar to spatial (3D) implementations.

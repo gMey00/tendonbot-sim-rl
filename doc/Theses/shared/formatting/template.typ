@@ -45,8 +45,8 @@
     lang: "en",
   )
   set par(
-    leading: 0.65em * 1.25,  // baselinestretch 1.25
-    spacing: 0.65em * 1.25,
+    leading: 0.65em,
+    spacing: 1.15em,
     first-line-indent: 0pt,
     justify: true,
   )
@@ -100,7 +100,7 @@
   show heading.where(level: 4): it => {
     block(
       above: 12pt,
-      below: 6pt,
+      below: 8pt,
       text(weight: "bold", size: 11pt)[#it.body],
     )
   }
@@ -113,9 +113,9 @@
     ),
     indent: 0pt,
     body-indent: 0.5em,
-    spacing: 5pt,
+    spacing: auto,
   )
-  set enum(indent: 0pt, body-indent: 0.5em, spacing: 5pt)
+  set enum(indent: 0pt, body-indent: 0.5em, spacing: auto)
 
   // ── Figure/table caption formatting ────────────────────────────
   // Matches LaTeX: format=hang, font=footnotesize, labelfont=bf
@@ -218,7 +218,7 @@
   show outline.entry.where(level: 1): it => {
     v(12pt, weak: true)
     strong(it)
-    v(4pt, weak: true)
+    v(8pt, weak: true)
   }
   outline(
     title: [Table of Contents],

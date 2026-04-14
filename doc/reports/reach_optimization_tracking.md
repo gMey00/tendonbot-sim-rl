@@ -664,3 +664,111 @@ Iter 11 values).
 
 - **Recommended final configuration:** margin = 0.35, coupling ON, [64,64]
   network, 48 000 timesteps, collision disable ON.
+
+---
+
+## Iteration 13 (2026-04-08) — FK Reference Robot & Convergence
+
+**Status**: Physical Tendon variant **converged** at **−0.35** (margin = 0.01).
+PD (+0.77) and Tendon (+0.75) variants remain **LOCKED**.
+
+### Problem
+
+Iteration 12's FK target sampling used the physical robot itself.  During
+training, the 4-bar linkage breaks (rod joints lose tracking), and the broken
+kinematics feed back into FK sampling.  The result: after the first epoch,
+targets degenerate to poses the broken robot can trivially reach, preventing
+any useful learning.
+
+### Architecture: Dual-Robot FK Sampling
+
+Added a **separate FK reference robot** (the PD-approximated variant) to the
+scene.  It is used exclusively for FK target sampling, while the physical
+robot handles control.  This decouples target generation from the fragile
+physical dynamics.
+
+**Key design decisions:**
+
+1. **FK reference robot** — `TENS_5DOF_GRIPPER_CFG` (PD variant) added as a
+   hidden, collision-disabled articulation at the same position as the
+   physical robot.  Its stable single-`elbow_joint` provides clean FK.
+2. **Gripper stabilisation** — Reference robot's gripper joints need
+   `stiffness=100, damping=100, armature=10` to prevent PhysX NaN corruption
+   during `get_link_transforms()`.
+3. **No coupling function** — The PD robot uses simple revolute joints, so the
+   antiparallelogram coupling is not needed for FK sampling.
+4. **Margin = 0.01** — With a clean PD reference, the full PD workspace
+   (98 % of joint range) can be sampled safely.  This is a harder target
+   distribution than Iter 12's margin = 0.35 (30 % of range).
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `mdp/fk_sampled_pose_command.py` | Added `fk_reference_asset_name`, `fk_reference_body_name`, `fk_reference_joint_names` config fields.  `_resample_command()` dispatches to `_resample_via_reference()` (new) or `_resample_via_self()` (original, for PD/Tendon).  Reference sampling teleports the FK robot, reads EE pose, and expresses the target relative to the main robot's root frame. |
+| `config/tensegrity_tendon/joint_pos_env_cfg_physical.py` | Added PD reference robot (`scene.fk_reference_robot`), gripper stabilisation for both robots, updated FK command config (margin=0.01, reference asset name, no coupling fn). |
+| `config/tensegrity_tendon/agents/skrl_ppo_cfg_physical.yaml` | `rollouts: 48` (was 24), `timesteps: 150000` (was 48000). |
+
+### Experiments
+
+| Run | Network | Rollouts | Steps | Margin | Best Reward | Final | Notes |
+|---|---|---|---|---|---|---|---|
+| 18-29-20 | [64,64] | 24 | 48 000 | 0.01 | −1.70 | −1.94 | First FK-ref test; confirmed no NaN |
+| 19-30-57 | [64,64] | 24 | 150 000 | 0.01 | −0.39 | −0.67 | Plateaued at −0.55 ± 0.10, large oscillation |
+| 22-38-41 | [128,128] | 24 | 200 000 | 0.01 | −1.60 | killed@43K | Larger net slower, plateaued worse |
+| **23-32-28** | **[64,64]** | **48** | **150 000** | **0.01** | **−0.35** | **−0.46** | **Best: stable convergence, low variance** |
+
+### Results
+
+| Metric | Iter 12 (margin=0.35) | Iter 13 (margin=0.01) |
+|---|---|---|
+| **Best reward** | −0.32 | **−0.35** |
+| Position tracking | −0.032 | −0.020 |
+| Orientation tracking | −0.046 | −0.044 |
+| Fine-grained | 0.066 | 0.041 |
+| Total reward (max) | N/A | +0.416 |
+| Margin | 0.35 (30% range) | 0.01 (98% range) |
+| Network | [64,64] | [64,64] |
+| Rollouts | 24 | 48 |
+| Timesteps | 48 000 | 150 000 |
+
+### Analysis
+
+- **Dual-robot architecture solves the broken-FK problem.** The physical
+  robot's linkage can now break during training without corrupting FK target
+  sampling.  Targets are always sampled from clean PD kinematics.
+
+- **Rollouts = 48 is critical for stability.** With rollouts = 24, the reward
+  oscillated ±0.15 around a −0.55 plateau.  Doubling the rollout buffer halved
+  the oscillation and improved the best reward from −0.39 → −0.35.
+
+- **Larger networks do not help (again).** The [128,128] network converged
+  slower and to a worse plateau (−1.60), confirming Iter 12's finding that
+  [64,64] is optimal for this problem.
+
+- **Comparable performance despite 3× harder workspace.** Iter 13's
+  margin = 0.01 samples from 98 % of the PD joint range (vs Iter 12's 30 %).
+  The absolute best reward (−0.35 vs −0.32) is similar, but the position
+  tracking is better (−0.020 vs −0.032), indicating the policy generalises
+  across a much wider workspace.
+
+- **Fundamental control gap remains.** The physical variant (−0.35) trails
+  PD (+0.77) by ~1.12 reward points.  This is inherent to the control problem:
+  the physical robot uses 5 effort-based cable tensions (2 elbow + 3 wrist) to
+  drive the 4-bar linkage, while the PD variant uses 5 direct position
+  commands.  The effort-to-position indirection limits positioning precision.
+
+- **Some environments reach positive rewards.** The max episode reward of
+  +0.416 shows the robot CAN reach PD-sampled targets — it just cannot do so
+  consistently across the full workspace.
+
+### Recommended configuration
+
+| Parameter | Value |
+|---|---|
+| FK reference robot | PD variant (hidden, collision-off) |
+| Margin | 0.01 |
+| Network | [64, 64] |
+| Rollouts | 48 |
+| Timesteps | 150 000 |
+| Collision disable | ON |

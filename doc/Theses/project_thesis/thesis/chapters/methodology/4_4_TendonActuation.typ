@@ -24,17 +24,21 @@ $ tau_"elbow" = r_e (T_1 - T_2) $ <eq:elbow_torque>
 where $T_1$ and $T_2$ are the tensions in the two antagonistic cables. The sign convention is such that $T_1$ produces positive (flexion) torque and $T_2$ produces negative (extension) torque.
 
 ==== Wrist subsystem (3 tendons, 2 joints)
-The three wrist cables at $120 degree$ spacing produce the two wrist torques via the structure matrix derived in @eq:structure_matrix_explicit:
-$ mat(tau_"pitch"; tau_"roll") = r_w mat(
-  1, -1/2, -1/2;
-  0, sqrt(3)/2, -sqrt(3)/2
+The three wrist cables generate torques depending on their geometric attachment to the wrist platform ($r_w = 20 "mm"$). Adjusting for the specific phase offsets ($0 degree, 120 degree, 240 degree$) around the end-effector coordinate frame, the exact mapping implemented in the simulation is:
+$ mat(tau_"pitch"; tau_"roll") = mat(
+  -r_w sqrt(3)/2, 0, r_w sqrt(3)/2;
+  r_w/2, -r_w, r_w/2
 ) mat(T_3; T_4; T_5) $ <eq:wrist_torque>
 
-Combining both subsystems, the full constant $bold(J)^top in bb(R)^(3 times 5)$ matrix is:
+Combining both subsystems, the full constant $bold(J)^top in bb(R)^(3 times 5)$ matrix matches the zero-configuration simulation property exactly:
 $ bold(J)^top = mat(
   r_e, -r_e, 0, 0, 0;
-  0, 0, r_w, -r_w/2, -r_w/2;
-  0, 0, 0, r_w sqrt(3)/2, -r_w sqrt(3)/2;
+  0, 0, -r_w sqrt(3)/2, 0, r_w sqrt(3)/2;
+  0, 0, r_w/2, -r_w, r_w/2;
+) = mat(
+  0.0725, -0.0725, 0, 0, 0;
+  0, 0, -0.0173, 0, 0.0173;
+  0, 0, 0.010, -0.020, 0.010;
 ) $ <eq:jt_full>
 
 @fig:tendon_dataflow illustrates the complete data flow from policy output to physics-engine joint torques.
@@ -45,6 +49,9 @@ $ bold(J)^top = mat(
   short-caption: [Tendon actuation pipeline data flow],
 ) <fig:tendon_dataflow>
 
+==== Architectural Justification vs. Built-in Tendons
+Isaac Sim/PhysX 5 provides native "spatial tendon" primitives designed for muscle-like actuation. However, they were deliberately not used in this architecture for two primary reasons. First, spatial tendons frequently induce numerical instabilities and explosions when simulating extremely stiff linkages like the tensegrity arm mechanism and carbon-fiber structure. Second, PhysX excludes native tendon tension signals from its standard `joint_force_report` #ac("API"). This makes it mechanically impossible to extract or penalize individual cable tensions during standard #ac("RL") step loops; the custom ActionTerm approach provides direct, observable control over the force space, perfectly suiting standard #ac("RL") reward formulations.
+
 === Physical Body-Force Tendon Model <subsec:body_force_model>
 
 The physical tendon mode increases fidelity by modeling the elbow tendons as body forces applied at the actual cable attachment points on the antiparallelogram linkage bars, rather than abstracting them as scalar torques through a constant Jacobian. This produces a configuration-dependent torque that naturally captures the nonlinear transmission characteristics of the four-bar mechanism.
@@ -53,7 +60,7 @@ The physical tendon mode increases fidelity by modeling the elbow tendons as bod
 Each of the two elbow tendons is defined by an attachment point on the root link and a corresponding point on the forearm side of the linkage. At each simulation step, the force direction is computed as the unit vector from attachment to anchor, and the force magnitude is set to the cable tension output by the policy. The resulting force is applied through PhysX's body-force API directly on the rigid-body link prim. The net torque about the effective elbow axis depends on the lever arm at the _current_ linkage configuration rather than the zero-configuration constant.
 
 ==== Wrist torques
-The wrist retains the constant $bold(J)^top$ mapping from @eq:wrist_torque because the cable-driven wrist's deviation from constant behavior over its $plus.minus 50 degree$ range is small — the principal effect is captured by the structure matrix~@Nemoto2022CableWrist.
+The wrist retains the constant $bold(J)^top$ mapping from @eq:wrist_torque because the cable-driven wrist's deviation from constant behavior over its $plus.minus 50 degree$ range is small. The principal effect is captured by the structure matrix~@Nemoto2022CableWrist.
 
 ==== Implementation
 The physical tendon model is implemented as a custom `ActionTerm` class in the IsaacLab extension. During each environment step, the term:
@@ -100,12 +107,12 @@ In the *physical tendon mode*, the elbow model is the full antiparallelogram lin
     table.header([*Parameter*], [*Value*], [*Source*]),
     [Motor type], [Maxon EC60 flat BLDC], [@MaxonEC60Datasheet],
     [Nominal voltage], [24~V], [@MaxonEC60Datasheet],
-    [Max.\ continuous torque], [0.444~Nm], [@MaxonEC60Datasheet],
+    [Max.\ continuous torque], [0.401~Nm], [@MaxonEC60Datasheet],
     [Spool radius $r_s$], [5~mm], [@Klein2023],
     [Elbow pulley ratio], [3:1], [@Klein2023],
     [Max.\ cable tension $T_"max"$], [500~N], [Derived],
-    [Elbow effort limit], [72.5~Nm], [@eq:effort_elbow],
-    [Wrist effort limit (per axis)], [80~Nm], [Derived],
+    [Elbow effort limit], [36.25~Nm], [@eq:effort_elbow],
+    [Wrist effort limit (per axis)], [3.0~Nm], [Derived],
     [Base effort limit (per axis)], [200~Nm], [Configured],
   ),
   caption: [Motor and actuation parameters used in the simulation model. All values are derived from the Maxon EC60 specifications and the mechanical design of the tendon routing system.],

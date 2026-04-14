@@ -128,3 +128,12 @@
 | Ref | Authors | Title | Year | Impl. | Thesis | Cred. | Summary |
 |-----|---------|-------|------|-------|--------|-------|---------|
 | Caggiano2022 | Caggiano, V. et al. | "MyoSuite — A Contact-Rich Simulation Suite for Musculoskeletal Motor Control" | 2022 | 🔴 | 🟡 | 🟢 | Musculoskeletal simulation with tendon-like actuation. Related work for tendon-driven robot simulation paradigm comparison. |
+
+## Popov et al. (Popov2017)
+**Citation:** Ivaylo Popov, Nicolas Heess, Timothy Lillicrap, Roland Hafner, Gabriel Barth-Maron, Matej Vecerik, Thomas Lampe, Yuval Tassa, Tom Erez, and Martin Riedmiller. "Data-efficient Deep Reinforcement Learning for Dexterous Manipulation." *arXiv:1704.03073*, 2017.
+**Summary Highlights:**
+- The canonical example of composite phased / sequential gated reward design in manipulation.
+- Investigates Lego Duplo brick stacking with a 9-DoF Jaco arm by decomposing the task into three predicate-gated phases: Reach (0.125), Grasp (0.25), and Stack (1.0).
+- Emphasizes that "full composite shaping" enables learning the complete task from scratch, combining sparse piecewise-constant subtask indicators with smoothly varying distance-based terms (each distance term gated by its prerequisite predicate).
+- Explicitly documents the failure modes of improperly designed composite rewards (e.g., an agent refusing to perform the next step because it would lose the continuous reward of the current step).
+- Discusses a complementary curriculum approach (Learning from Instructive States) that samples initial states from successful demonstration trajectories.

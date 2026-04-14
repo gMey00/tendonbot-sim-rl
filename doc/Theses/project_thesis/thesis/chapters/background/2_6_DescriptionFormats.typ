@@ -1,18 +1,11 @@
 // §2.6 Robot and Scene Description Formats
 #import "../../../../shared/formatting/macros.typ": *
 #import "../../../../shared/formatting/acronyms.typ": *
-#import "../../../../shared/formatting/diagrams.typ": format-conversion-pipeline
 #import "../../../../shared/formatting/template.typ": faps-figure, faps-table
 
 == Robot and Scene Description Formats <sec:description_formats>
 
 Robotic learning workflows in simulation require at least two layers of model description: a _robot model_ capturing kinematic structure and physical properties, and a _scene model_ capturing environment layout, lighting, and simulator-specific physics configuration. In the Omniverse ecosystem, the scene is represented as a composed #ac("USD") stage, while robots are typically authored in robotics-oriented formats such as #ac("URDF") and subsequently imported into #ac("USD") for simulation.
-
-#faps-figure(
-  format-conversion-pipeline(),
-  caption: [Schematic pipeline illustrating how robot descriptions (e.g., #ac("URDF")) are converted into #ac("USD") assets and integrated with environment elements on a composed #ac("USD") stage.],
-  short-caption: [URDF to USD conversion pipeline],
-) <fig:format_pipeline_usd_urdf_mjcf>
 
 === USD as Scene Graph
 

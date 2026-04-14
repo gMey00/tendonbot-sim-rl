@@ -28,8 +28,8 @@ This document records all formatting specifications extracted from the FAPS Word
 |---|---|---|
 | Base font | Helvetica (`helvet`, scaled 0.92) | `("Helvetica Neue", "Helvetica", "Nimbus Sans", "Arial")` |
 | Font scale | 0.92 × 12pt = **~11 pt effective** | `size: 11pt` |
-| Line spacing | `baselinestretch 1.25` | `leading: 0.65em * 1.25` (~0.8125 em extra) |
-| Paragraph spacing | `parskip 1ex ± 0.2ex` | `spacing: 0.65em * 1.25` |
+| Line spacing | `baselinestretch 1.25` | `leading: 0.65em` |
+| Paragraph spacing | `parskip 1ex ± 0.2ex` | `spacing: 1.15em` |
 | Paragraph indent | `parindent 0pt` (no indent) | `first-line-indent: 0pt` |
 | Justification | `\sloppy` (justified, loose) | `justify: true` |
 | Table row stretch | `\arraystretch{1.5}` | `inset: 6pt` in table style |
@@ -100,7 +100,7 @@ All colors are defined in `shared/formatting/colors.typ`.
 |---|---|---|
 | Level 1 marker | `\color{fapsgruen}$\medblacksquare$` | `text(fill: fapsgruen, "■")` (0.8em) |
 | Level 2 marker | `\color{fapsgruen}$\smallblacksquare$` | `text(fill: fapsgruen, "▪")` (0.6em) |
-| Item spacing | `itemsep=5pt` | `spacing: 5pt` |
+| Item spacing | `itemsep=5pt` | `spacing: auto` |
 | Body indent | `labelsep=5pt` | `body-indent: 0.5em` |
 | Left margin | 0pt (template default) | `indent: 0pt` |
 

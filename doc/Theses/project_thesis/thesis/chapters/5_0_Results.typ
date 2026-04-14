@@ -381,129 +381,482 @@ The Monte Carlo workspace analysis used $N = 2 000 000$ FK samples with the disc
   short-caption: [Workspace analysis statistics],
 ) <tab:workspace_stats>
 
-@fig:workspace_density and @fig:workspace_manip show the reachability density and Yoshikawa manipulability distributions, respectively. Each figure presents a 3D voxelised scatter plot alongside three orthogonal cross-section heatmaps through the center of the desired workspace.
+@fig:workspace_metrics presents the three workspace quality metrics defined in @sec:workspace_analysis_sampling_metrics: reachability density, Yoshikawa manipulability, and inverse condition number. Each subplot shows a 3D voxelised scatter plot alongside three orthogonal cross-section heatmaps through the center of the desired workspace.
 
 #faps-figure(
-  image("../../../shared/figures/tensegrity_workspace_density.png", width: 95%),
-  caption: [Reachability density distribution of the disc-approximation model. _Left:_ 3D voxel scatter, coloured by sample density. _Right:_ 2D cross-section heatmaps along the $X$, $Y$, and $Z$ midplanes. High density near the workspace center indicates that many joint configurations map to the task-relevant region.],
-  short-caption: [Workspace reachability density],
-) <fig:workspace_density>
-
-#faps-figure(
-  image("../../../shared/figures/tensegrity_workspace_manipulability.png", width: 95%),
-  caption: [Yoshikawa manipulability distribution. Manipulability is highest near the workspace center and decreases toward the boundaries, consistent with the kinematic structure of the 5-#ac("DoF") serial chain. The low absolute values ($cal(O)(10^(-5))$) reflect the rank-deficient $6 times 5$ Jacobian rather than indicating poor dexterity within the robot's 5-dimensional motion capability.],
-  short-caption: [Workspace Yoshikawa manipulability],
-) <fig:workspace_manip>
+  grid(
+    columns: 1,
+    row-gutter: 1em,
+    [*(a)* Reachability density],
+    image("../../../shared/figures/tensegrity_workspace_density.png", width: 80%),
+    [*(b)* Yoshikawa manipulability],
+    image("../../../shared/figures/tensegrity_workspace_manipulability.png", width: 80%),
+    [*(c)* Inverse condition number],
+    image("../../../shared/figures/tensegrity_workspace_condition.png", width: 80%),
+  ),
+  caption: [Workspace quality metrics for the disc-approximation model (2M FK samples, 4096 parallel envs). *(a)*~Reachability density: high density near the workspace center indicates many joint configurations map to the task-relevant region. *(b)*~Yoshikawa manipulability: highest near the center, decreasing toward boundaries. The low absolute values ($cal(O)(10^(-5))$) reflect the rank-deficient $6 times 5$ Jacobian rather than indicating poor dexterity within the robot's 5-dimensional motion capability. *(c)*~Inverse condition number ($kappa^(-1) = sigma_min "/" sigma_max$): near-zero values ($cal(O)(10^(-8))$) throughout confirm the expected rank deficiency of the non-square Jacobian; the spatial variation nevertheless reveals regions of relatively better kinematic isotropy.],
+  short-caption: [Workspace quality metrics (density, manipulability, condition)],
+) <fig:workspace_metrics>
 
 The disc-approximation model achieves near-complete coverage (99.7~%) of the desired workspace. As discussed in @subsec:disc_approx and @fig:elbow_comparison, this represents a conservative estimate: the physical antiparallelogram elbow can reach farther than the disc model at equivalent joint angles, so the true coverage of the physical robot is expected to be at least as high.
 
 == Reach Task Results <sec:reach_results>
 
+// ── Reach task data loading ─────────────────────────────────────────────────
+#let rl-base = data-base + "rl_training/"
+
+// Reach — Total reward (mean)
+#let reach-pd-reward   = parse-csv(csv(rl-base + "reach/tensegrity_pd/Reward_Totalrewardmean.csv"))
+#let reach-tn-reward   = parse-csv(csv(rl-base + "reach/tensegrity_tendon/Reward_Totalrewardmean.csv"))
+#let reach-ph-reward   = parse-csv(csv(rl-base + "reach/tensegrity_physical/Reward_Totalrewardmean.csv"))
+
+// Reach — Position tracking
+#let reach-pd-pos   = parse-csv(csv(rl-base + "reach/tensegrity_pd/Info_Episode_Reward_end_effector_position_tracking.csv"))
+#let reach-tn-pos   = parse-csv(csv(rl-base + "reach/tensegrity_tendon/Info_Episode_Reward_end_effector_position_tracking.csv"))
+#let reach-ph-pos   = parse-csv(csv(rl-base + "reach/tensegrity_physical/Info_Episode_Reward_end_effector_position_tracking.csv"))
+
+// Reach — Orientation tracking
+#let reach-pd-orient = parse-csv(csv(rl-base + "reach/tensegrity_pd/Info_Episode_Reward_end_effector_orientation_tracking.csv"))
+#let reach-tn-orient = parse-csv(csv(rl-base + "reach/tensegrity_tendon/Info_Episode_Reward_end_effector_orientation_tracking.csv"))
+#let reach-ph-orient = parse-csv(csv(rl-base + "reach/tensegrity_physical/Info_Episode_Reward_end_effector_orientation_tracking.csv"))
+
+// Reach — Fine-grained position
+#let reach-pd-fine  = parse-csv(csv(rl-base + "reach/tensegrity_pd/Info_Episode_Reward_end_effector_position_tracking_fine_grained.csv"))
+#let reach-tn-fine  = parse-csv(csv(rl-base + "reach/tensegrity_tendon/Info_Episode_Reward_end_effector_position_tracking_fine_grained.csv"))
+#let reach-ph-fine  = parse-csv(csv(rl-base + "reach/tensegrity_physical/Info_Episode_Reward_end_effector_position_tracking_fine_grained.csv"))
+
+// Reach — Policy std deviation
+#let reach-pd-std   = parse-csv(csv(rl-base + "reach/tensegrity_pd/Policy_Standarddeviation.csv"))
+#let reach-tn-std   = parse-csv(csv(rl-base + "reach/tensegrity_tendon/Policy_Standarddeviation.csv"))
+#let reach-ph-std   = parse-csv(csv(rl-base + "reach/tensegrity_physical/Policy_Standarddeviation.csv"))
+
+// ── Helper: multi-variant training curve subplot ────────────────────────────
+#let variant-subplot(
+  title: none,
+  pd-data, tn-data, ph-data,
+  y-label: none,
+  y-min: auto, y-max: auto,
+  y-tick-step: auto,
+  x-max: auto,
+  legend-pos: "inner-north-east",
+  width: plot-half-width,
+  height: plot-small-height,
+) = {
+  import draw: *
+
+  plot.plot(
+    size: (width, height),
+    x-label: [Timesteps],
+    y-label: y-label,
+    x-min: 0, x-max: x-max,
+    y-min: y-min, y-max: y-max,
+    x-tick-step: auto,
+    y-tick-step: y-tick-step,
+    x-grid: true,
+    y-grid: true,
+    legend: legend-pos,
+    legend-style: (item: (spacing: 0.15), padding: 0.1),
+    {
+      plot.add(pd-data, label: [PD],
+        style: (stroke: (paint: plot-blue, thickness: 1.0pt)))
+      plot.add(tn-data, label: [Tendon],
+        style: (stroke: (paint: plot-green, thickness: 1.0pt)))
+      plot.add(ph-data, label: [Physical],
+        style: (stroke: (paint: plot-purple, thickness: 1.0pt)))
+    }
+  )
+
+  if title != none {
+    content((width / 2, height + 0.35), text(size: 8pt, weight: "bold", title))
+  }
+}
+
 === Training Convergence <subsec:reach_convergence>
 
-// [PLACEHOLDER: Training curves — total reward, position error, orientation error
-// for all 5 variants (Tensegrity PD, Tendon, Physical Tendon, UR10e, Kinova).
-// Generated by: scripts/plot_reach_training_results.py]
+@fig:reach_convergence compares the training convergence of the three tensegrity variants on the reach task. The PD and tendon variants, trained for 48k timesteps, converge rapidly to total rewards above $+0.75$, with the PD model reaching $+0.79$ and the tendon model $+0.76$. The physical tendon variant, trained for 150k timesteps with the dual-robot FK sampling architecture (@ch:methodology), converges more slowly to $-0.46$, reflecting the inherent difficulty of effort-based cable control through the four-bar linkage.
+
 #faps-figure(
-  rect(width: 90%, height: 6cm, stroke: 0.5pt + luma(180))[
-    #align(center + horizon)[_PLACEHOLDER: Reach training curves — total reward over timesteps\
-    for Tensegrity PD, Tendon, Physical Tendon, UR10e, Kinova\
-    Generated by `plot_reach_training_results.py`_]
-  ],
-  caption: [Reach task training convergence across all robot/actuation variants.],
+  grid(
+    columns: 2,
+    column-gutter: 12pt,
+    row-gutter: 16pt,
+    // (a) Total reward
+    canvas(length: 1cm, {
+      variant-subplot(
+        title: [(a) Total Reward (Mean)],
+        reach-pd-reward, reach-tn-reward, reach-ph-reward,
+        y-label: [Reward],
+        y-min: -2.5, y-max: 1.0,
+      )
+    }),
+    // (b) Position tracking error
+    canvas(length: 1cm, {
+      variant-subplot(
+        title: [(b) Position Tracking],
+        reach-pd-pos, reach-tn-pos, reach-ph-pos,
+        y-label: [Reward],
+        legend-pos: "inner-south-east",
+      )
+    }),
+    // (c) Orientation tracking error
+    canvas(length: 1cm, {
+      variant-subplot(
+        title: [(c) Orientation Tracking],
+        reach-pd-orient, reach-tn-orient, reach-ph-orient,
+        y-label: [Reward],
+        legend-pos: "inner-south-east",
+      )
+    }),
+    // (d) Policy standard deviation
+    canvas(length: 1cm, {
+      variant-subplot(
+        title: [(d) Policy Standard Deviation],
+        reach-pd-std, reach-tn-std, reach-ph-std,
+        y-label: [$sigma$],
+        legend-pos: "inner-north-east",
+      )
+    }),
+  ),
+  caption: [Reach task training convergence for the three tensegrity variants. *(a)*~Mean total reward over training timesteps. *(b)*~Position tracking reward component. *(c)*~Orientation tracking reward component. *(d)*~Policy standard deviation ($sigma$), indicating exploration level. PD and tendon variants converge within 48k steps; the physical tendon variant requires 150k steps due to the effort-based control indirection.],
   short-caption: [Reach task training convergence],
 ) <fig:reach_convergence>
 
 === Final Performance <subsec:reach_performance>
 
-@tab:reach_results summarizes the final performance metrics from the reach task training runs.
+@tab:reach_results summarizes the final performance metrics from the reach task training runs. The PD and tendon variants achieve comparable performance, with position tracking errors below 1~cm. The physical tendon variant achieves 2~cm position error, limited by the cable tension control indirection inherent to the four-bar linkage mechanism.
+
+#faps-table(
+  table(
+    columns: (auto, auto, auto, auto, auto, auto, auto),
+    stroke: 0.5pt,
+    inset: 6pt,
+    table.header([*Variant*], [*Steps*], [*Total Reward*], [*Pos. Tracking*], [*Orient. Tracking*], [*Fine-Grained*], [*Policy $sigma$*]),
+    [Tensegrity PD], [48k], [$+0.79$], [$-0.006$], [$-0.009$], [$0.087$], [$0.020$],
+    [Tensegrity Tendon], [48k], [$+0.76$], [$-0.007$], [$-0.012$], [$0.085$], [$0.028$],
+    [Tensegrity Physical], [150k], [$-0.46$], [$-0.020$], [$-0.044$], [$0.041$], [$0.113$],
+  ),
+  caption: [Reach task final performance metrics for the three tensegrity variants. Position and orientation tracking are per-step reward components (higher = better). Fine-grained measures sub-centimeter accuracy. The physical variant's larger policy $sigma$ indicates it has not yet fully converged.],
+  short-caption: [Reach task final performance metrics],
+) <tab:reach_results>
+
+=== Cross-Variant Comparison <subsec:reach_comparison>
+
+@fig:reach_comparison provides a direct comparison of the final reach task metrics across all three variants. The PD and tendon-driven models perform almost identically on task metrics, while the physical tendon variant shows a clear performance gap, particularly in orientation tracking. This gap is attributable to the effort-based control through the antiparallelogram mechanism, which introduces a nonlinear mapping between actuator commands and joint motion.
+
+#faps-figure(
+  canvas(length: 1cm, {
+    import draw: *
+
+    chart.columnchart(
+      size: (plot-full-width, plot-height),
+      label-key: 0,
+      value-key: (1, 2, 3),
+      mode: "clustered",
+      bar-style: (idx) => {
+        let colors = (plot-blue, plot-green, plot-purple)
+        (stroke: none, fill: colors.at(idx).transparentize(15%))
+      },
+      x-label: none,
+      y-label: [Value],
+      labels: ([PD], [Tendon], [Physical]),
+      (
+        ([Total Reward],    0.79,   0.76,  -0.46),
+        ([Pos. Tracking],  -0.006, -0.007, -0.020),
+        ([Orient. Track.], -0.009, -0.012, -0.044),
+        ([Fine-Grained],    0.087,  0.085,  0.041),
+      ),
+    )
+  }),
+  caption: [Cross-variant comparison of final reach task performance. The PD and tendon models achieve nearly identical scores, while the physical tendon variant shows reduced accuracy due to the effort-based cable actuation through the four-bar linkage.],
+  short-caption: [Cross-variant reach task comparison],
+) <fig:reach_comparison>
+
+== Cube Place Results <sec:place_results>
+
+// ── Cube Place data loading ─────────────────────────────────────────────────
+// Total reward (mean)
+#let place-pd-reward   = parse-csv(csv(rl-base + "cube_place/tensegrity_pd/Reward_Totalrewardmean.csv"))
+#let place-tn-reward   = parse-csv(csv(rl-base + "cube_place/tensegrity_tendon/Reward_Totalrewardmean.csv"))
+#let place-ph-reward   = parse-csv(csv(rl-base + "cube_place/tensegrity_physical/Reward_Totalrewardmean.csv"))
+
+// Grasp rate
+#let place-pd-grasp   = parse-csv(csv(rl-base + "cube_place/tensegrity_pd/Info_Metrics_grasp_rate.csv"))
+#let place-tn-grasp   = parse-csv(csv(rl-base + "cube_place/tensegrity_tendon/Info_Metrics_grasp_rate.csv"))
+#let place-ph-grasp   = parse-csv(csv(rl-base + "cube_place/tensegrity_physical/Info_Metrics_grasp_rate.csv"))
+
+// Place success rate
+#let place-pd-place   = parse-csv(csv(rl-base + "cube_place/tensegrity_pd/Info_Metrics_place_success_rate.csv"))
+#let place-tn-place   = parse-csv(csv(rl-base + "cube_place/tensegrity_tendon/Info_Metrics_place_success_rate.csv"))
+#let place-ph-place   = parse-csv(csv(rl-base + "cube_place/tensegrity_physical/Info_Metrics_place_success_rate.csv"))
+
+// Red on conveyor rate (safety)
+#let place-pd-red     = parse-csv(csv(rl-base + "cube_place/tensegrity_pd/Info_Metrics_red_on_conveyor_rate.csv"))
+#let place-tn-red     = parse-csv(csv(rl-base + "cube_place/tensegrity_tendon/Info_Metrics_red_on_conveyor_rate.csv"))
+#let place-ph-red     = parse-csv(csv(rl-base + "cube_place/tensegrity_physical/Info_Metrics_red_on_conveyor_rate.csv"))
+
+// Policy std
+#let place-pd-std     = parse-csv(csv(rl-base + "cube_place/tensegrity_pd/Policy_Standarddeviation.csv"))
+#let place-tn-std     = parse-csv(csv(rl-base + "cube_place/tensegrity_tendon/Policy_Standarddeviation.csv"))
+#let place-ph-std     = parse-csv(csv(rl-base + "cube_place/tensegrity_physical/Policy_Standarddeviation.csv"))
+
+=== Training Convergence <subsec:place_convergence>
+
+@fig:place_convergence presents the training convergence for the cube place task across all three tensegrity variants. The PD and tendon variants both reach total rewards above $330$ within 300k timesteps, demonstrating successful learning of the full grasp-lift-place pipeline. The physical tendon variant fails to learn the grasping sub-task, achieving a mean reward of only $58.9$, consistent with its lower policy convergence on the reach task.
+
+#faps-figure(
+  grid(
+    columns: 2,
+    column-gutter: 12pt,
+    row-gutter: 16pt,
+    // (a) Total reward
+    canvas(length: 1cm, {
+      variant-subplot(
+        title: [(a) Total Reward (Mean)],
+        place-pd-reward, place-tn-reward, place-ph-reward,
+        y-label: [Reward],
+        y-min: -50, y-max: 400,
+      )
+    }),
+    // (b) Grasp rate
+    canvas(length: 1cm, {
+      variant-subplot(
+        title: [(b) Grasp Rate],
+        place-pd-grasp, place-tn-grasp, place-ph-grasp,
+        y-label: [Rate],
+        y-min: 0, y-max: 1.0,
+        legend-pos: "inner-south-east",
+      )
+    }),
+    // (c) Place success
+    canvas(length: 1cm, {
+      variant-subplot(
+        title: [(c) Place Success Rate],
+        place-pd-place, place-tn-place, place-ph-place,
+        y-label: [Rate],
+        y-min: 0, y-max: 1.0,
+        legend-pos: "inner-south-east",
+      )
+    }),
+    // (d) Policy std dev
+    canvas(length: 1cm, {
+      variant-subplot(
+        title: [(d) Policy Standard Deviation],
+        place-pd-std, place-tn-std, place-ph-std,
+        y-label: [$sigma$],
+      )
+    }),
+  ),
+  caption: [Cube place training convergence for the three tensegrity variants. *(a)*~Mean total reward over training timesteps. *(b)*~Grasp success rate. *(c)*~Place success rate (cube placed in target drum). *(d)*~Policy standard deviation. Both the PD and tendon variants converge to high task success within 300k steps; the physical tendon variant does not acquire the grasping skill.],
+  short-caption: [Cube place training convergence],
+) <fig:place_convergence>
+
+=== Final Performance <subsec:place_final>
+
+@tab:place_results summarizes the cube place task evaluation metrics at the end of training. The PD and tendon variants achieve grasp rates above $94%$ and place success rates above $90%$, while maintaining red cube safety above $95%$. The physical tendon variant does not learn to grasp, consistent with its difficulty in precise position control.
 
 #faps-table(
   table(
     columns: (auto, auto, auto, auto, auto, auto),
     stroke: 0.5pt,
     inset: 6pt,
-    table.header([*Variant*], [*Steps*], [*Total Reward*], [*Pos. Error*], [*Orient. Error*], [*Fine-Grained*]),
-    [Tensegrity PD], [48k], [$+0.52$], [$-0.008$], [$-0.024$], [$0.077$],
-    [Tensegrity Tendon], [48k], [$+0.64$], [$-0.007$], [$-0.012$], [$0.079$],
-    [Tensegrity Phys. Tendon], [48k], [$+0.67$], [$-0.006$], [$-0.012$], [$0.080$],
-    [UR10e], [96k], [$-0.21$], [$-0.051$], [$-0.021$], [$0.056$],
-    [Kinova Gen3], [96k], [$+0.62$], [$-0.014$], [$-0.019$], [$0.088$],
+    table.header([*Variant*], [*Steps*], [*Total Reward*], [*Grasp Rate*], [*Place Success*], [*Red Safe*]),
+    [Tensegrity PD], [300k], [$333.3$], [$98.7%$], [$90.6%$], [$98.0%$],
+    [Tensegrity Tendon], [300k], [$332.9$], [$94.7%$], [$93.4%$], [$95.2%$],
+    [Tensegrity Physical], [300k], [$58.9$], [$0.5%$], [$0.0%$], [$97.8%$],
   ),
-  caption: [Reach task final performance metrics across variants. The UR10e does not fully converge within 96k steps.],
-  short-caption: [Reach task final performance metrics],
-) <tab:reach_results>
-
-=== Cross-Variant Comparison <subsec:reach_comparison>
-
-// [PLACEHOLDER: Bar charts or radar plots comparing final metrics across variants.
-// Generated by: scripts/plot_comparison.py]
-#faps-figure(
-  rect(width: 90%, height: 5cm, stroke: 0.5pt + luma(180))[
-    #align(center + horizon)[_PLACEHOLDER: Cross-variant comparison plots\
-    Generated by `plot_comparison.py`_]
-  ],
-  caption: [Cross-variant comparison of final reach task performance.],
-  short-caption: [Cross-variant reach task comparison],
-) <fig:reach_comparison>
-
-== Cube Place Results <sec:place_results>
-
-=== Training Convergence <subsec:place_convergence>
-
-// [PLACEHOLDER: Training curves for cube place — total reward, grasp rate, place success rate
-// for Tensegrity PD, Tendon, UR10e, Kinova variants.
-// Generated by: scripts/plot_place_training_results.py]
-#faps-figure(
-  rect(width: 90%, height: 6cm, stroke: 0.5pt + luma(180))[
-    #align(center + horizon)[_PLACEHOLDER: Cube place training curves\
-    Generated by `plot_place_training_results.py`_]
-  ],
-  caption: [Cube place training convergence showing total reward and task-specific metrics over training steps.],
-  short-caption: [Cube place training convergence],
-) <fig:place_convergence>
-
-=== Final Performance <subsec:place_final>
-
-// [PLACEHOLDER: Final metrics table for cube place — grasp rate %, place success rate %,
-// mean episode return, per variant.
-// Data from training reports in reach/reports/ and cube_place/reports/]
-#faps-table(
-  rect(width: 90%, height: 3cm, stroke: 0.5pt + luma(180))[
-    #align(center + horizon)[_PLACEHOLDER: Cube place final metrics table\
-    Grasp Rate, Place Success Rate, Mean Episode Return per variant_]
-  ],
-  caption: [Cube place final performance metrics.],
+  caption: [Cube place final performance metrics. Grasp Rate: fraction of episodes achieving a stable grasp. Place Success: fraction of episodes where the green cube is placed in the target drum. Red Safe: fraction where the red distractor remains on the conveyor.],
   short-caption: [Cube place final performance metrics],
 ) <tab:place_results>
 
 === Curriculum Effect <subsec:curriculum_effect>
 
-// [PLACEHOLDER: Before/after plots showing the effect of red cube introduction at 100k steps
-// and regularization ramp at 200k steps on success rate and reward.
-// Look for curriculum transitions in the training curves.]
+@fig:curriculum_effect illustrates the effect of the two curriculum transitions on training progression for the PD variant. At $100"k"$ timesteps, the red distractor cube is introduced, causing a brief dip in reward as the policy encounters a new obstacle. At $200"k"$ timesteps, action rate and joint velocity penalties ramp up, promoting smoother trajectories at a slight cost to peak reward. Both transitions demonstrate the curriculum design working as intended: the policy first acquires core skills, then learns robustness.
+
+// Reward breakdown showing curriculum transitions
+#let place-pd-action   = parse-csv(csv(rl-base + "cube_place/tensegrity_pd/Info_Episode_Reward_action_rate.csv"))
+#let place-pd-joint-vel = parse-csv(csv(rl-base + "cube_place/tensegrity_pd/Info_Episode_Reward_joint_vel.csv"))
+#let place-pd-red-rew  = parse-csv(csv(rl-base + "cube_place/tensegrity_pd/Info_Episode_Reward_cube_off_conveyor.csv"))
+
 #faps-figure(
-  rect(width: 90%, height: 5cm, stroke: 0.5pt + luma(180))[
-    #align(center + horizon)[_PLACEHOLDER: Curriculum effect — reward/success rate\
-    changes at 100k (red cube) and 200k (regularization) step thresholds_]
-  ],
-  caption: [Effect of curriculum stages on cube place training: red cube introduction (100k steps) and regularization ramp (200k steps).],
+  grid(
+    columns: 2,
+    column-gutter: 12pt,
+    row-gutter: 16pt,
+    // (a) Total reward with curriculum markers
+    canvas(length: 1cm, {
+      import draw: *
+
+      plot.plot(
+        size: (plot-half-width, plot-small-height),
+        x-label: [Timesteps],
+        y-label: [Reward],
+        x-min: 0, x-max: auto,
+        y-min: -50, y-max: 400,
+        x-grid: true, y-grid: true,
+        legend: "inner-south-east",
+        legend-style: (item: (spacing: 0.15), padding: 0.1),
+        {
+          plot.add(place-pd-reward, label: [Total Reward],
+            style: (stroke: (paint: plot-blue, thickness: 1.2pt)))
+          // Curriculum stage markers
+          plot.add-vline(100000, label: [Red cube $in$],
+            style: (stroke: (paint: plot-red, thickness: 0.8pt, dash: "dashed")))
+          plot.add-vline(200000, label: [Reg. ramp],
+            style: (stroke: (paint: plot-amber, thickness: 0.8pt, dash: "dashed")))
+        }
+      )
+
+      content((plot-half-width / 2, plot-small-height + 0.35), text(size: 8pt, weight: "bold", [(a) Total Reward — PD Variant]))
+    }),
+    // (b) Grasp and place rates with markers
+    canvas(length: 1cm, {
+      import draw: *
+
+      plot.plot(
+        size: (plot-half-width, plot-small-height),
+        x-label: [Timesteps],
+        y-label: [Rate],
+        x-min: 0, x-max: auto,
+        y-min: 0, y-max: 1.0,
+        x-grid: true, y-grid: true,
+        legend: "inner-south-east",
+        legend-style: (item: (spacing: 0.15), padding: 0.1),
+        {
+          plot.add(place-pd-grasp, label: [Grasp Rate],
+            style: (stroke: (paint: plot-blue, thickness: 1.0pt)))
+          plot.add(place-pd-place, label: [Place Success],
+            style: (stroke: (paint: plot-green, thickness: 1.0pt)))
+          plot.add(place-pd-red, label: [Red Safe Rate],
+            style: (stroke: (paint: plot-red, thickness: 1.0pt)))
+          plot.add-vline(100000, style: (stroke: (paint: plot-red, thickness: 0.8pt, dash: "dashed")))
+          plot.add-vline(200000, style: (stroke: (paint: plot-amber, thickness: 0.8pt, dash: "dashed")))
+        }
+      )
+
+      content((plot-half-width / 2, plot-small-height + 0.35), text(size: 8pt, weight: "bold", [(b) Task Metrics — PD Variant]))
+    }),
+    // (c) Action rate penalty evolution
+    canvas(length: 1cm, {
+      import draw: *
+
+      plot.plot(
+        size: (plot-half-width, plot-small-height),
+        x-label: [Timesteps],
+        y-label: [Penalty],
+        x-min: 0, x-max: auto,
+        x-grid: true, y-grid: true,
+        legend: "inner-south-west",
+        legend-style: (item: (spacing: 0.15), padding: 0.1),
+        {
+          plot.add(place-pd-action, label: [Action Rate],
+            style: (stroke: (paint: plot-amber, thickness: 1.0pt)))
+          plot.add(place-pd-joint-vel, label: [Joint Velocity],
+            style: (stroke: (paint: plot-teal, thickness: 1.0pt)))
+          plot.add-vline(200000, style: (stroke: (paint: plot-amber, thickness: 0.8pt, dash: "dashed")))
+        }
+      )
+
+      content((plot-half-width / 2, plot-small-height + 0.35), text(size: 8pt, weight: "bold", [(c) Regularization Penalties]))
+    }),
+    // (d) Red cube penalty
+    canvas(length: 1cm, {
+      import draw: *
+
+      plot.plot(
+        size: (plot-half-width, plot-small-height),
+        x-label: [Timesteps],
+        y-label: [Penalty],
+        x-min: 0, x-max: auto,
+        x-grid: true, y-grid: true,
+        legend: "inner-south-west",
+        legend-style: (item: (spacing: 0.15), padding: 0.1),
+        {
+          plot.add(place-pd-red-rew, label: [Cube Off Conveyor],
+            style: (stroke: (paint: plot-red, thickness: 1.0pt)))
+          plot.add-vline(100000, label: [Red cube $in$],
+            style: (stroke: (paint: plot-red, thickness: 0.8pt, dash: "dashed")))
+        }
+      )
+
+      content((plot-half-width / 2, plot-small-height + 0.35), text(size: 8pt, weight: "bold", [(d) Red Cube Penalty]))
+    }),
+  ),
+  caption: [Effect of curriculum stages on the PD variant's cube place training. *(a)*~Total reward with dashed lines marking the red cube introduction ($100"k"$) and regularization ramp ($200"k"$). *(b)*~Task success rates showing brief transient dips at curriculum transitions. *(c)*~Regularization penalty terms ramping up after $200"k"$ steps. *(d)*~Red cube off-conveyor penalty activating after $100"k"$ steps.],
   short-caption: [Curriculum stages effect on training],
 ) <fig:curriculum_effect>
 
 == Cube Sort Preliminary Results <sec:sort_results>
 
-// [PLACEHOLDER: If cube sort training has been run, show preliminary curves here.
-// Generated by: scripts/plot_sort_training_results.py]
+// ── Cube Sort data loading ──────────────────────────────────────────────────
+#let sort-pd-reward      = parse-csv(csv(rl-base + "cube_sort/tensegrity_pd/Reward_Totalrewardmean.csv"))
+#let sort-pd-grasp-rate  = parse-csv(csv(rl-base + "cube_sort/tensegrity_pd/Info_Metrics_green_grasp_rate.csv"))
+#let sort-pd-place-rate  = parse-csv(csv(rl-base + "cube_sort/tensegrity_pd/Info_Metrics_green_placement_rate.csv"))
+#let sort-pd-miss-rate   = parse-csv(csv(rl-base + "cube_sort/tensegrity_pd/Info_Metrics_green_miss_rate.csv"))
+#let sort-pd-red-grab    = parse-csv(csv(rl-base + "cube_sort/tensegrity_pd/Info_Metrics_red_grabbed_count.csv"))
+
+The cube sort task represents an extension of the cube place pipeline to sequential multi-object sorting from a conveyor belt. @fig:sort_preliminary shows preliminary training results using the PD variant only, as training is ongoing. The agent begins to learn approach and grasp behaviors within 77k timesteps, though reliable sorting has not yet been achieved, as indicated by the still-increasing reward trajectory.
+
 #faps-figure(
-  rect(width: 90%, height: 5cm, stroke: 0.5pt + luma(180))[
-    #align(center + horizon)[_PLACEHOLDER: Cube sort preliminary training results\
-    (if available from `plot_sort_training_results.py`)_]
-  ],
-  caption: [Preliminary cube sort training results (work in progress).],
+  grid(
+    columns: 2,
+    column-gutter: 12pt,
+    row-gutter: 16pt,
+    // (a) Total reward
+    canvas(length: 1cm, {
+      import draw: *
+
+      plot.plot(
+        size: (plot-half-width, plot-small-height),
+        x-label: [Timesteps],
+        y-label: [Reward],
+        x-min: 0, x-max: auto,
+        x-grid: true, y-grid: true,
+        legend: "inner-north-west",
+        legend-style: (item: (spacing: 0.15), padding: 0.1),
+        {
+          plot.add(sort-pd-reward, label: [Total Reward],
+            style: (stroke: (paint: plot-blue, thickness: 1.2pt)))
+        }
+      )
+
+      content((plot-half-width / 2, plot-small-height + 0.35), text(size: 8pt, weight: "bold", [(a) Total Reward (Mean)]))
+    }),
+    // (b) Grasp and placement rates
+    canvas(length: 1cm, {
+      import draw: *
+
+      plot.plot(
+        size: (plot-half-width, plot-small-height),
+        x-label: [Timesteps],
+        y-label: [Rate],
+        x-min: 0, x-max: auto,
+        y-min: 0, y-max: 1.0,
+        x-grid: true, y-grid: true,
+        legend: "inner-north-west",
+        legend-style: (item: (spacing: 0.15), padding: 0.1),
+        {
+          plot.add(sort-pd-grasp-rate, label: [Green Grasp],
+            style: (stroke: (paint: plot-green, thickness: 1.0pt)))
+          plot.add(sort-pd-place-rate, label: [Green Place],
+            style: (stroke: (paint: plot-blue, thickness: 1.0pt)))
+          plot.add(sort-pd-miss-rate, label: [Green Miss],
+            style: (stroke: (paint: plot-red, thickness: 1.0pt)))
+        }
+      )
+
+      content((plot-half-width / 2, plot-small-height + 0.35), text(size: 8pt, weight: "bold", [(b) Green Cube Success Rates]))
+    }),
+  ),
+  caption: [Preliminary cube sort training results using the PD tensegrity variant (77k timesteps, training ongoing). *(a)*~Total reward showing an upward trend. *(b)*~Green cube grasp, placement, and miss rates. The agent is beginning to acquire approach and grasp behaviors but has not yet achieved reliable sorting.],
   short-caption: [Preliminary cube sort training results],
 ) <fig:sort_preliminary>
 
 == Summary of Key Results <sec:results_summary>
 
-// To be written after all measurements are available.
+The experimental evaluation yields three main findings:
+
++ *PD and tendon variants achieve comparable RL performance.* On the reach task, both variants converge within 48k timesteps to total rewards above $+0.75$, with position tracking errors below $1"cm"$. On the cube place task, both achieve grasp rates above $94%$ and place success rates above $90%$. The cable-mediated tendon transmission does not introduce a measurable performance penalty in the RL setting, suggesting that the disc-approximation tension mapping is sufficiently transparent to the policy.
+
++ *The physical tendon variant presents a significant control challenge.* With effort-based actuation through the four-bar antiparallelogram linkage, the physical variant converges more slowly and to lower final performance on both tasks. On reach, it achieves a total reward of $-0.46$ (compared to $+0.79$ for PD) with $3 times$ the policy uncertainty. On cube place, it fails to acquire the grasping skill entirely. This result highlights the difficulty of RL with indirect force transmission and motivates future work on hierarchical control architectures.
+
++ *Curriculum learning enables robust multi-stage manipulation.* The staged introduction of the red distractor cube and regularization penalties in the cube place task produces smooth curriculum transitions with only brief transient performance dips, validating the curriculum design described in @ch:methodology.

@@ -13,7 +13,7 @@ Robotic manipulation requires generating control commands that achieve a goal wh
 ==== MDP viewpoint and partial observability
 A manipulation task can be modelled as a #ac("MDP") $cal(M) = (cal(S), cal(A), P, r, gamma)$, where $cal(S)$ is the state space, $cal(A)$ the action space, $P(s_(t+1) | s_t, a_t)$ the transition dynamics, $r(s_t, a_t)$ the reward, and $gamma in [0,1)$ the discount factor. A policy $pi_theta (a | s)$ (parameterized by $theta$) induces trajectories $(s_0, a_0, r_0, dots, s_T)$ and is trained to maximize the expected discounted return $J(theta) = EE_(pi_theta)[sum_(t=0)^T gamma^t r_t].$~@SuttonBarto2018 
 
-In real manipulation systems, the full state $s_t$ is typically not directly accessible. Instead, control is based on observations $o_t$ (e.g., proprioception, gripper state, pose estimates, perception features). This partial observability motivates careful observation design and, where appropriate, augmenting policies with memory (e.g., recurrent networks), or stacking observation histories to approximate the Markov property in practice.~@Kober2013Survey
+In real manipulation systems, the full state $s_t$ is typically not directly accessible. Instead, control is based on observations $o_t$ (e.g., proprioception, gripper state, pose estimates, perception features). This partial observability motivates careful observation design and, where appropriate, augmenting policies with memory (e.g., recurrent networks), or stacking observation histories to approximate the Markov property in practice.~@Kober2013Survey @fig:rl_agent_environment_loop illustrates this interaction loop with the manipulation-specific action, observation, and reward structure used in this thesis.
 
 #faps-figure(
   rl-agent-env-loop(),

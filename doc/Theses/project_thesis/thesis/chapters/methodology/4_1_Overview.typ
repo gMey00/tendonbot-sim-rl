@@ -19,5 +19,3 @@ The experimental methodology follows three stages, illustrated in @fig:methodolo
   caption: [Overview of the experimental pipeline. Stage~1 constructs and validates the robot model with three actuation modes. Stage~2 formulates progressive #ac("RL") tasks. Stage~3 evaluates task performance across all robot-actuation variants.],
   short-caption: [Overview of the experimental pipeline],
 ) <fig:methodology_overview>
-
-The following sections describe each component in the order listed above. @sec:physical_robot introduces the robot design — the tensegrity arm hardware and the simulated base and gripper that complete the manipulator. @sec:sim_model_construction details the translation from #ac("CAD") geometry to a physics-ready #ac("USD") asset. @sec:tendon_actuation derives the tendon-to-joint mapping used in simulation. @sec:model_validation presents the validation protocol. @sec:rl_tasks and @sec:training_infrastructure describe the #ac("RL") task formulations and training setup, respectively.

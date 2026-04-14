@@ -6,9 +6,7 @@
 
 == Robot Design <sec:physical_robot>
 
-This section describes the composite manipulator system used throughout this work. Its design brings together three distinct subsystems of different origin: a tendon-driven tensegrity arm built as physical hardware at FAPS, an industrial parallel-jaw gripper added for its versatility, and a prismatic positioning base created purely in simulation. Understanding each component's provenance and design rationale is essential for interpreting the simulation model and the choices made during task development.
-
-The tensegrity arm is the only part of the robot that exists as real hardware; it was designed and built at FAPS, and its mechanical design and initial characterization are documented by Klein~@Klein2023 and Walter et al.~@Walter2023Tensegrity. The gripper and base are simulated additions that complete the manipulator for the target application of autonomous waste sorting, where objects of widely varying size and shape — including cloth items in the planned master thesis extension — must be reliably grasped and placed.
+This section describes the composite manipulator system used throughout this work. Its design brings together three distinct subsystems of different origin: a tendon-driven tensegrity arm built as physical hardware at FAPS, an industrial parallel-jaw gripper added for its versatility, and a prismatic positioning base created purely in simulation. Understanding each component's design rationale is essential for interpreting the simulation model and the choices made during task development.
 
 === Kinematic Chain and Degrees of Freedom <subsec:kinematic_chain>
 
@@ -22,13 +20,13 @@ The tensegrity manipulator is a ceiling-mounted, 5-#ac("DoF") serial kinematic c
 
 #faps-figure(
   image("../../../../shared/figures/tensegrity_variants.png", width: 90%),
-  caption: [Robot model variants rendered in Isaac Sim. From left to right: 2-#ac("DoF") prismatic base, 3-#ac("DoF") tendon-driven arm (disc approximation), assembled 5-#ac("DoF") manipulator, and 5-#ac("DoF") manipulator with Robotiq 2F-140 gripper. Each variant is available with full-resolution and low-resolution collision meshes, yielding eight #ac("USD") assemblies in total.],
+  caption: [Robot model variants rendered in Isaac Sim. Additional to the Elbow disk approximated model, established by Klein~@Klein2023, a model mimicing the actual four-bar antiparallelogram mechanism was added. Each variant is available with full-resolution and low-resolution visual meshes.],
   short-caption: [Robot model variants rendered in Isaac Sim],
 ) <fig:robot_variants>
 
-*Prismatic base.* The two prismatic joints translate the arm mounting plate along the horizontal $Y$-axis and the vertical $Z$-axis. The base is a purely simulative addition; it was created using the Isaac Sim Robot Wizard (BETA) and is intentionally oversimplified to allow rapid prototyping of different base configurations. Its $Z$-axis provides linear motion in the same direction as the elbow swing, extending the arm's vertical reach, while the $Y$-axis approximates the lateral positioning that a ceiling-mounted conveyor rail would provide in the physical setup. The conveyor itself handles the remaining transport direction; the wrist's two rotational degrees of freedom compensate for residual positioning errors introduced by conveyor tolerances. The base provides a planar positioning range of $plus.minus 0.5 "m"$ in $Y$ and $-0.5 "m"$ to $0.0 "m"$ in $Z$ (downward from the ceiling).
+*Tendon-driven arm.* The arm comprises an upper arm (root link), a forearm, and a two-axis wrist, connected by three revolute joints. All three joints are actuated exclusively through cable-driven transmissions; no direct motor-to-joint coupling exists. The elbow joint provides $plus.minus 70 degree$ of rotation in the sagittal plane. The wrist mechanism provides $plus.minus 50 degree$ about each of two perpendicular axes (pitch and roll), enabling the end-effector to orient relative to the forearm axis~@Klein2023.
 
-*Tendon-driven arm.* The arm is the sole hardware component and comprises an upper arm (root link), a forearm, and a two-axis wrist, connected by three revolute joints. All three joints are actuated exclusively through cable-driven transmissions; no direct motor-to-joint coupling exists. The elbow joint provides $plus.minus 70 degree$ of rotation in the sagittal plane. The wrist mechanism provides $plus.minus 50 degree$ about each of two perpendicular axes (pitch and roll), enabling the end-effector to orient relative to the forearm axis~@Klein2023.
+*Prismatic base.* The two prismatic joints translate the arm mounting plate along the horizontal $Y$-axis and the vertical $Z$-axis. The base is a purely simulative addition. It was created using the Isaac Sim Robot Wizard (BETA) and is oversimplified to allow rapid prototyping of different base configurations in the future. Its $Y$-axis provides linear motion in the same direction as the elbow swing, extending the arm's horizontal reach along the crossection of the conveyor belt. The $Z$-axis provides vertical motion of the arm toward the conveyor. A additional prismatic joint along the $X$-axis was purposfully omited, as the conveyor provides transport motion in that direction. The wrist's two rotational degrees of freedom compensate for residual positioning errors introduced by conveyor tolerances. The base provides a planar positioning range of $plus.minus 0.5 "m"$ in $Y$ and $-0.5 "m"$ to $0.0 "m"$ in $Z$ (downward from the ceiling).
 
 *Gripper.* The Robotiq 2F-140 is an adaptive parallel-jaw gripper with a 140~mm stroke, adjustable grip force from 10~N to 125~N, and a payload capacity of approximately 2.5~kg~@Robotiq2F140Datasheet. It was selected for its versatility and adaptability to a wide range of object sizes and shapes, which is critical for the envisioned trash-sorting application where the robot must handle everything from rigid cubes to deformable cloth. The gripper is modeled as a self-contained articulated asset loaded from the Isaac Sim built-in asset library. A single actuated joint drives both fingers symmetrically via an internal linkage.
 
@@ -92,15 +90,9 @@ This arrangement is redundantly actuated (three cables, two #ac("DoF")), ensurin
 
 #faps-figure(
   image("../../../../shared/figures/wrist_static_3d.svg", width: 100%),
-  caption: [Three-dimensional overview of the cable-driven 2-#ac("DoF") wrist mechanism, generated from the kinematic model. The base ring (radius $R = 72.5 "mm"$) is shown with six cable attachment points: three active cables (red) and three passive cables (blue). The platform ring (radius $r = 25 "mm"$) tilts about two perpendicular axes. Ghost poses illustrate the workspace envelope.],
-  short-caption: [3D overview of the cable-driven wrist mechanism],
+  caption: [Three-dimensional overview of the cable-driven 2-#ac("DoF") wrist mechanism, generated from the kinematic model. The base ring (radius $R = 72.5 "mm"$) is shown with six cable attachment points: three active cables (red) and three passive cables (blue). The platform ring (radius $r_w = 20 "mm"$) tilts about two perpendicular axes. Ghost poses illustrate the workspace envelope. The semi-transparent green cone visualises the reachable orientation space of the platform normal vector, representing the combined angular limits of the two wrist joints.],
+  short-caption: [3D overview of the cable-driven wrist mechanism with workspace cone],
 ) <fig:wrist_3d>
-
-#faps-figure(
-  image("../../../../shared/figures/tensegrity_wrist_joints.png", width: 55%),
-  caption: [Wrist joint axes of the cable-driven 2-#ac("DoF") wrist as modeled in Isaac Sim. The two revolute joints are arranged perpendicular to each other, providing pitch and roll motion of the end-effector plate relative to the forearm. The three active cable attachment points are visible on the wrist platform ring.],
-  short-caption: [Wrist joint axes of the cable-driven wrist],
-) <fig:wrist_joints>
 
 === Drive System and Tendon Routing <subsec:drive_system>
 
@@ -112,14 +104,14 @@ $ r_"eff,elbow" = 3 times r_s = 15 "mm" $ <eq:elbow_lever>
 The wrist tendons are direct-drive (no additional reduction), so the effective wrist lever arm equals the wrist platform radius~@Klein2023.
 
 ==== Maximum tensions
-The maximum continuous motor torque ($tau_"motor,max"$) divided by the spool radius determines the maximum cable tension per motor. With the 3:1 elbow pulley, the maximum elbow tendon tension is three times the single-motor maximum:
+The maximum motor torque ($tau_"motor,max"$) divided by the spool radius determines the maximum cable tension per motor. With the 3:1 elbow pulley, the maximum elbow tendon tension is three times the single-motor maximum:
 $ T_"max,elbow" = 3 dot tau_"motor,max" / r_s $ <eq:max_tension_elbow>
-The wrist tendons each carry at most $T_"max,wrist" = tau_"motor,max" / r_s$ per cable. In simulation, a unified saturation limit of $T_"max" = 500 "N"$ per tendon is used for all five tendons, derived from the motor specifications and verified to remain within the 10~A continuous current limit of the EPOS4 controller~@Klein2023.
+The wrist tendons are direct-drive and carry at most $T_"max,wrist" = tau_"motor,max" / r_s$ per cable. From the motor's power supply limit (PSU peak torque $0.79 "Nm"$), the theoretical peak elbow force is $474 "N"$. In simulation, a unified saturation limit of $T_"max" = 500 "N"$ per tendon is used for all five tendons. While this accurately bounds the elbow, it is significantly higher than the wrist's continuous capability of $80 "N"$.
 
 ==== Effort limits
-The corresponding joint effort limits used by the physics solver are computed from the maximum torque producible through the tendon arrangement:
-$ tau_"max,elbow" = 2 dot T_"max" dot r_"eff,elbow" = 2 times 500 times 0.0725 = 72.5 "Nm" $ <eq:effort_elbow>
-For the wrist, maximum single-joint effort depends on the tendon geometry and the structure matrix. The configured effort limits are 72.5~Nm for the elbow and 80~Nm for each wrist joint (accounting for the redundant cable arrangement that allows all three cables to contribute cooperatively).
+The corresponding joint effort limits used by the physics solver cap the maximum torque producible through the tendon arrangement. Because the elbow tendons act antagonistically, maximum torque is generated when one pulls at $T_"max"$ while the other is slack:
+$ tau_"max,elbow" = 1 dot T_"max" dot r_"eff,elbow" = 1 times 500 times 0.0725 = 36.25 "Nm" $ <eq:effort_elbow>
+For the wrist, the maximum single-joint effort depends on the tendon geometry ($r_w = 20 "mm"$) and the active tension limit. To protect against unphysical torques caused by the unified $500 "N"$ cable saturation, the configured joint effort limits clamp the wrist explicitly. The limits are set to 36.25~Nm for the elbow and 3.0~Nm for each wrist joint, providing a safeguard against unrealistic tension combinations~@Klein2023.
 
 @tab:joint_ranges summarizes the joint parameters of the assembled 5-#ac("DoF") manipulator.
 
@@ -131,9 +123,9 @@ For the wrist, maximum single-joint effort depends on the tendon geometry and th
     table.header([*Joint*], [*Type & Axis*], [*Range of Motion*], [*Effort limit (Nm)*]),
     [`base_y_joint`], [Prismatic ($Y$)], [$plus.minus 0.5$~m], [200],
     [`base_z_joint`], [Prismatic ($Z$)], [$-0.5$ to $0.0$~m], [200],
-    [`elbow_joint`], [Revolute (pitch)], [$plus.minus 70 degree$], [72.5],
-    [`wrist_y_joint`], [Revolute (pitch)], [$plus.minus 50 degree$], [80],
-    [`wrist_x_joint`], [Revolute (roll)], [$plus.minus 50 degree$], [80],
+    [`elbow_joint`], [Revolute (pitch)], [$plus.minus 70 degree$], [36.25],
+    [`wrist_y_joint`], [Revolute (pitch)], [$plus.minus 50 degree$], [3.0],
+    [`wrist_x_joint`], [Revolute (roll)], [$plus.minus 50 degree$], [3.0],
     [`finger_joint`], [Revolute (gripper)], [$0$ to $0.7854$ rad], [200],
   ),
   caption: [Actuated joints of the integrated 5-#ac("DoF") tensegrity manipulator. Joint ranges correspond to the practical workspace reported by Klein~@Klein2023. Effort limits are derived from the motor and tendon specifications.],

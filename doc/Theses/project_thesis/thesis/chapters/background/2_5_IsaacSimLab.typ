@@ -10,7 +10,7 @@ NVIDIA Isaac~Sim (Version 5.1.0) is used as the primary simulation environment i
 
 === Isaac Sim in the Omniverse Stack
 
-Isaac~Sim is a reference application on top of NVIDIA Omniverse, designed for developing, simulating, and testing AI-driven robots in physically based virtual environment. A central architectural decision is the use of #ac("USD") as the scene representation. Robotics assets and environments are expressed as a hierarchical scene graph, serving as the common data layer across physics, rendering, and robotics tooling. Isaac~Sim is built on Omniverse Kit, a modular framework based on lightweight plugins and an extension mechanism. Capabilities such as physics interfaces, sensor simulation, and robotics middleware bridges are exposed as extensions that can be enabled, configured, and scripted from Python — supporting both interactive development and headless execution in automated pipelines.~@nvidia_isaac_sim_510_what_is
+Isaac~Sim is a reference application on top of NVIDIA Omniverse, designed for developing, simulating, and testing AI-driven robots in physically based virtual environment. A central architectural decision is the use of #ac("USD") as the scene representation. Robotics assets and environments are expressed as a hierarchical scene graph, serving as the common data layer across physics, rendering, and robotics tooling. Isaac~Sim is built on Omniverse Kit, a modular framework based on lightweight plugins and an extension mechanism. Capabilities such as physics interfaces, sensor simulation, and robotics middleware bridges are exposed as extensions that can be enabled, configured, and scripted from Python — supporting both interactive development and headless execution in automated pipelines.~@nvidia_isaac_sim_510_what_is The resulting software stack is shown in @fig:isaacsim_isaaclab_stack.
 
 #faps-figure(
   isaac-stack(),
@@ -33,7 +33,7 @@ IsaacLab is the successor to Isaac Gym and extends GPU-native simulation into la
 The `ManagerBasedRLEnv` interface returns #ac("MDP")-relevant signals while remaining compatible with standard environment creation patterns (e.g., via `gymnasium.make`), supporting integration with multiple #ac("RL") libraries without rewriting the simulator interface layer~@isaaclab_manager_based_rl_env.
 
 ==== GPU-native training
-  The key performance advantage is that physics stepping and policy learning share device memory, avoiding #ac("CPU")--#ac("GPU") transfer bottlenecks. Isaac Gym demonstrated that this GPU-resident design can yield order-of-magnitude improvements in end-to-end training throughput compared to #ac("CPU")-based simulation~@Makoviychuk2021IsaacGym. IsaacLab extends this paradigm with documented multi-#ac("GPU") and multi-node training support, enabling scale-out execution for #ac("RL") workloads when training is bottlenecked by rollout collection~@Mittal2025IsaacLab @isaaclab_multi_gpu_multinode.
+  The key performance advantage is that physics stepping and policy learning share device memory, avoiding #ac("CPU")--#ac("GPU") transfer bottlenecks. Isaac Gym demonstrated that this GPU-resident design can yield order-of-magnitude improvements in end-to-end training throughput compared to #ac("CPU")-based simulation~@Makoviychuk2021IsaacGym. IsaacLab extends this paradigm with documented multi-#ac("GPU") and multi-node training support, enabling scale-out execution for #ac("RL") workloads when training is bottlenecked by rollout collection~@Mittal2025IsaacLab @isaaclab_multi_gpu_doc.
 
 === Comparison to Alternative Simulators
 

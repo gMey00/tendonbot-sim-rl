@@ -102,7 +102,7 @@ def apply_3d_layout(
             camera=camera,
         ),
         legend=dict(x=1.02, y=0.5, font=dict(size=9)),
-        margin=dict(l=0, r=180, t=80 if show_caption else 20, b=0),
+        margin=dict(l=0, r=180, t=80 if show_caption else 10, b=0),
         width=width,
         height=height,
     )

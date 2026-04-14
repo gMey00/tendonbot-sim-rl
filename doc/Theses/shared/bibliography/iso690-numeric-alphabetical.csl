@@ -301,12 +301,12 @@
   <macro name="note">
     <text variable="note"/>
   </macro>
-  <!-- CITATION: numeric [1] format, sorted by citation-number -->
-  <citation collapse="citation-number" after-collapse-delimiter="; ">
+  <!-- CITATION: numeric [1][2] format, sorted by citation-number -->
+  <citation>
     <sort>
       <key variable="citation-number"/>
     </sort>
-    <layout prefix="[" suffix="]" delimiter=", ">
+    <layout prefix="[" suffix="]" delimiter="][">
       <group delimiter=", ">
         <text variable="citation-number"/>
         <group>

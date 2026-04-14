@@ -132,3 +132,11 @@
 |-----|--------|-------|------|-------|--------|-------|---------|
 | ISO10218 | ISO | "Robots and Robotic Devices — Safety Requirements for Industrial Robots — Part 1: Robots" (ISO 10218-1:2011, updated 2025) | 2011 | 🔴 | 🟢 | 🟢 | ISO Standard for industrial robot safety requirements. |
 | ISO15066 | ISO | "Robots and Robotic Devices — Collaborative Robots" (ISO/TS 15066:2016) | 2016 | 🔴 | 🟢 | 🟢 | ISO Standard for collaborative robot power and force limiting (PFL) with biomechanical injury thresholds. |
+
+## Zhang et al. (Zhang2017tensRL)
+**Citation:** Zhang, M., Geng, X., Bruce, J., Caluwaerts, K., Vespignani, M., SunSpiral, V., Abbeel, P. & Levine, S. (2017). "Deep Reinforcement Learning for Tensegrity Robot Locomotion." *IEEE ICRA 2017*, pp. 634–641. arXiv: 1609.09049.
+**Summary Highlights:**
+- A seminal paper establishing the precedent for applying Reinforcement Learning to tensegrity systems.
+- Utilizes Mirror Descent Guided Policy Search (MDGPS) in the NASA Tensegrity Robotics Toolkit (NTRT) simulator to learn locomotion for the NASA SUPERball (a 6-strut tensegrity robot).
+- Achieves successful sim-to-real transfer with limited onboard sensing.
+- Demonstrates that the learned policies can generalize robustly to physical parameter changes, sensor noise, and varied terrain profiles.
