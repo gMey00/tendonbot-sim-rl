@@ -73,18 +73,18 @@ mindmap
 
 ## Topic Files
 
-| File | Topic Area | References |
-|------|-----------|------------|
-| [tendon_robots.md](tendon_robots.md) | Tendon-Driven & Cable Robots | 52 |
-| [tensegrity_robots.md](tensegrity_robots.md) | Tensegrity Robots & Compliant Mechanisms | 52 |
-| [linkage_mechanisms.md](linkage_mechanisms.md) | Linkage Mechanisms & Closed-Loop Kinematics | 13 |
-| [grasping_manipulation.md](grasping_manipulation.md) | Grasping & Manipulation | 17 |
-| [simulation.md](simulation.md) | Simulation & Physics Engines | 42 |
-| [reinforcement_learning.md](reinforcement_learning.md) | Reinforcement Learning | 35 |
-| [cloth_manipulation.md](cloth_manipulation.md) | Cloth & Deformable Object Manipulation | 22 |
-| [sim_to_real.md](sim_to_real.md) | Sim-to-Real Transfer | 10 |
-| [control_kinematics.md](control_kinematics.md) | Robot Control & Kinematics | 14 |
-| [workspace_analysis.md](workspace_analysis.md) | Workspace Analysis | 11 |
+| File                                                   | Topic Area                                  | References |
+| ------------------------------------------------------ | ------------------------------------------- | ---------- |
+| [tendon_robots.md](tendon_robots.md)                   | Tendon-Driven & Cable Robots                | 52         |
+| [tensegrity_robots.md](tensegrity_robots.md)           | Tensegrity Robots & Compliant Mechanisms    | 52         |
+| [linkage_mechanisms.md](linkage_mechanisms.md)         | Linkage Mechanisms & Closed-Loop Kinematics | 13         |
+| [grasping_manipulation.md](grasping_manipulation.md)   | Grasping & Manipulation                     | 17         |
+| [simulation.md](simulation.md)                         | Simulation & Physics Engines                | 42         |
+| [reinforcement_learning.md](reinforcement_learning.md) | Reinforcement Learning                      | 35         |
+| [cloth_manipulation.md](cloth_manipulation.md)         | Cloth & Deformable Object Manipulation      | 22         |
+| [sim_to_real.md](sim_to_real.md)                       | Sim-to-Real Transfer                        | 10         |
+| [control_kinematics.md](control_kinematics.md)         | Robot Control & Kinematics                  | 14         |
+| [workspace_analysis.md](workspace_analysis.md)         | Workspace Analysis                          | 11         |
 
 ## Relevance Rating Legend
 
@@ -104,10 +104,9 @@ Each reference is rated across three dimensions using a color-coded table:
 
 ## Related Project Paths
 
-| Path                                                                                                              | Description                                                 |
-| ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| [doc/Theses/shared/bibliography/literature.bib](../Theses/shared/bibliography/literature.bib)                    | Shared BibTeX file (all citations)                          |
-| [doc/Theses/shared/bibliography/literature/](../Theses/shared/bibliography/literature)                           | Per-topic BibTeX fragments                                  |
-| [doc/Theses/project_thesis/](../Theses/project_thesis)                                                           | Project thesis (Projektarbeit) LaTeX source                 |
-| [doc/Theses/master_thesis/](../Theses/master_thesis)                                                             | Master thesis (Masterarbeit) LaTeX source                   |
-| [doc/Theses/shared/](../Theses/shared)                                                                           | Shared thesis resources (formatting, figures, bibliography) |
+| Path                                                                                          | Description                                                 |
+| --------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| [doc/Theses/shared/bibliography/literature.bib](../Theses/shared/bibliography/literature.bib) | Shared BibTeX file (all citations)                          |
+| [doc/Theses/project_thesis/](../Theses/project_thesis)                                        | Project thesis (Projektarbeit) LaTeX source                 |
+| [doc/Theses/master_thesis/](../Theses/master_thesis)                                          | Master thesis (Masterarbeit) LaTeX source                   |
+

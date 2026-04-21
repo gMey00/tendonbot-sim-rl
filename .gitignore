@@ -28,6 +28,12 @@ __pycache__/
 *.tmp
 *.log
 
+# Literature sources (PDFs/HTML kept locally only — not pushed due to size and copyright)
+doc/Literatur/sources/**
+!doc/Literatur/sources/
+!doc/Literatur/sources/README.md
+!doc/Literatur/sources/missing_sources.html
+
 # LaTeX temporary / build files
 *.aux
 *.lof
