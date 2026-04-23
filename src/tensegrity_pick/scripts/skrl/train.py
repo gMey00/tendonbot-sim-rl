@@ -246,7 +246,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
         # configure and instantiate the skrl runner
         # https://skrl.readthedocs.io/en/latest/api/utils/runner.html
-        runner = Runner(env, agent_cfg)
+        # R6: cube_sort uses a custom DeepSets-encoder Runner subclass.
+        if args_cli.task and "cube-sort" in args_cli.task.lower():
+            from tensegrity_pick.agents import CubeSetRunner as _Runner
+        else:
+            _Runner = Runner
+        runner = _Runner(env, agent_cfg)
 
         # load checkpoint (if specified)
         if resume_path:

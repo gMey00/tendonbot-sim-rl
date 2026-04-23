@@ -1,9 +1,14 @@
 # Cube Sort Task
 
-> **⚠️ Work in Progress** — Stage 1 (single green cube on active conveyor).
-> The agent reliably grasps and transports cubes but has not yet learned the
-> release phase.  Reward rebalancing is implemented but awaits a full training
-> run.
+> **Rework in progress — Iteration 1 Complete (2G+1R), Iteration 2 Incomplete (4G+2R).**
+> The prior Iterations 0–3 were invalidated by post-play assessment that revealed
+> the robot was pushing cubes into the bin rather than grasping+lifting them.
+> After fixing the conveyor stop mechanism and replacing the exploitable
+> `cube_held` reward with a `1-tanh` reach/grasp shape, Iter 1 reached **peak 100%
+> placement** on 2G+1R (both cubes in drum every episode at peak) with zero
+> sorting errors. Iter 2 (4G+2R) plateaus at peak 26% placement — scaling from 2
+> to 4 cubes needs further reward/observation changes. See [optimization tracking](../../../../../../../../doc/reports/cube_sort_optimization_tracking.md)
+> for the full Iteration 2 plateau diagnosis and proposed next steps.
 
 [← Back to extension overview](../../../../../../README.md) · [Project root](../../../../../../../../README.md)
 
@@ -54,7 +59,7 @@ rewards accumulate over the remaining steps.
 
 | Environment ID | Description |
 |---|---|
-| `Template-Tensegrity-Cube-Sort-v0` | Standard training (8 192 envs) |
+| `Template-Tensegrity-Cube-Sort-v0` | Standard training (4 096 envs) |
 | `Template-Tensegrity-Cube-Sort-Play-v0` | Evaluation (50 envs) |
 
 Both use `TensegrityCubeSortEnv` (custom `ManagerBasedRLEnv` with event-based
@@ -67,15 +72,15 @@ Extends `ProjBaseSceneCfg` with a `RigidObjectCollection` of 16 labelled cubes.
 | Element | Details |
 |---|---|
 | Robot | `TENS_5DOF_GRIPPER_CFG` at (0.15, 0.0, 2.30) m — ceiling-mounted |
-| Green cubes | 8 × 0.05 m side, 0.05 kg, label 0 (target) |
-| Red cubes | 8 × 0.05 m side, 0.05 kg, label 1 (distractor) |
+| Green cubes | 6 active × 0.05 m side, 0.05 kg, label 0 (target) |
+| Red cubes | 4 active × 0.05 m side, 0.05 kg, label 1 (distractor) |
 | Target drum | Plastic drum at (0.15, ~0.85, 0.0) m (0.547 m diameter, 0.88 m tall) |
 | Conveyor | Dual belt (4 m total), surface at 0.80 m, **active** (belt speed randomised) |
 | Env spacing | 5.0 m |
 
 ### Cube Spawn Randomisation (at reset)
 
-Stage 1: only 1 green cube is active, 0 red cubes (rest parked at (100, 100, 1)).
+Iteration 3: 6 green + 4 red cubes active. Remaining cube slots parked at (100, 100, 1).
 
 | Axis | Range |
 |---|---|
@@ -182,6 +187,8 @@ flowchart TD
 | `goal_tracking_fine` | +5.0 | `1 − tanh(d_xy / 0.20)` × urgency | `was_grasped` |
 | `release` | +25.0 | `(1−closure) × in_xy × above_rim` | `was_grasped` |
 | `reorient` | +2.0 | `exp(−d_ee→belt / 2.0)`, open gripper only | post-place |
+| `target_in_drum` | +40.0 | Raw count of green cubes in drum (unnormalized) | — |
+| `cube_held` | +3.0 | Binary: cube near gripper, closed, vel < 1 m/s | — |
 
 ### Event-based rewards (in env class, not dt-scaled)
 
@@ -206,12 +213,13 @@ flowchart TD
 
 ## Terminations
 
-No early success termination — episodes always run the full 8 s.
+No early success termination — episodes always run the full length.
 
 | Term | Type | Condition |
 |---|---|---|
-| `time_out` | Truncation | Episode length exceeded (8.0 s / 400 steps) |
-| `all_cubes_passed` | Termination | All active cubes past belt end + 0.35 m |
+| `time_out` | Truncation | Episode length exceeded (82.5 s / 4125 steps) |
+| `all_targets_placed` | Truncation | All active green cubes placed in drum (time\_out=True) |
+| `all_cubes_passed` | Disabled | — |
 | `joint_vel_diverged` | Truncation | Any controlled joint velocity > 100 rad/s |
 | `belt_collision` | Truncation | EE penetrates > 0.20 m below belt surface |
 
@@ -222,8 +230,8 @@ No early success termination — episodes always run the full 8 s.
 | 200 000 | `action_rate` weight: −1×10⁻⁴ → −2×10⁻³ |
 | 200 000 | `joint_vel` weight: −1×10⁻⁴ → −2×10⁻³ |
 
-No red cube curriculum yet — Stage 1 trains with green cubes only.  Future
-stages will add red cubes and increase the active count.
+Iteration 3 uses 6 green + 4 red cubes with PROCESSING\_MARGIN\_S=70.0
+(4125 episode steps = 82.5 s). The regularisation ramp remains at 200k steps.
 
 ## Reset Events
 
@@ -232,7 +240,7 @@ stages will add red cubes and increase the active count.
 | `reset_all` | Full scene reset to defaults |
 | `reset_arm` | Base + arm joints offset by ±0.10 rad; velocities zeroed |
 | `reset_gripper` | `finger_joint` reset to 0.0 (fully open) |
-| `reset_cubes` | 1 green cube in spawn box; 15 cubes parked at (100, 100, 1) |
+| `reset_cubes` | 6 green + 4 red cubes in spawn box; remaining parked at (100, 100, 1) |
 | `sample_belt_speed` | Belt speed sampled uniformly from [0.2, 0.5] m/s |
 | `apply_conveyor` | Continuous interval event — pushes on-belt cubes along +X |
 
@@ -242,7 +250,7 @@ stages will add red cubes and increase the active count.
 |---|---|
 | Physics dt | 0.01 s (100 Hz) |
 | Decimation | 2 (control at 50 Hz) |
-| Episode length | 8.0 s (400 control steps) |
+| Episode length | 82.5 s (4125 control steps) |
 | PhysX solver | TGS (type 1) |
 | Bounce threshold | 0.2 m/s |
 | Stabilisation | Enabled |
@@ -252,28 +260,32 @@ stages will add red cubes and increase the active count.
 | `gpu_collision_stack_size` | 2²⁸ (268 435 456) |
 | `gpu_found_lost_aggregate_pairs_capacity` | 4 194 304 |
 | `gpu_total_aggregate_pairs_capacity` | 65 536 |
-| Default `num_envs` | 8 192 (train) / 50 (play) |
+| Default `num_envs` | 4 096 (train) / 50 (play) |
 
 ## Training
 
-Training converges at approximately 250k steps (PPO via SKRL with 8 192
-parallel environments).  The `skrl_ppo_cfg.yaml` is configured for 300 000
-timesteps.
+Multi-cube sorting requires extended training. With 4096 parallel environments
+and 128-step rollouts, Iteration 3 (6G+4R) converges after ~1024K steps across
+four 256K-step runs (fresh + 3 extensions). See the
+[optimization tracking](../../../../../../../../doc/reports/cube_sort_optimization_tracking.md)
+for the full training history.
 
 ### PPO Hyperparameters (SKRL)
 
 | Parameter | Value |
 |---|---|
-| Rollout length | 64 steps |
+| Rollout length | 128 steps |
 | Discount γ | 0.995 |
 | GAE λ | 0.95 |
-| Learning rate | 3 × 10⁻⁴ (KL-adaptive, threshold 0.008) |
+| Learning rate | 1 × 10⁻⁴ (KL-adaptive, threshold 0.008) |
 | Epochs per update | 8 |
 | Mini-batches | 4 |
-| Entropy coefficient | 0.03 |
+| Entropy coefficient | 0.005 |
 | Reward shaper scale | 0.5 |
 | Min log-std | −1.0 |
-| Timesteps | 300 000 |
+| Network | [128, 64] ELU (shared policy/value) |
+| Num envs | 4096 |
+| Timesteps per extension | 256 000 |
 | Checkpoint interval | 5 000 steps |
 | Time-limit bootstrap | Enabled |
 
@@ -328,9 +340,25 @@ the critical learning phases.
 
 ### PhysX buffer sizing
 
-16 cubes × 8192 envs with collection-based physics requires significantly
-larger PhysX buffers than the cube place task (2 cubes × 8192 envs).  Buffer
+16 cubes × 4096 envs with collection-based physics requires significantly
+larger PhysX buffers than the cube place task (2 cubes × 4096 envs).  Buffer
 overflows manifest as silent crashes or physics instability.
+
+### Nearest-only observation scales to 10 cubes
+
+Despite only observing the nearest target/distractor cube (not all cubes), the
+agent learns cycle behavior: grasp → lift → transport → release → return →
+repeat. The sticky tracking in the nearest-cube observation provides temporal
+consistency that k-nearest sorting lacks.  k-nearest observation was tested
+(K\_TARGET=4, K\_DISTRACTOR=2, obs=75 dims) but failed completely (0%
+placement) due to permutation noise confusing the flat MLP.
+
+### Unnormalized target\_in\_drum for multi-cube
+
+The persistent `target_in_drum` reward uses raw placed count (not normalized
+by active count). This creates a stacking incentive: 2 placed cubes give
+2×weight per step, dominating holding rewards and driving multi-cube placement.
+Normalized rewards at scale give weight/N per cube which is too weak.
 
 ## Running
 
@@ -351,68 +379,87 @@ conda run --no-capture-output -n env_isaaclab python3 scripts/skrl/play.py \
 
 ## Training Results
 
-> **⚠️ Work in Progress** — training is ongoing.  The results below are from
-> the best run so far; the release phase has not yet converged.
+Results from Iteration 3 (6 green + 4 red cubes) — Extension 3 run
+`2026-04-15_00-14-15_ppo_torch`, 1024K total steps across 4 runs.
+Plots generated with `scripts/plot_sort_training_results.py`.
 
-Results from training run `2026-03-08_04-40-18` (PPO, 8 192 envs, 253k / 300k
-steps).  Plots generated with `scripts/plot_sort_training_results.py`.
+### Summary
+
+| Metric | Stable Range | Best Snapshot | Peak |
+|---|---|---|---|
+| green\_placement\_rate | 15-20% | **21.6%** | **33.3%** |
+| green\_placed\_count | 0.9-1.2 / 6 | **1.30** | **2.00** |
+| green\_grasp\_rate | 25-29% | 28.5% | 41.1% |
+| red\_in\_drum\_count | 0 | 0 | 0.076 |
+| target\_in\_drum | 30-42 | **45.55** | — |
 
 ### Total Episode Reward
 
-The total reward curve shows the complete learning trajectory.  The min/max
-envelope reveals the spread across the environment population.  The
-regularisation ramp at 200k steps is marked.  The agent reaches ~150 mean
-episode return — dominated by transport and reaching rewards.
+The total reward curve across ext3 (256K steps, continuing from 768K). The
+reward oscillates in a 5k-8k band due to high exploration noise
+(min\_log\_std=-1.0) but trends upward. Peak mean reward 10618.
 
 ![Total Reward](figures/01_total_reward.png)
 
 ### Task Success
 
-Grasp rate (left axis) and mean targets placed / missed (right axis) track the
-key task milestones.  The agent learns to grasp within the first 30k steps and
-achieves ~84% grasp rate by 250k.  However, the mean targets placed remains
-near zero — the agent has not yet learned to release cubes into the drum.
+Grasp rate (left) and placement metrics (right). The agent grasps ~28% of
+green cubes per episode and places ~18% into the drum (1.1 cubes/episode on
+average). Peak placement of 33.3% = 2 cubes per episode.
 
 ![Task Success](figures/02_task_success.png)
 
 ### Sequential Skill Acquisition
 
-Each reward component activates in sequence, revealing the learning order:
-reach → grasp → lift → height → transport.  The transport reward (goal tracking)
-shows the largest magnitude, confirming the design goal that lateral progress
-dominates holding.  The release reward remains near zero throughout, indicating
-the next training challenge.
+Each reward component shows the full sorting pipeline: reach → grasp → lift →
+transport → release → reorient. Transport (goal\_tracking, 30w) dominates as
+designed. The target\_in\_drum persistent reward (40w) is the primary placement
+incentive.
 
 ![Reward Decomposition](figures/03_reward_decomposition.png)
 
 ### Penalties & Regularisation
 
-Penalty evolution over training.  The cube-off-conveyor penalty increases as
-the agent learns to interact with objects on the belt edge.  The action rate
-and joint velocity penalties ramp up over the regularisation curriculum from
-200k steps onward, smoothing the policy's motor commands.
+Penalty evolution. The `cube_off_conveyor` penalty is the main penalty,
+reflecting cubes pushed off the belt by stochastic exploration. Other
+penalties are well-controlled.
 
 ![Penalties](figures/04_penalties.png)
 
 ### Policy Diagnostics
 
-Policy standard deviation, surrogate loss, value loss, and learning rate
-(KL-adaptive) over training.  The standard deviation decreases monotonically,
-indicating growing exploitation.  The adaptive learning rate responds to
-KL-divergence, dropping when the policy changes too rapidly.
+Policy standard deviation is pinned at the min\_log\_std=-1.0 floor (0.368),
+maintaining exploration. The KL-adaptive learning rate converges near 0.001.
 
 ![Policy Diagnostics](figures/05_policy_diagnostics.png)
 
 ### Converged Reward Breakdown
 
-Final performance averaged over the last 10% of training.  Transport (goal
-tracking) dominates as the agent reliably moves cubes toward the drum.  The
-release and reorient components are near zero — the primary remaining
-challenge.  The converged reward weights were rebalanced (placement 50,
-completion 100, release 25) to incentivise placing; this has not yet been
-fully evaluated in a training run.
+Final reward decomposition averaged over the last 10% of ext3 training.
+target\_in\_drum (38.9) and goal\_tracking (24.5) dominate — the agent spends
+most of its time transporting cubes toward and placing them in the drum.
 
 ![Converged Breakdown](figures/06_converged_breakdown.png)
+
+### Generalization (Iteration 4)
+
+The Iter 3 policy (6G+4R) was evaluated on different cube configurations without
+retraining. The evaluation used `agent_250000.pt` (best snapshot) with 50 training
+iterations (~6400 timesteps) per configuration — negligible policy change due to
+decayed LR.
+
+| Config | green\_place% | peak | green\_grasp% | placed/ep | red\_drum |
+|--------|:-----------:|:----:|:-----------:|:---------:|:--------:|
+| 1G+0R  |    65.0     | 97.6 |    86.9     |   0.65    |  0.000   |
+| 2G+1R  |    77.4     | 100  |    92.7     |   1.55    |  0.000   |
+| 4G+2R  |    32.0     | 32.0 |    51.9     |   1.28    |  0.000   |
+| 6G+4R  |    21.6     | 33.3 |    28.5     |   1.30    |  0.000   |
+| 8G+6R  |     5.0     | 13.3 |    12.8     |   0.40    |  0.000   |
+
+**Key findings:** The policy generalizes well to fewer cubes (77% at 2G+1R),
+maintains ~1.0–1.5 cubes/episode throughput across 1–6 green configurations,
+and achieves **zero red sorting errors** at all cube counts. Throughput is bounded
+by cycle time (~15s/cube), not scene complexity.
 
 ### Regenerating Plots
 

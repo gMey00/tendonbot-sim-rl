@@ -16,6 +16,7 @@ from typing import Final, Sequence, Tuple
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObjectCfg, RigidObjectCollectionCfg
+from isaaclab.sensors import ContactSensorCfg
 from isaaclab.utils import configclass
 
 from ..shared.proj_base_scene_cfg import (
@@ -87,6 +88,10 @@ def _cube_spawn_cfg(
 ) -> sim_utils.CuboidCfg:
     return sim_utils.CuboidCfg(
         size=(cube_size_m, cube_size_m, cube_size_m),
+        # R1 (cube_sort rework): contact-reporting must be enabled on every
+        # spawner that participates in `force_matrix_w` filtering — the robot
+        # AND every cube. (Isaac Lab Issue #2985.)
+        activate_contact_sensors=True,
         visual_material=sim_utils.PreviewSurfaceCfg(
             diffuse_color=color_rgb,
             metallic=0.05,
@@ -145,4 +150,52 @@ class CubeSortingSceneCfg(ProjBaseSceneCfg):
         spawn_center=(SPAWN_X, SPAWN_Y, SPAWN_Z),
         cube_size_m=CUBE_SIZE_M,
         cube_mass_kg=CUBE_MASS_KG,
+    )
+
+    # ------------------------------------------------------------------
+    # R1 (cube_sort rework): per-fingerpad contact sensors.
+    # See doc/reports/cube_sort_optimization_tracking.md (Iteration R1) and
+    # doc/reports/cube_sort_research/cube_sort_mdp_redesign_consolidated.md §A.
+    #
+    # Two SEPARATE sensors (one per pad), NOT one regex sensor — Isaac Lab
+    # Issue #364 / Discussion #2831: a single sensor whose prim_path matches
+    # multiple bodies silently drops `force_matrix_w` and contact filtering
+    # breaks.  The filter list enumerates every cube in the collection so
+    # `force_matrix_w` has shape (N_envs, 1, NUM_CUBES_TOTAL, 3).
+    # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # R1 (cube_sort rework): per-fingerpad contact sensors.
+    # See doc/reports/cube_sort_optimization_tracking.md (Iteration R1) and
+    # doc/reports/cube_sort_research/cube_sort_mdp_redesign_consolidated.md §A.
+    #
+    # Two SEPARATE sensors (one per pad), NOT one regex sensor — Isaac Lab
+    # Issue #364 / Discussion #2831: a single sensor whose prim_path matches
+    # multiple bodies silently drops `force_matrix_w` and contact filtering
+    # breaks.  The filter list enumerates every cube in the collection so
+    # `force_matrix_w` has shape (N_envs, 1, NUM_CUBES_TOTAL, 3).
+    #
+    # Body discovery (scripts/r1_debug_apis.py 2026-04-23): the moving
+    # fingertip links are nested at
+    # `/World/envs/env_*/Robot/Robotiq_2F_140_physics_edit/left_inner_finger`
+    # (the Robotiq subassembly forms its own USD scope).  The articulation
+    # flattens the body names to plain `left_inner_finger`, but
+    # ContactSensorCfg needs the actual USD prim path.
+    # ------------------------------------------------------------------
+    contact_left = ContactSensorCfg(
+        prim_path=f"{ENV_NS}Robot/Robotiq_2F_140_physics_edit/left_inner_finger",
+        update_period=0.0,
+        history_length=3,
+        track_pose=True,
+        filter_prim_paths_expr=[
+            f"{ENV_NS}Cube_{i:02d}" for i in range(NUM_CUBES_TOTAL)
+        ],
+    )
+    contact_right = ContactSensorCfg(
+        prim_path=f"{ENV_NS}Robot/Robotiq_2F_140_physics_edit/right_inner_finger",
+        update_period=0.0,
+        history_length=3,
+        track_pose=True,
+        filter_prim_paths_expr=[
+            f"{ENV_NS}Cube_{i:02d}" for i in range(NUM_CUBES_TOTAL)
+        ],
     )

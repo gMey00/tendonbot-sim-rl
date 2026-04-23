@@ -38,14 +38,16 @@ from .cube_sorting_scene_cfg import (
     TARGET_LABEL,
     DISTRACTOR_LABEL,
 )
+from .mdp import cube_set_obs as task_per_cube_obs
 from .mdp import cube_sorting_mdp as task_mdp
+from .mdp import per_cube_state as task_per_cube
 from .mdp import rewards as task_rew
 from ..shared import gripper_cfg as shared_rew
 
 
 # ── Episode Length ────────────────────────────────────────────────────────
 ROBOT_X: float = 0.15
-PROCESSING_MARGIN_S: float = 70.0
+PROCESSING_MARGIN_S: float = 30.0
 
 
 def compute_episode_length(
@@ -67,7 +69,7 @@ def compute_episode_length(
 CUBES_KEY = "cubes"
 
 # ── Belt / Spawn ──────────────────────────────────────────────────────────
-BELT_SPEED: float = 0.20  # m/s — static for all envs
+BELT_SPEED: float = 0.30  # m/s — static for all envs
 
 _SPAWN_BOX = task_mdp.SpawnBox(
     x_range=(-1.50, -0.30),
@@ -118,14 +120,25 @@ class ActionsCfg:
 
 @configclass
 class ObservationsCfg:
-    """Observation specification.
+    """R6 observation specification.
 
-    Robot state + nearest-cube observations + task context.
+    Layout (in concatenation order — DO NOT REORDER, the
+    ``CubeSetLayout`` slice math depends on it):
+
+    1. Non-set features (``non_set_dim`` floats):
+       proprio + EE + gripper + drum + belt/time + smooth contact
+       aggregates + last action.
+    2. Per-cube features (``N_max × S`` floats), flattened.
+    3. Per-cube validity mask (``N_max`` floats).
+    4. Privileged channels (``priv_dim`` floats): per-cube ``is_holding``
+       + per-cube contact magnitude. The policy ignores these (it only
+       slices [0 : F + S*N + N]); the value head reads them.
     """
 
     @configclass
     class PolicyCfg(ObsGroup):
-        # ── Proprioception ────────────────────────────────────────────
+        # ── 1. Non-set features ──────────────────────────────────────
+        # Proprio
         joint_pos_rel = ObsTerm(
             func=mdp.joint_pos_rel,
             params={"asset_cfg": SceneEntityCfg("robot", joint_names=MISSING)},
@@ -134,8 +147,7 @@ class ObservationsCfg:
             func=mdp.joint_vel_rel,
             params={"asset_cfg": SceneEntityCfg("robot", joint_names=MISSING)},
         )
-
-        # ── EE kinematics (grasp-centre based) ───────────────────────
+        # EE
         ee_pos_w = ObsTerm(
             func=shared_rew.ee_pos_w,
             params={"asset_cfg": SceneEntityCfg("robot", body_names=MISSING)},
@@ -144,46 +156,7 @@ class ObservationsCfg:
             func=shared_rew.ee_lin_vel_w,
             params={"asset_cfg": SceneEntityCfg("robot", body_names=MISSING)},
         )
-
-        # ── Nearest-cube relative positions ──────────────────────────
-        nearest_target_rel = ObsTerm(
-            func=task_rew.nearest_cube_rel,
-            params={
-                "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
-                "collection_name": CUBES_KEY,
-                "label": TARGET_LABEL,
-            },
-        )
-        nearest_distractor_rel = ObsTerm(
-            func=task_rew.nearest_cube_rel,
-            params={
-                "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
-                "collection_name": CUBES_KEY,
-                "label": DISTRACTOR_LABEL,
-            },
-        )
-
-        # ── Dynamic fingertip-to-cube ────────────────────────────────
-        fingertip_target_rel = ObsTerm(
-            func=task_rew.nearest_cube_fingertip_rel,
-            params={
-                "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
-                "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
-                "collection_name": CUBES_KEY,
-                "label": TARGET_LABEL,
-            },
-        )
-        fingertip_distractor_rel = ObsTerm(
-            func=task_rew.nearest_cube_fingertip_rel,
-            params={
-                "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
-                "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
-                "collection_name": CUBES_KEY,
-                "label": DISTRACTOR_LABEL,
-            },
-        )
-
-        # ── Gripper state ────────────────────────────────────────────
+        # Gripper smooth signals
         gripper_closure = ObsTerm(
             func=shared_rew.gripper_closure,
             params={"finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"])},
@@ -192,26 +165,7 @@ class ObservationsCfg:
             func=shared_rew.gripper_torque_residual,
             params={"finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"])},
         )
-
-        # ── Cube velocities ──────────────────────────────────────────
-        target_cube_vel = ObsTerm(
-            func=task_rew.nearest_cube_velocity,
-            params={
-                "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
-                "collection_name": CUBES_KEY,
-                "label": TARGET_LABEL,
-            },
-        )
-        distractor_cube_vel = ObsTerm(
-            func=task_rew.nearest_cube_velocity,
-            params={
-                "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
-                "collection_name": CUBES_KEY,
-                "label": DISTRACTOR_LABEL,
-            },
-        )
-
-        # ── Drum-relative position ───────────────────────────────────
+        # Drum
         drum_rel = ObsTerm(
             func=shared_rew.drum_rel_pos,
             params={
@@ -219,15 +173,43 @@ class ObservationsCfg:
                 "drum_name": "drum_target",
             },
         )
-
-        # ── Task context (per research report Section 4) ─────────────
+        # Task context
         belt_speed = ObsTerm(func=task_rew.belt_speed_obs)
         time_remaining = ObsTerm(func=task_rew.time_fraction_obs)
-        placed_count = ObsTerm(func=task_rew.targets_placed_obs)
-        missed_count = ObsTerm(func=task_rew.targets_missed_obs)
-
-        # ── Last actions ─────────────────────────────────────────────
+        # R6 smooth contact aggregates (per-pad force magnitude)
+        pad_force_left = ObsTerm(
+            func=task_per_cube_obs.gripper_pad_force_mag,
+            params={"sensor_name": "contact_left"},
+        )
+        pad_force_right = ObsTerm(
+            func=task_per_cube_obs.gripper_pad_force_mag,
+            params={"sensor_name": "contact_right"},
+        )
+        # R7 placeholder — gOBJ register, fixed at zero until R7 ships
+        gobj_sim = ObsTerm(func=task_per_cube_obs.gobj_sim)
+        # Last action
         actions = ObsTerm(func=mdp.last_action)
+
+        # ── 2. Per-cube set features (flattened) ─────────────────────
+        cube_features_flat = ObsTerm(
+            func=task_per_cube_obs.cube_features_flat,
+            params={
+                "cubes_collection_name": CUBES_KEY,
+                "drum_name": "drum_target",
+                "ee_body_name": MISSING,
+                "belt_height": BELT_HEIGHT_M,
+            },
+        )
+
+        # ── 3. Per-cube validity mask ────────────────────────────────
+        cube_mask_flat = ObsTerm(
+            func=task_per_cube_obs.cube_mask_flat,
+            params={"cubes_collection_name": CUBES_KEY},
+        )
+
+        # ── 4. Privileged channels (critic-only — see CubeSetValue) ──
+        per_cube_is_holding_priv = ObsTerm(func=task_per_cube_obs.per_cube_is_holding_priv)
+        per_cube_contact_mag_priv = ObsTerm(func=task_per_cube_obs.per_cube_contact_mag_priv)
 
         def __post_init__(self) -> None:
             self.enable_corruption = False
@@ -244,6 +226,12 @@ class EventsCfg:
     """
 
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
+
+    # R4: clear per-cube Mealy automaton + placement dwell + grasp dwell
+    reset_mdp_state = EventTerm(
+        func=task_per_cube.reset_mdp_state,
+        mode="reset",
+    )
 
     reset_arm = EventTerm(
         func=mdp.reset_joints_by_offset,
@@ -275,7 +263,7 @@ class EventsCfg:
         params={
             "collection_name": CUBES_KEY,
             "spawn_box": _SPAWN_BOX,
-            "active_per_label": {str(TARGET_LABEL): 6, str(DISTRACTOR_LABEL): 4},
+            "active_per_label": {str(TARGET_LABEL): 2, str(DISTRACTOR_LABEL): 1},
             "parking_pose": (100.0, 100.0, 1.0),
         },
     )
@@ -303,7 +291,7 @@ class EventsCfg:
             "lift_disable_height": 0.15,
             "stop_when_target_in_reach": True,
             "target_label": TARGET_LABEL,
-            "workspace_x_min": ROBOT_X - 0.20,
+            "workspace_x_min": ROBOT_X + 0.10,
             "workspace_x_max": ROBOT_X + 0.20,
         },
     )
@@ -311,178 +299,27 @@ class EventsCfg:
 
 @configclass
 class RewardsCfg:
-    """7-phase continuous rewards (per research report Section 3).
+    """R4 per-cube reward machine + regularisation.
 
-    Event-based rewards (placement, miss, red-grab) are in the env class.
-    Weight hierarchy per report:
-      Transport (30) > Release (8) > Lift (5) = Height (5) > Grasp (3) >
-      Re-orient (2) > Reach (1)
+    Replaces the legacy 11 goal-related per-step terms (reach/grasp/lift/
+    transport/release/reorient/etc.) with a single per-cube reward term
+    that derives all signals from the Mealy automaton in
+    ``mdp/per_cube_state.py``.
+
+    Event-based bonuses (placement, miss, red-grab) remain in the env class.
     """
 
-    # ── 1a. Reach coarse (long-range gradient) ───────────────────────
-    reaching_object = RewTerm(
-        func=task_rew.cube_ee_distance,
-        weight=2.0,
+    # ── R4: per-cube reward machine (replaces all 11 legacy goal terms) ──
+    per_cube_reward = RewTerm(
+        func=task_per_cube.per_cube_reward,
+        weight=1.0,
         params={
-            "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
-            "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
-            "collection_name": CUBES_KEY,
-            "label": TARGET_LABEL,
-            "std": 2.0,
-        },
-    )
-
-    # ── 1b. Reach fine (near-field gradient) ─────────────────────────
-    reaching_object_fine = RewTerm(
-        func=task_rew.cube_ee_distance,
-        weight=5.0,
-        params={
-            "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
-            "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
-            "collection_name": CUBES_KEY,
-            "label": TARGET_LABEL,
-            "std": 0.5,
-        },
-    )
-
-    # ── 1c. Pre-grasp approach (tight proximity without closure) ────
-    pre_grasp_approach = RewTerm(
-        func=task_rew.cube_ee_distance,
-        weight=4.0,
-        params={
-            "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
-            "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
-            "collection_name": CUBES_KEY,
-            "label": TARGET_LABEL,
-            "std": 0.15,
-        },
-    )
-
-    # ── 2. Grasp ─────────────────────────────────────────────────────
-    grasping = RewTerm(
-        func=task_rew.cube_grasp_reward,
-        weight=10.0,
-        params={
-            "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
-            "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
-            "collection_name": CUBES_KEY,
-            "label": TARGET_LABEL,
-            "std": 0.20,
-        },
-    )
-
-    # ── 2b. Cube held (per-step while grasp_active) ─────────────────
-    cube_held = RewTerm(
-        func=task_rew.cube_held_reward,
-        weight=8.0,
-        params={"asset_cfg": SceneEntityCfg("robot")},
-    )
-
-    # ── 3. Lift ──────────────────────────────────────────────────────
-    lifting_object = RewTerm(
-        func=task_rew.cube_is_lifted,
-        weight=10.0,
-        params={
-            "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
-            "collection_name": CUBES_KEY,
-            "label": TARGET_LABEL,
-            "belt_height": BELT_HEIGHT_M,
-            "minimal_height": 0.06,
-            "max_distance": 0.15,
-            "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
-            "max_velocity": 1.0,
-        },
-    )
-
-    # ── 3b. Height bonus ─────────────────────────────────────────────
-    height_bonus = RewTerm(
-        func=task_rew.cube_height_bonus,
-        weight=5.0,
-        params={
-            "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
-            "collection_name": CUBES_KEY,
-            "label": TARGET_LABEL,
-            "belt_height": BELT_HEIGHT_M,
-            "max_height": 0.30,
-            "max_distance": 0.15,
-            "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
-            "max_velocity": 1.0,
-        },
-    )
-
-    # ── 4. Transport with urgency ────────────────────────────────────
-    goal_tracking = RewTerm(
-        func=task_rew.approach_target_tanh,
-        weight=40.0,
-        params={
-            "collection_name": CUBES_KEY,
-            "label": TARGET_LABEL,
+            "cubes_collection_name": CUBES_KEY,
             "drum_name": "drum_target",
-            "belt_height": BELT_HEIGHT_M,
-            "std": 1.0,
-            "lift_threshold": 0.02,
-            "urgency_alpha": 2.0,
-            "urgency_beta": 0.5,
-            "belt_start_x": CONVEYOR_START_X,
-            "belt_end_x": CONVEYOR_END_X,
-        },
-    )
-
-    # ── 4b. Transport (fine) ─────────────────────────────────────────
-    goal_tracking_fine = RewTerm(
-        func=task_rew.approach_target_tanh,
-        weight=10.0,
-        params={
-            "collection_name": CUBES_KEY,
-            "label": TARGET_LABEL,
-            "drum_name": "drum_target",
-            "belt_height": BELT_HEIGHT_M,
-            "std": 0.20,
-            "lift_threshold": 0.02,
-            "urgency_alpha": 2.0,
-            "urgency_beta": 0.5,
-            "belt_start_x": CONVEYOR_START_X,
-            "belt_end_x": CONVEYOR_END_X,
-        },
-    )
-
-    # ── 5. Release ───────────────────────────────────────────────────
-    release = RewTerm(
-        func=task_rew.release_above_target,
-        weight=25.0,
-        params={
-            "collection_name": CUBES_KEY,
-            "label": TARGET_LABEL,
-            "drum_name": "drum_target",
-            "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
-            "belt_height": BELT_HEIGHT_M,
-            "rim_clearance": 0.10,
-            "drum_radius": 0.2735,
-        },
-    )
-
-    # ── 5b. Per-step reward for cubes resting in drum ────────────────
-    target_in_drum = RewTerm(
-        func=task_rew.target_in_drum_reward,
-        weight=40.0,
-        params={
-            "collection_name": CUBES_KEY,
-            "label": TARGET_LABEL,
-            "target_bin_name": "drum_target",
-            "bin_geom": _DRUM_GEOM,
-        },
-    )
-
-    # ── 6. Re-orient (return to belt after placing) ──────────────────
-    reorient = RewTerm(
-        func=task_rew.reorient_to_belt,
-        weight=8.0,
-        params={
-            "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
-            "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
-            "collection_name": CUBES_KEY,
-            "label": TARGET_LABEL,
-            "std": 2.0,
+            "robot_name": "robot",
+            "tcp_body_name": MISSING,
+            "target_label": TARGET_LABEL,
+            "z_belt": BELT_HEIGHT_M,
         },
     )
 
@@ -511,7 +348,7 @@ class RewardsCfg:
     # ── Belt contact penalty ─────────────────────────────────────────
     belt_contact = RewTerm(
         func=shared_rew.belt_contact_penalty,
-        weight=-3.0,
+        weight=-10.0,
         params={
             "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
             "belt_height": BELT_HEIGHT_M,
@@ -523,7 +360,7 @@ class RewardsCfg:
     # ── Joint torque penalty ─────────────────────────────────────────
     joint_torque = RewTerm(
         func=shared_rew.joint_torque_penalty,
-        weight=-0.05,
+        weight=-0.025,
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=MISSING),
         },
@@ -656,29 +493,18 @@ class CubeSortEnvCfg(ManagerBasedRLEnvCfg):
         """
         grasp = [ee_body]
 
-        # -- Observations --
+        # -- Observations (R6 layout) --
         obs = self.observations.policy
         obs.joint_pos_rel.params["asset_cfg"].joint_names = controlled_joints
         obs.joint_vel_rel.params["asset_cfg"].joint_names = controlled_joints
         obs.ee_pos_w.params["asset_cfg"].body_names = grasp
         obs.ee_vel_w.params["asset_cfg"].body_names = grasp
-        obs.nearest_target_rel.params["ee_cfg"].body_names = grasp
-        obs.nearest_distractor_rel.params["ee_cfg"].body_names = grasp
-        obs.fingertip_target_rel.params["ee_cfg"].body_names = grasp
-        obs.fingertip_distractor_rel.params["ee_cfg"].body_names = grasp
-        obs.target_cube_vel.params["ee_cfg"].body_names = grasp
-        obs.distractor_cube_vel.params["ee_cfg"].body_names = grasp
         obs.drum_rel.params["ee_cfg"].body_names = grasp
+        obs.cube_features_flat.params["ee_body_name"] = ee_body
 
         # -- Rewards --
         rew = self.rewards
-        rew.reaching_object.params["ee_cfg"].body_names = grasp
-        rew.reaching_object_fine.params["ee_cfg"].body_names = grasp
-        rew.pre_grasp_approach.params["ee_cfg"].body_names = grasp
-        rew.grasping.params["ee_cfg"].body_names = grasp
-        rew.lifting_object.params["ee_cfg"].body_names = grasp
-        rew.height_bonus.params["ee_cfg"].body_names = grasp
-        rew.reorient.params["ee_cfg"].body_names = grasp
+        rew.per_cube_reward.params["tcp_body_name"] = ee_body
         rew.belt_contact.params["ee_cfg"].body_names = grasp
         rew.joint_vel.params["asset_cfg"].joint_names = controlled_joints
         rew.arm_utilization.params["asset_cfg"].joint_names = arm_joints

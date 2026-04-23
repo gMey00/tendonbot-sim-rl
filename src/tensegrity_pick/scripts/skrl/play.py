@@ -202,7 +202,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
     experiment_cfg["trainer"]["close_environment_at_exit"] = False
     experiment_cfg["agent"]["experiment"]["write_interval"] = 0  # don't log to TensorBoard
     experiment_cfg["agent"]["experiment"]["checkpoint_interval"] = 0  # don't generate checkpoints
-    runner = Runner(env, experiment_cfg)
+    # R6: cube_sort uses a custom DeepSets-encoder Runner subclass.
+    if args_cli.task and "cube-sort" in args_cli.task.lower():
+        from tensegrity_pick.agents import CubeSetRunner as _Runner
+    else:
+        _Runner = Runner
+    runner = _Runner(env, experiment_cfg)
 
     print(f"[INFO] Loading model checkpoint from: {resume_path}")
     runner.agent.load(resume_path)

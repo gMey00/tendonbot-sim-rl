@@ -342,7 +342,7 @@ def cube_ee_distance(
     tip = dynamic_finger_tip_w(robot, ee_cfg, finger_cfg)
     pos, _idx, has_any = _nearest_active_by_label(env, tip, collection_name, label)
     distance = torch.norm(pos - tip, dim=-1)
-    proximity = torch.exp(-distance / std)
+    proximity = 1.0 - torch.tanh(distance / std)
     result = torch.where(has_any, proximity, torch.zeros_like(proximity))
     if hasattr(env, "grasp_active"):
         result = result * (~env.grasp_active).float()
@@ -367,7 +367,7 @@ def cube_grasp_reward(
     tip = dynamic_finger_tip_w(robot, ee_cfg, finger_cfg)
     pos, _idx, has_any = _nearest_active_by_label(env, tip, collection_name, label)
     distance = torch.norm(pos - tip, dim=-1)
-    proximity = torch.exp(-distance / std)
+    proximity = 1.0 - torch.tanh(distance / std)
 
     finger_pos = robot.data.joint_pos[:, finger_cfg.joint_ids[0]]
     closure = torch.clamp(finger_pos / FINGER_JOINT_CLOSE_POS, 0.0, 1.0)
@@ -464,7 +464,7 @@ def cube_height_bonus(
     return gated.max(dim=1).values
 
 
-# ── 4. Transport with urgency ────────────────────────────────────────────
+# ── 4. Transport (R5: urgency multiplier removed) ───────────────────────
 
 def approach_target_tanh(
     env: "ManagerBasedRLEnv",
@@ -474,16 +474,17 @@ def approach_target_tanh(
     belt_height: float,
     std: float = 0.20,
     lift_threshold: float = 0.02,
-    urgency_alpha: float = 0.0,
-    urgency_beta: float = 0.5,
-    belt_start_x: float = -3.0,
-    belt_end_x: float = 1.0,
 ) -> torch.Tensor:
     """Tanh XY proximity of the best-lifted cube of *label* to the drum.
 
-    With urgency weighting: urgency = 1 + alpha * max(0, belt_progress - beta).
-    A cube at 80% belt progress (alpha=4, beta=0.5) gets urgency 2.2x.
-    Gated on ``was_grasped`` to prevent bumping cubes toward the drum.
+    Historical context: this function used to take ``urgency_alpha``/
+    ``urgency_beta`` arguments that multiplied the reward by a function of
+    belt-progress, paying for ballistic-flinging trajectories. Removed in
+    R5 — the new ``per_cube_reward`` provides a Ng-Harada-Russell-1999
+    compliant time cost (``r_time = -C_TIME · #unplaced_green``) instead.
+
+    Kept here as dead code for ablation configs that want to A/B the old
+    transport reward against the new per-cube machine.
     """
     coll = env.scene[collection_name]
     pos = coll.data.object_pos_w
@@ -498,14 +499,6 @@ def approach_target_tanh(
         + (pos[..., 1] - pos_d[:, None, 1]) ** 2
     )
     proximity = 1.0 - torch.tanh(d_xy / std)
-
-    # Apply urgency weighting based on belt progress of the grasped cube
-    if urgency_alpha > 0.0:
-        local_x = pos[..., 0] - env.scene.env_origins[:, None, 0]
-        belt_length = max(belt_end_x - belt_start_x, 0.01)
-        progress = torch.clamp((local_x - belt_start_x) / belt_length, 0.0, 1.0)
-        urgency = 1.0 + urgency_alpha * torch.clamp(progress - urgency_beta, min=0.0)
-        proximity = proximity * urgency
 
     gated = torch.where(valid & is_lifted, proximity, torch.zeros_like(proximity))
     best = gated.max(dim=1).values

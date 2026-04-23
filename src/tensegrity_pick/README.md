@@ -36,7 +36,7 @@ simulation documentation.
 
 | Gym ID | Drive | Description |
 |--------|-------|-------------|
-| `Template-Tensegrity-Cube-Sort-v0` | PD | **Cube Sort** — 8 green + 8 red cubes on a moving conveyor. Pick green cubes and place them into the target drum while ignoring red. |
+| `Template-Tensegrity-Cube-Sort-v0` | PD | **Cube Sort** — Rework in progress. Iter 1 (2G+1R) validated: peak 100% placement, 1.56/2 cubes avg, zero sorting errors. Iter 2 (4G+2R) plateau at peak 26% — scaling to 4+ cubes blocked on further reward/observation work. |
 | `Template-Tensegrity-Cube-Sort-Play-v0` | PD | Cube Sort (play/eval variant, 50 envs). |
 | `Template-Reach-Tensegrity-v0` | PD | **Reach** — Move the end-effector to a random target position and orientation. No gripper action. |
 | `Template-Reach-Tensegrity-Play-v0` | PD | Reach (play/eval variant, 50 envs, no observation noise). |

@@ -61,9 +61,12 @@ class TensegrityCubeSortEnv(ManagerBasedRLEnv):
 
     Extends :class:`ManagerBasedRLEnv` with:
       - ``cube_labels``: ``(M,)`` int32 tensor mapping each cube index to a label
-      - ``was_grasped``: latched per-env bool used to gate transport/release rewards
       - Event-based rewards: placement bonus, miss penalty, red-grab penalty
       - Per-cube tracking: ``_prev_in_drum``, ``_prev_missed`` for edge detection
+
+    The ``was_grasped`` env-level latch was REMOVED in R4 of the cube_sort
+    rework. The per-cube reward machine in ``mdp/per_cube_state.py`` now
+    handles all grasp-conditioned rewards via Markovian per-cube state.
     """
 
     def __init__(self, cfg: ManagerBasedRLEnvCfg, render_mode: str | None = None, **kwargs):
@@ -74,7 +77,7 @@ class TensegrityCubeSortEnv(ManagerBasedRLEnv):
         self._finger_joint_idx: int = robot.joint_names.index(FINGER_JOINT_NAME)
 
         num_cubes = len(CUBE_LABELS)
-        self._was_grasped = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        # _was_grasped removed in R4 (per-cube reward machine handles grasp gating).
         self._targets_placed = torch.zeros(self.num_envs, dtype=torch.int32, device=self.device)
         self._targets_missed = torch.zeros(self.num_envs, dtype=torch.int32, device=self.device)
         self._prev_in_drum = torch.zeros(self.num_envs, num_cubes, dtype=torch.bool, device=self.device)
@@ -94,6 +97,7 @@ class TensegrityCubeSortEnv(ManagerBasedRLEnv):
 
         self._bin_geom = BinCylinder(radius=DRUM_RADIUS, height=DRUM_HEIGHT)
         self._target_mask = (self.cube_labels == TARGET_LABEL)[None, :]  # (1, M)
+        self._target_label = int(TARGET_LABEL)  # exposed for set-encoder obs (R6)
         self._distractor_mask = (self.cube_labels == DISTRACTOR_LABEL)[None, :]
 
         # Count active cubes per label for normalised metrics
@@ -160,8 +164,18 @@ class TensegrityCubeSortEnv(ManagerBasedRLEnv):
 
     @property
     def was_grasped(self) -> torch.Tensor:
-        """Per-env bool: True once any target cube has been grasped this episode."""
-        return self._was_grasped
+        """DEPRECATED (R4): kept as a thin shim for backward-compat with code
+        that hasn't migrated to ``env._mdp_state['ever_held']`` yet.
+
+        Returns the per-env ANY-cube ``ever_held`` boolean from the new
+        per-cube state if available, else falls back to the legacy
+        proximity-based ``grasp_active`` accumulator.
+        """
+        state = getattr(self, "_mdp_state", None)
+        if state is not None:
+            return (state["ever_held"] & self._target_mask).any(dim=1)
+        # Fallback (R4 reward term not yet active): always False.
+        return torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
 
     def _detect_red_grabbed(self) -> torch.Tensor:
         """Per-env bool: True when gripper is lifting a red/distractor cube."""
@@ -242,10 +256,11 @@ class TensegrityCubeSortEnv(ManagerBasedRLEnv):
     def step(self, action: torch.Tensor):
         obs, reward, terminated, time_outs, extras = super().step(action)
 
+        # Track per-cube grasps for episode-level metric logging
+        # (uses the legacy ``grasp_active_per_cube`` proximity heuristic; will
+        # be replaced by ``env._mdp_state['ever_held']`` once R4 logging is fully
+        # rewired).
         still_running = ~(terminated | time_outs)
-        self._was_grasped[still_running] |= self.grasp_active[still_running]
-
-        # Track per-cube grasps (latch: once grasped, stays True)
         per_cube_grasp = self.grasp_active_per_cube  # (N, M)
         self._cube_was_grasped[still_running] |= per_cube_grasp[still_running]
 
@@ -311,13 +326,13 @@ class TensegrityCubeSortEnv(ManagerBasedRLEnv):
             green_miss_rate = green_missed_count / num_green
             green_grasp_rate = green_grasped_count / num_green
 
-            # Legacy binary grasp rate
-            any_grasp_rate = self._was_grasped[env_ids_t].float().mean()
+            # Legacy binary grasp rate (now derived from per-cube latch)
+            any_grasp_rate = self._cube_was_grasped[env_ids_t].any(dim=1).float().mean()
 
         result = super()._reset_idx(env_ids)
 
         # Reset per-env tracking
-        self._was_grasped[env_ids_t] = False
+        # _was_grasped reset removed in R4 (attribute deleted).
         self._targets_placed[env_ids_t] = 0
         self._targets_missed[env_ids_t] = 0
         self._prev_in_drum[env_ids_t] = False

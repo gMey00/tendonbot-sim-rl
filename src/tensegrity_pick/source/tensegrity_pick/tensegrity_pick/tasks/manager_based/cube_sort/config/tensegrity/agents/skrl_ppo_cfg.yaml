@@ -4,29 +4,28 @@ seed: 42
 # Models are instantiated using skrl's model instantiator utility
 # https://skrl.readthedocs.io/en/latest/api/utils/model_instantiators.html
 models:
-  separate: False
-  policy:  # see gaussian_model parameters
-    class: GaussianMixin
+  separate: True  # R6: required so each model goes through Runner._component()
+                  # rather than the shared_model factory (which doesn't know
+                  # our CubeSetPolicy/CubeSetValue classes).
+  policy:  # R6: DeepSets-encoder Gaussian policy
+    class: CubeSetPolicy
     clip_actions: False
     clip_log_std: True
-    min_log_std: -1.0
+    min_log_std: -2.0
     max_log_std: 2.0
     initial_log_std: 0.0
-    network:
-      - name: net
-        input: OBSERVATIONS
-        layers: [128, 64]
-        activations: elu
-    output: ACTIONS
-  value:  # see deterministic_model parameters
-    class: DeterministicMixin
+    # CubeSetLayout descriptor (must match cube_sort_env_cfg.py ObservationsCfg)
+    non_set_dim: 34
+    set_per_cube_dim: 15
+    n_max_cubes: 16
+    privileged_dim: 32
+  value:  # R6: asymmetric critic — sees the privileged tail
+    class: CubeSetValue
     clip_actions: False
-    network:
-      - name: net
-        input: OBSERVATIONS
-        layers: [128, 64]
-        activations: elu
-    output: ONE
+    non_set_dim: 34
+    set_per_cube_dim: 15
+    n_max_cubes: 16
+    privileged_dim: 32
 
 
 # Rollout memory
@@ -48,7 +47,7 @@ agent:
   learning_rate: 1.0e-04
   learning_rate_scheduler: KLAdaptiveLR
   learning_rate_scheduler_kwargs:
-    kl_threshold: 0.008
+    kl_threshold: 0.004
   state_preprocessor: RunningStandardScaler
   state_preprocessor_kwargs: null
   value_preprocessor: RunningStandardScaler
