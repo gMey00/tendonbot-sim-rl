@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "doc/deep-research-report.md",
-                "mode": "source",
+                "file": "doc/Literatur/cloth_manipulation.md",
+                "mode": "preview",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "deep-research-report"
+              "title": "cloth_manipulation"
             }
           }
         ]
@@ -94,7 +94,6 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "doc/deep-research-report.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -104,7 +103,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Backlinks for deep-research-report"
+              "title": "Backlinks"
             }
           },
           {
@@ -185,12 +184,51 @@
   },
   "active": "98794515c474ef13",
   "lastOpenFiles": [
-    "doc/reinforcement_learning.md",
-    "doc/README.md",
-    "doc/nv_isaac.md",
-    "doc/deep-research-report.md",
-    "doc/FAPS-Thesis/FAPS-Thesis.synctex.gz",
-    "doc/FAPS-Thesis/FAPS-Thesis.synctex(busy)",
-    "doc/FAPS-Thesis/pdflatex22855.fls"
+    "doc/Literatur/sources/new_sources/new_new_new_sources/workspace.pdf",
+    "doc/Literatur/sources/new_sources/new_new_new_sources/workspace-delineation-of-cable-actuated-parallel-1av8i8s2e6.pdf",
+    "doc/Literatur/sources/new_sources/new_new_new_sources/wire-robots-part-i-kinematics-analysis-design-45pi94y1y1.pdf",
+    "doc/Literatur/sources/new_sources/new_new_new_sources/verhoevendiss.pdf",
+    "doc/Literatur/sources/new_sources/new_new_new_sources/verhoevendiss-2.pdf",
+    "doc/Literatur/sources/new_sources/new_new_new_sources/s11012-010-9379-8.pdf",
+    "doc/Literatur/sources/new_sources/new_new_new_sources/s11012-010-9369-x.pdf",
+    "doc/Literatur/sources/new_sources/new_new_new_sources/s00419-022-02192-4.pdf",
+    "doc/Literatur/sources/new_sources/new_new_new_sources/resonance10.pdf",
+    "doc/Literatur/sources/new_sources/new_new_new_sources/position-control-of-a-planar-cable-driven-parallel-robot-using-reinforcement-learning.pdf",
+    "doc/Literatur/sources/new_sources/new_new_new_sources/pdfcoffee.com_a-kinematic-notation-for-lower-pair-mechanisms-based-on-matrices-denavit-hartenbergpdf-4-pdf-free.pdf",
+    "doc/Literatur/README.md",
+    "doc/Literatur/tendon_robots.md",
+    "doc/Literatur/workspace_analysis.md",
+    "doc/Literatur/control_kinematics.md",
+    "doc/Literatur/sim_to_real.md",
+    "doc/Literatur/cloth_manipulation.md",
+    "doc/Literatur/reinforcement_learning.md",
+    "doc/Literatur/simulation.md",
+    "doc/Literatur/grasping_manipulation.md",
+    "doc/Literatur/linkage_mechanisms.md",
+    "doc/Literatur/tensegrity_robots.md",
+    "res/Tensegrity/tensegrity_cad_reference_points.png",
+    "res/Tensegrity/ tensegrity_cad_measurements.png",
+    "doc/Tensegrity_robot/tensegrity_robot.md",
+    "doc/workspace_analysis.md",
+    "doc/tendon_simulation.md",
+    "doc/pd_tuning_results.md",
+    "doc/Theses_typst/BUILD_SYSTEM.md",
+    "doc/Theses_typst/FAPS_FORMATTING.md",
+    "doc/Theses_typst/shared/figures/tensegrity_cad_measurements.png",
+    "doc/Theses_typst/shared/figures/tensegrity_cad_reference_points.png",
+    "doc/Theses_typst/shared/figures/tensegrity_variants.png",
+    "doc/Theses_typst/shared/coversheet/BalkenFAPSGruen_old.png",
+    "doc/Theses_typst/shared/coversheet/LogoFAPS_old.png",
+    "doc/Theses_typst/shared/coversheet/BalkenFAPSGruen_hires.png",
+    "doc/Theses_typst/shared/coversheet/LogoFAPS_hires.png",
+    "doc/Theses_typst/PA_OVERHAUL_MEMORIES.md",
+    "doc/Theses_typst/PA_OVERHAUL_PLAN.md",
+    "doc/Theses_typst/shared/coversheet/BalkenFAPSGruen.png",
+    "doc/Theses_typst/shared/figures/diagrams/README.md",
+    "doc/Theses_typst/MIGRATION_PLAN.md",
+    "doc/Theses/typst_vs_latex_analysis.md",
+    "doc/Tensegrity_robot/tendon_simulation.md",
+    "doc/Tensegrity_robot/README.md",
+    "doc/Tensegrity_robot/workspace_analysis.md"
   ]
 }
