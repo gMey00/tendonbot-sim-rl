@@ -14,28 +14,17 @@
 | [Uicker2017](sources/linkage_mechanisms/Books/Uicker2017.pdf) | Uicker, J. J., Pennock, G. R. & Shigley, J. E. | *Theory of Machines and Mechanisms* (5th ed.) | 2017 | 🔴 | 🟢 | 🟢 | Standard undergraduate text on mechanism kinematics covering graphical synthesis, analytical techniques, and dynamic analysis. |
 | [Hartenberg1955](sources/linkage_mechanisms/Books/Hartenberg1955.pdf) | Hartenberg, R. S. & Denavit, J. | "A Kinematic Notation for Lower Pair Mechanisms Based on Matrices" | 1955 | 🔴 | 🟢 | 🟢 | Introduces the Denavit-Hartenberg convention for describing kinematic chains via homogeneous transformation matrices. Foundational for all serial-chain manipulator descriptions. |
 
-### Seminal Papers
-
-| Ref | Authors | Title | Year | Impl. | Thesis | Cred. | Summary |
-|-----|---------|-------|------|-------|--------|-------|---------|
-| [Freudenstein1954](sources/linkage_mechanisms/Seminal_Papers/Freudenstein1954.pdf) | Freudenstein, F. | "An Analytical Approach to the Design of Four-Link Mechanisms" | 1954 | 🔴 | 🟡 | 🟢 | First analytical (algebraic) method for four-bar synthesis, replacing graphical methods. Historical milestone in mechanism design. |
-| [Ghosal2010](sources/linkage_mechanisms/Seminal_Papers/Ghosal2010.pdf) | Ghosal, A. | "The Freudenstein Equation and the Four-Bar Linkage" | 2010 | 🔴 | 🟡 | 🟢 | Modern pedagogical exposition of the Freudenstein equation and four-bar linkage synthesis. Accessible companion to the 1954 original. |
-
----
-
 ## Antiparallelogram Kinematics
 
 ### Journal & Conference Papers
 
 | Ref | Authors | Title | Year | Impl. | Thesis | Cred. | Summary |
 |-----|---------|-------|------|-------|--------|-------|---------|
-| [Dijksman1977](sources/linkage_mechanisms/Journal_%26_Conference_Papers/Dijksman1977.pdf) | Dijksman, E. A. | "A Study of Some Properties of the Antiparallelogram Linkage" | 1977 | 🔴 | 🟢 | 🟢 | Definitive kinematic analysis of the antiparallelogram linkage: instantaneous centre of rotation (ICR), bifurcation modes, and coupler curve properties. Core reference for the project's X-joint analysis. |
-| [Stachel2000](sources/linkage_mechanisms/Journal_%26_Conference_Papers/Stachel2000.pdf) | Stachel, H. | "Flexible Cross-Polytopes in the Euclidean 3-Space" | 2000 | 🔴 | 🟡 | 🟢 | Proves antiparallelogram serves as flexibility element in cross-polytopes; classifies finite-flexibility modes. |
-| [Bryant2013](sources/linkage_mechanisms/Journal_%26_Conference_Papers/Bryant2013.pdf) | Bryant, R. & Theran, L. | "Rigidity of Antiparallelogram via Algebraic and Graphical Methods" | 2013 | 🔴 | 🟡 | 🟢 | Modern algebraic rigidity analysis of antiparallelogram frameworks. Complements the classical geometric treatment. |
+| [Dijksman1977](sources/linkage_mechanisms/Papers/Dijksman1977.pdf) | Dijksman, E. A. | "A Study of Some Properties of the Antiparallelogram Linkage" | 1977 | 🔴 | 🟢 | 🟢 | Definitive kinematic analysis of the antiparallelogram linkage: instantaneous centre of rotation (ICR), bifurcation modes, and coupler curve properties. Core reference for the project's X-joint analysis. |
+| [Stachel2000](sources/linkage_mechanisms/Papers/Stachel2000.pdf) | Stachel, H. | "Flexible Cross-Polytopes in the Euclidean 3-Space" | 2000 | 🔴 | 🟡 | 🟢 | Proves antiparallelogram serves as flexibility element in cross-polytopes; classifies finite-flexibility modes. |
+| [Bryant2013](sources/linkage_mechanisms/Papers/Bryant2013.pdf) | Bryant, R. & Theran, L. | "Rigidity of Antiparallelogram via Algebraic and Graphical Methods" | 2013 | 🔴 | 🟡 | 🟢 | Modern algebraic rigidity analysis of antiparallelogram frameworks. Complements the classical geometric treatment. |
 | Muirhead1923 | Muirhead, R. F. | "The Antiparallelogram — A Historical Note on Its Properties" | 1923 | 🔴 | 🔴 | 🟡 | Early historical treatment of antiparallelogram geometry. Background for the evolution of linkage analysis. |
-| [Gur2019](sources/linkage_mechanisms/Journal_%26_Conference_Papers/Gur2019.pdf) | Gur, M. & Mimna, R. | "On the Geometry and Kinematics of the Antiparallelogram Linkage" | 2019 | 🔴 | 🟡 | 🟢 | Detailed geometric and kinematic study of the antiparallelogram linkage. Complements Dijksman 1977 with modern algebraic treatment. |
-| [Grasegger2020](sources/linkage_mechanisms/Journal_%26_Conference_Papers/Grasegger2020.pdf) | Grasegger, G. et al. | "Flexible Polygons and Their Algebraic Geometry" | 2020 | 🔴 | 🟡 | 🟢 | Algebraic-geometry treatment of flexible polygons including antiparallelograms. Theoretical background for classifying flexible cross-polytope configurations. |
-| [Rothenhofer2010](sources/linkage_mechanisms/Journal_%26_Conference_Papers/Rothenhofer2010.pdf) | Rothenhofer, G. et al. | "Wire-Based Pantograph Mechanisms Using Antiparallelogram Linkages" | 2010 | 🔴 | 🟡 | 🟢 | Wire-based pantograph realisations using antiparallelogram linkages. Engineering context for cable-actuated X-joint mechanisms. |
+| [Gur2019](sources/linkage_mechanisms/Papers/Gur2019.pdf) | Gur, M. & Mimna, R. | "On the Geometry and Kinematics of the Antiparallelogram Linkage" | 2019 | 🔴 | 🟡 | 🟢 | Detailed geometric and kinematic study of the antiparallelogram linkage. Complements Dijksman 1977 with modern algebraic treatment. |
 
 ---
 
@@ -45,9 +34,7 @@
 
 | Ref | Authors | Title | Year | Impl. | Thesis | Cred. | Summary |
 |-----|---------|-------|------|-------|--------|-------|---------|
-| [Tsounis2026](sources/linkage_mechanisms/Conference_%26_Journal_Papers/Tsounis2026.pdf) | Tsounis, V., Maloisel, G., Schumacher, C., Grandia, R., Serifi, A., Müller, D., Amevor, C., Widmer, T. & Bächer, M. | "Kamino: GPU-based Massively Parallel Simulation of Multi-Body Systems with Challenging Topologies" | 2026 | 🟡 | 🟢 | 🟢 | GPU solver for kinematic loops using ADMM-based maximal-coordinate formulation. Demonstrated on DR Legs biped with 6 nested loops. Directly relevant as a simulation backend for antiparallelogram joints. |
-| [Tsounis2025](sources/linkage_mechanisms/Conference_%26_Journal_Papers/Tsounis2025.pdf) | Tsounis, V., Grandia, R. & Bächer, M. | "On Solving the Dynamics of Constrained Rigid Multi-Body Systems with Kinematic Loops" | 2025 | 🟡 | 🟢 | 🟢 | Algorithmic foundations for the Kamino solver: constrained dynamics formulation for closed kinematic chains. |
-| [Gondokaryono2019](sources/linkage_mechanisms/Conference_%26_Journal_Papers/Gondokaryono2019.pdf) | Gondokaryono, R., Agrawal, A., Munawar, A., Nycz, C. J. & Fischer, G. S. | "An Approach to Modeling Closed-Loop Kinematic Chain Mechanisms, Applied to Simulations of the da Vinci Surgical System" | 2019 | 🟡 | 🟢 | 🟢 | Double four-bar model for da Vinci PSM/ECM using Gazebo/Bullet with mimic joints. Key reference for workaround strategies. |
+| [Tsounis2025](sources/linkage_mechanisms/Papers/Tsounis2025.pdf) | Tsounis, V., Grandia, R. & Bächer, M. | "On Solving the Dynamics of Constrained Rigid Multi-Body Systems with Kinematic Loops" | 2025 | 🟡 | 🟢 | 🟢 | Algorithmic foundations for the Kamino solver: constrained dynamics formulation for closed kinematic chains. |
 | Kulkarni2025 | Kulkarni, M., Alexis, K. et al. | "Aerial Gym Simulator" | 2025 | 🔴 | 🟡 | 🟢 | GPU-accelerated simulator handling under/over-actuated complex morphologies. Context for closed-loop simulation in Isaac Sim alternatives. |
 
 ---
@@ -58,6 +45,5 @@
 
 | Ref | Authors | Title | Year | Impl. | Thesis | Cred. | Summary |
 |-----|---------|-------|------|-------|--------|-------|---------|
-| [Tomishiro2019](sources/linkage_mechanisms/Conference_%26_Journal_Papers/Tomishiro2019.pdf) | Tomishiro, K. et al. | "Design of Robot Leg with Variable Reduction Ratio Crossed Four-bar Linkage Mechanism" | 2019 | 🔴 | 🟡 | 🟢 | Variable-ratio crossed four-bar knee joint design with increased reduction ratio for legged robots. |
-| [Gur2018](sources/linkage_mechanisms/Conference_%26_Journal_Papers/Gur2018.pdf) | Gur, M. & Mimna, R. | "Design and Kinematic Analysis of a Four-Bar Linkage Mechanism for Robotic Applications" | 2018 | 🔴 | 🟡 | 🟢 | Four-bar linkage design and kinematic analysis for robotic applications. Conference precursor to Gur 2019 journal paper. |
+| [Tomishiro2019](sources/linkage_mechanisms/Papers/Tomishiro2019.pdf) | Tomishiro, K. et al. | "Design of Robot Leg with Variable Reduction Ratio Crossed Four-bar Linkage Mechanism" | 2019 | 🔴 | 🟡 | 🟢 | Variable-ratio crossed four-bar knee joint design with increased reduction ratio for legged robots. |
 

@@ -7,8 +7,8 @@
 //   #import "../../../shared/formatting/plots.typ": *
 //   #step-response-plot(data-files: (...), ...)
 
-#import "@preview/cetz:0.3.4": canvas, draw
-#import "@preview/cetz-plot:0.1.1": plot
+#import "@preview/cetz:0.5.0": canvas, draw
+#import "@preview/cetz-plot:0.1.3": plot, chart
 #import "colors.typ": *
 
 // ── Color palette for plots (matches faps_colors.py) ────────────────────────
@@ -49,16 +49,52 @@
   label: (offset: 0.35),
 )
 
+// ── Common axis labels ──────────────────────────────────────────────────────
+#let ax-time-s    = [Time (s)]
+#let ax-angle-deg = [Angle (°)]
+
+// ── Common axis tick formatters ─────────────────────────────────────────────
+// Format large step counts as "Nk" (e.g. 50000 → "50k", 1.5e6 → "1500k").
+#let kilo-format = v => {
+  let k = v / 1000
+  if k == calc.trunc(k) {
+    str(calc.trunc(k)) + "k"
+  } else {
+    str(k) + "k"
+  }
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 // Parse a CSV file (skipping header) into an array of (x, y) tuples.
 // col-x and col-y are 0-based column indices.
-// Pass the result of csv() directly, not a file path.
-#let parse-csv(raw, col-x: 0, col-y: 1) = {
-  raw.slice(1).map(row => (float(row.at(col-x)), float(row.at(col-y))))
+// Downsamples data for performance and better visual rendering via `step`.
+#let parse-csv(raw, col-x: 0, col-y: 1, step: 50) = {
+  let res = ()
+  let n = raw.len()
+  for i in range(1, n, step: step) {
+    if raw.at(i).len() > calc.max(col-x, col-y) {
+      res.push((float(raw.at(i).at(col-x)), float(raw.at(i).at(col-y))))
+    }
+  }
+  // Ensure the last point is included for complete curves
+  if n > 1 and calc.rem(n - 1, step) != 0 {
+      res.push((float(raw.at(n - 1).at(col-x)), float(raw.at(n - 1).at(col-y))))
+  }
+  res
 }
 
 // Parse setpoint column from CSV data
-#let parse-csv-setpoint(raw, col-x: 0, col-sp: 2) = {
-  raw.slice(1).map(row => (float(row.at(col-x)), float(row.at(col-sp))))
+#let parse-csv-setpoint(raw, col-x: 0, col-sp: 2, step: 50) = {
+  let res = ()
+  let n = raw.len()
+  for i in range(1, n, step: step) {
+    if raw.at(i).len() > calc.max(col-x, col-sp) {
+      res.push((float(raw.at(i).at(col-x)), float(raw.at(i).at(col-sp))))
+    }
+  }
+  if n > 1 and calc.rem(n - 1, step) != 0 {
+      res.push((float(raw.at(n - 1).at(col-x)), float(raw.at(n - 1).at(col-sp))))
+  }
+  res
 }

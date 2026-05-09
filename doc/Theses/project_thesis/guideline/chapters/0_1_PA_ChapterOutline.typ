@@ -60,6 +60,7 @@
 == Model Validation (4.5)
 === Step-Response Testing Protocol (4.5.1)
 === Monte Carlo Workspace Analysis (4.5.2)
+=== PD Gain Tuning (4.5.3)
 == Reinforcement Learning Task Formulation (4.6)
 === Simulation Environment (4.6.1)
 === Reach Task (4.6.2)

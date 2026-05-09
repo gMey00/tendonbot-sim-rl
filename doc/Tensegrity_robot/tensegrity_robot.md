@@ -153,7 +153,7 @@ Total arm mass (excluding base and gripper): ≈ **4.49 kg**
 > Joint limits from Klein (2023, §4.2, p.79–80): practical measured workspace.
 
 **Physical Elbow Linkage Variants**
-The Physical Elbow Linkage variants replace the single `elbow_joint` with a 2-DOF linkage structure (2 rods + elbow disc) — the effective elbow range is ±70° (Klein 2023, §4.2), constrained by the 4-bar geometry. Rod and coupler limits are set generously; the PhysX loop-closure constraint enforces the kinematic relationship.
+The Physical Elbow Linkage variants replace the single `elbow_joint` with a 2-DOF linkage structure (2 rods + elbow disc) — the effective elbow range is ±70° (Klein 2023, §4.2), constrained by the 4-bar geometry. Rod and coupler limits are set generously. The PhysX loop-closure constraint enforces the kinematic relationship.
 
 | Joint | Type | Axis | Lower limit | Upper limit |
 |-------|------|------|-------------|-------------|
@@ -249,7 +249,7 @@ See the [tendon simulation documentation](./tendon_simulation.md) for detailed t
 
 ## Actuation Modes
 
-The robot is available in two actuation modes within Isaac Lab.
+The robot is available in three actuation modes within Isaac Lab.
 
 ### PD-Driven (Position Control)
 
@@ -395,7 +395,7 @@ troubleshooting (including the conda / pxr setup).
 `physical` variants replace the cylinder with an antiparallelogram four-bar
 linkage with three additional revolute joints (`rod_left_joint`,
 `rod_right_joint`, `coupler_left_joint`).  Low-res variants share collision
-geometry with their full-res counterparts — only visual meshes are decimated.
+geometry with their full-res counterparts. Only visual meshes are decimated.
 
 ### Assembled USD Files
 

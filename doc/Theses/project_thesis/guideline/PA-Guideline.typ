@@ -56,6 +56,7 @@
 // ──────────────────────────────────────────────────────
 #include "chapters/0_0_Guideline.typ"
 #include "chapters/0_1_PA_ChapterOutline.typ"
+#include "chapters/0_2_BackgroundCitationLog.typ"
 
 // ──────────────────────────────────────────────────────
 // Bibliography

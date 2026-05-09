@@ -30,6 +30,8 @@ $ mat(tau_"pitch"; tau_"roll") = mat(
   r_w/2, -r_w, r_w/2
 ) mat(T_3; T_4; T_5) $ <eq:wrist_torque>
 
+The symbols `pitch` and `roll` correspond to the URDF/USD joints `wrist_y_joint` and `wrist_x_joint`, respectively, in the integrated articulation tree.
+
 Combining both subsystems, the full constant $bold(J)^top in bb(R)^(3 times 5)$ matrix matches the zero-configuration simulation property exactly:
 $ bold(J)^top = mat(
   r_e, -r_e, 0, 0, 0;
@@ -50,7 +52,7 @@ $ bold(J)^top = mat(
 ) <fig:tendon_dataflow>
 
 ==== Architectural Justification vs. Built-in Tendons
-Isaac Sim/PhysX 5 provides native "spatial tendon" primitives designed for muscle-like actuation. However, they were deliberately not used in this architecture for two primary reasons. First, spatial tendons frequently induce numerical instabilities and explosions when simulating extremely stiff linkages like the tensegrity arm mechanism and carbon-fiber structure. Second, PhysX excludes native tendon tension signals from its standard `joint_force_report` #ac("API"). This makes it mechanically impossible to extract or penalize individual cable tensions during standard #ac("RL") step loops; the custom ActionTerm approach provides direct, observable control over the force space, perfectly suiting standard #ac("RL") reward formulations.
+Isaac Sim/PhysX 5 provides native "spatial tendon" primitives designed for muscle-like actuation~@physx_articulations_550. However, they were deliberately not used in this architecture for two primary reasons. First, spatial tendons frequently induce numerical instabilities and explosions when simulating stiff cable-driven linkages such as the tensegrity arm mechanism. Second, PhysX excludes native tendon tension signals from its standard `joint_force_report` #ac("API"). This makes it mechanically impossible to extract or penalize individual cable tensions during standard #ac("RL") step loops; the custom `ActionTerm` approach provides direct, observable control over the force space, perfectly suiting standard #ac("RL") reward formulations.
 
 === Physical Body-Force Tendon Model <subsec:body_force_model>
 
@@ -76,44 +78,41 @@ Three actuation modes are implemented for systematic comparison. @tab:actuation_
 #faps-table(
   table(
     columns: (auto, 1fr, auto, auto),
-    stroke: 0.5pt,
-    inset: 6pt,
     table.header([*Mode*], [*Elbow actuation*], [*Wrist actuation*], [*Elbow model*]),
-    [#ac("PD")-driven], [ImplicitActuator, position targets], [ImplicitActuator], [Disc approx.],
-    [Tendon-driven], [Constant $J^top$ ($r_e = 72.5 "mm"$)], [Constant $J^top$], [Disc approx.],
-    [Physical tendon], [Body-force at linkage attachment pts.], [Constant $J^top$], [Antiparallelogram],
+    [PD-driven], [`ImplicitActuator`, position targets], [`ImplicitActuator`], [Disc-approximation],
+    [Tendon-driven (constant $bold(J)^top$)], [Constant $bold(J)^top$ ($r_e = 72.5$~mm)], [Constant $bold(J)^top$], [Disc-approximation],
+    [Physical tendon (body-force)], [Body-force at linkage attachment pts.], [Constant $J^top$], [Antiparallelogram],
   ),
   caption: [Comparison of the three actuation modes. The #ac("PD")-driven mode serves as the baseline. The tendon-driven mode introduces the cable-to-joint coupling. The physical tendon mode adds configuration-dependent elbow forces and the four-bar linkage constraint.],
   short-caption: [Comparison of the three actuation modes],
 ) <tab:actuation_modes>
 
-In the *#ac("PD")-driven mode*, all five joints (base $Y$, base $Z$, elbow, wrist pitch, wrist roll) use Isaac Sim's built-in `ImplicitActuator` with position targets. The policy outputs joint position deltas $Delta bold(q)$ that are added to the current positions, and the simulator applies torques via:
+In the *PD-driven mode*, all five joints (base $Y$, base $Z$, elbow, wrist pitch, wrist roll) use Isaac Sim's built-in `ImplicitActuator` with position targets. The policy outputs joint position deltas $Delta bold(q)$ that are added to the current positions, and the simulator applies torques via:
 $ tau_i = K_(p,i) (q_i^* - q_i) - K_(d,i) dot(q)_i $ <eq:pd_control>
 This mode ignores the tendon transmission entirely and treats each joint as independently actuated.
 
-In the *tendon-driven mode*, the two base joints remain #ac("PD")-controlled while the three arm joints are driven through the constant $bold(J)^top$ mapping (@eq:jt_full). The policy outputs seven values: two base position deltas and five cable tensions. This mode tests whether an #ac("RL") policy can learn to coordinate antagonistic tendons to achieve precise joint-space or task-space targets.
+In the *tendon-driven mode (constant $J^top$)*, the two base joints remain PD-controlled while the three arm joints are driven through the constant $bold(J)^top$ mapping (@eq:jt_full). The policy outputs seven values: two base position deltas and five cable tensions. This mode tests whether an #ac("RL") policy can learn to coordinate antagonistic tendons to achieve precise joint-space or task-space targets.
 
-In the *physical tendon mode*, the elbow model is the full antiparallelogram linkage variant (@subsec:physical_linkage), and elbow forces are applied as body forces at the physical cable attachment points (@subsec:body_force_model). The wrist and base are actuated identically to the tendon-driven mode. This mode provides the highest physical fidelity and the greatest challenge for learning due to the nonlinear, configuration-dependent elbow transmission.
+In the *physical tendon mode (body-force)*, the elbow model is the full antiparallelogram linkage variant (@subsec:physical_linkage), and elbow forces are applied as body forces at the physical cable attachment points (@subsec:body_force_model). The wrist and base are actuated identically to the tendon-driven mode. This mode provides the highest physical fidelity and the greatest challenge for learning due to the nonlinear, configuration-dependent elbow transmission.
 
 === Motor Specifications and Simulation Parameters <subsec:motor_specs>
 
-@tab:motor_params lists the motor and cable parameters used in simulation, derived from the Maxon EC60 datasheet and the spool geometry described in @subsec:drive_system.
+@tab:motor_params lists the motor and cable parameters used in simulation, derived from the Maxon EC60 datasheet and the spool geometry described in @subsec:drive_system. The per-tendon cable saturations and the resulting joint-level effort limits cited in the table are derived in @subsec:drive_system (see @eq:max_tension_elbow, @eq:effort_elbow, and @eq:effort_wrist); the equations are kept there to consolidate the hardware-envelope discussion alongside @tab:joint_ranges.
 
 #faps-table(
   table(
     columns: (auto, auto, auto),
-    stroke: 0.5pt,
-    inset: 6pt,
     table.header([*Parameter*], [*Value*], [*Source*]),
-    [Motor type], [Maxon EC60 flat BLDC], [@MaxonEC60Datasheet],
+    [Motor type], [Maxon EC60 Flat BLDC], [@MaxonEC60Datasheet],
     [Nominal voltage], [24~V], [@MaxonEC60Datasheet],
     [Max.\ continuous torque], [0.401~Nm], [@MaxonEC60Datasheet],
     [Spool radius $r_s$], [5~mm], [@Klein2023],
-    [Elbow pulley ratio], [3:1], [@Klein2023],
-    [Max.\ cable tension $T_"max"$], [500~N], [Derived],
-    [Elbow effort limit], [36.25~Nm], [@eq:effort_elbow],
-    [Wrist effort limit (per axis)], [3.0~Nm], [Derived],
-    [Base effort limit (per axis)], [200~Nm], [Configured],
+    [Elbow pulley ratio], [3:1 (block-and-tackle)], [@Klein2023],
+    [Wrist pulley ratio], [1:1 (direct drive)], [@Klein2023],
+    [Max.\ cable tension $T_"max"$], [480~N (elbow tendons) / 80~N (wrist tendons)], [@eq:max_tension_elbow],
+    [Elbow effort limit], [35.0~Nm], [@eq:effort_elbow],
+    [Wrist effort limit (per axis)], [3.5~Nm], [@eq:effort_wrist],
+    [Base effort limit], [300~Nm ($Y$) / 200~Nm ($Z$)], [Configured],
   ),
   caption: [Motor and actuation parameters used in the simulation model. All values are derived from the Maxon EC60 specifications and the mechanical design of the tendon routing system.],
   short-caption: [Motor and actuation parameters],

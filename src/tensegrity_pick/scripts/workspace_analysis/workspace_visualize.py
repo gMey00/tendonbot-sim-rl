@@ -275,40 +275,42 @@ def create_workspace_figure(
     # ── Layout ────────────────────────────────────────────────────────
     fig = plt.figure(figsize=(20, 12))
     if pcfg.SHOW_TITLES and figure_title:
-        fig.suptitle(figure_title, y=0.98)
+        fig.suptitle(figure_title, y=0.99, fontsize=10)
     gs = gridspec.GridSpec(
-        2, 3, figure=fig,
-        width_ratios=[1.3, 0.5, 0.5],
-        height_ratios=[1, 1],
-        hspace=0.35, wspace=0.35,
+        1, 4, figure=fig,
+        width_ratios=[1.5, 1.0, 1.0, 1.0],
+        wspace=0.45,
+        left=0.04, right=0.92, top=0.90, bottom=0.16,
     )
 
     # ── 3-D scatter ───────────────────────────────────────────────────
-    ax3d = fig.add_subplot(gs[:, 0], projection="3d")
-    finite_mask = np.isfinite(scatter_values)
+    ax3d = fig.add_subplot(gs[0, 0], projection="3d")
+    finite_mask = np.isfinite(scatter_values) & inside_bbox
     ax3d.scatter(
         voxel_centers[finite_mask, 0],
         voxel_centers[finite_mask, 1],
         voxel_centers[finite_mask, 2],
         c=scatter_values[finite_mask],
-        cmap=colormap, norm=norm, s=3, alpha=0.6, edgecolors="none",
+        cmap=colormap, norm=norm, s=2, alpha=0.55, edgecolors="none",
     )
     _draw_box_3d(ax3d, DESIRED_WS_MIN, DESIRED_WS_MAX, color=box_color)
-    _set_proportional_3d_axes(ax3d, positions)
-    ax3d.set_xlabel("X (m)")
-    ax3d.set_ylabel("Y (m)")
-    ax3d.set_zlabel("Z (m)")
-    ax3d.set_title("3D Workspace (Voxelised)")
+    _set_proportional_3d_axes(ax3d, voxel_centers[finite_mask])
+    ax3d.set_xlabel("X (m)", labelpad=-2)
+    ax3d.set_ylabel("Y (m)", labelpad=-2)
+    ax3d.set_zlabel("Z (m)", labelpad=-2)
+    ax3d.set_title("3D Workspace (Voxelised)", fontsize=9)
     ax3d.xaxis.set_major_locator(plt.MaxNLocator(nbins=3))
-    ax3d.tick_params(axis="x", labelsize=7, pad=1)
+    ax3d.yaxis.set_major_locator(plt.MaxNLocator(nbins=3))
+    ax3d.zaxis.set_major_locator(plt.MaxNLocator(nbins=3))
+    ax3d.tick_params(axis="both", labelsize=7, pad=0)
 
-    # ── 2-D cross-section heatmaps ────────────────────────────────────
+    # ── 2-D cross-section heatmaps (Top, Side, Front in a row) ────────
     half_thickness = slice_thickness / 2.0
-    upper_views = [(0, 1, TOP_VIEW), (0, 2, SIDE_VIEW)]
+    heatmap_views = [TOP_VIEW, SIDE_VIEW, FRONT_VIEW]
     heatmap_axes: list[plt.Axes] = []
 
-    for gs_row, gs_col, view in upper_views:
-        ax = fig.add_subplot(gs[gs_row, gs_col])
+    for col, view in enumerate(heatmap_views, start=1):
+        ax = fig.add_subplot(gs[0, col])
         mask = _slice_mask(positions, view, half_thickness)
         sliced_pos = positions[mask]
         sliced_vals = per_sample_values[mask]
@@ -322,33 +324,21 @@ def create_workspace_figure(
                 sliced_vals, voxel_size,
             )
         _add_heatmap(ax, a_edges, b_edges, grid, colormap, norm, view, box_color=box_color)
+        ax.set_title(view.title, fontsize=9)
+        ax.tick_params(axis="both", labelsize=7)
+        ax.xaxis.label.set_size(8)
+        ax.yaxis.label.set_size(8)
         heatmap_axes.append(ax)
 
-    # Front view spanning both right columns
-    ax_front = fig.add_subplot(gs[1, 1:])
-    front_mask = _slice_mask(positions, FRONT_VIEW, half_thickness)
-    sliced_pos = positions[front_mask]
-    sliced_vals = per_sample_values[front_mask]
-    if density_mode:
-        a_edges, b_edges, grid = compute_2d_density(
-            sliced_pos[:, FRONT_VIEW.column_a], sliced_pos[:, FRONT_VIEW.column_b], voxel_size,
-        )
-    else:
-        a_edges, b_edges, grid = compute_2d_heatmap(
-            sliced_pos[:, FRONT_VIEW.column_a], sliced_pos[:, FRONT_VIEW.column_b],
-            sliced_vals, voxel_size,
-        )
-    _add_heatmap(ax_front, a_edges, b_edges, grid, colormap, norm, FRONT_VIEW,
-                 box_color=box_color)
-    heatmap_axes.append(ax_front)
-
-    # ── Shared colour bar ─────────────────────────────────────────────
+    # ── Shared colour bar (slim, right of last heatmap) ───────────────
     sm = plt.cm.ScalarMappable(cmap=colormap, norm=norm)
     sm.set_array([])
-    fig.colorbar(
-        sm, ax=heatmap_axes, shrink=0.85, pad=0.03,
+    cbar = fig.colorbar(
+        sm, ax=heatmap_axes, shrink=0.85, pad=0.03, fraction=0.04,
         label=colorbar_label, location="right",
     )
+    cbar.ax.tick_params(labelsize=7)
+    cbar.set_label(colorbar_label, fontsize=8)
 
     pcfg.finalize(fig, output_path, tight=False)
 

@@ -32,11 +32,11 @@
   student-id: thesis-student-id,
   supervisors: (
     [Prof. Dr.-Ing. J. Franke],
-    [Dipl.-Ing. M. Landgraf],
+    [M.Sc. A. Schlosser],
   ),
   deadline: thesis-deadline,
   duration: thesis-duration,
-  title-image: "../../shared/coversheet/titelbild_wip.png",
+  title-image: "../../shared/coversheet/titelbild_pt.png",
 )
 
 // ── Declaration of authenticity ──────────────────────────────────
@@ -48,6 +48,7 @@
 #faps-toc()
 #faps-lof()
 #faps-lot()
+#faps-loa()
 
 // ── Abbreviations and symbols ────────────────────────────────────
 #print-abbreviations()

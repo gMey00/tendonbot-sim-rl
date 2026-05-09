@@ -10,7 +10,9 @@
   der angegebenen Quellen angefertigt habe und dass die Arbeit in gleicher oder
   ähnlicher Form noch keiner anderen Prüfungsbehörde vorgelegen hat und von dieser
   als Teil einer Prüfungsleistung angenommen wurde. Alle Ausführungen, die
-  wörtlich oder sinngemäß übernommen wurden, sind als solche gekennzeichnet.]
+  wörtlich oder sinngemäß übernommen wurden, sind als solche gekennzeichnet.
+  
+  #highlight(fill: red)[TODO: Update to newest FAPS declaration text!]]
 
   v(2cm)
 

@@ -122,9 +122,11 @@ def _apply_schematic_layout(fig, *, title="", show_caption=True,
 def antagonistic_joint_figure(*, show_caption: bool = True) -> go.Figure:
     """Three-state schematic of a revolute joint with antagonistic tendons.
 
-    Left:   T₁ < T₂ → counter-clockwise torque, link deflected left.
-    Centre: T₁ = T₂ → balanced, link vertical.
-    Right:  T₁ > T₂ → clockwise torque, link deflected right.
+    The output link is a rigid bar passing through the pulley along its
+    diameter (horizontal at rest); cables attach where the bar meets
+    the rim and run straight up to fixed motor anchors above each
+    attachment.  Differential tension rotates the bar (and pulley)
+    about the joint axis.
 
     References
     ----------
@@ -134,53 +136,55 @@ def antagonistic_joint_figure(*, show_caption: bool = True) -> go.Figure:
     fig = go.Figure()
 
     # --- geometry constants (arbitrary mm units) ---
-    r_pulley = 22          # pulley radius
-    link_len = 90          # distal link length
-    frame_y = 70           # frame height above joint
-    motor_sep = 65         # lateral distance of each motor from joint
-    col_spacing = 200      # horizontal offset between configurations
+    r_pulley = 28
+    load_len = 70           # short distal extension showing the load
+    frame_y = 80
+    col_spacing = 220
 
     configs = [
         # (angle_deg, T1_norm, T2_norm, label)
-        (-25, 0.25, 0.75, "T₁ < T₂  →  τ < 0"),
-        (0,   0.50, 0.50, "T₁ = T₂  →  τ = 0"),
-        (25,  0.75, 0.25, "T₁ > T₂  →  τ > 0"),
+        # Geometry: T₁ wraps the lower-LEFT quadrant, T₂ the lower-RIGHT.
+        # Pulling T₁ harder shortens its wrap and rotates the pulley CCW
+        # (positive θ in math convention); pulling T₂ harder rotates CW.
+        (-20, 0.4, 1.0, "T₁ > T₂  →  τ > 0"),
+        (0,   0.7, 0.7, "T₁ = T₂  →  τ = 0"),
+        (20,  1.0, 0.4, "T₁ < T₂  →  τ < 0"),
     ]
 
     for idx, (angle_deg, t1, t2, label) in enumerate(configs):
         ox = (idx - 1) * col_spacing
         θ = np.radians(angle_deg)
         is_center = idx == 1
-
-        # Emphasis: full opacity for center, dimmed for sides
         opa = 1.0 if is_center else 0.55
 
-        # ── Frame bar ──
+        # ── Frame bar with hatching ──
         fig.add_trace(go.Scatter(
-            x=[ox - 90, ox + 90], y=[frame_y, frame_y],
+            x=[ox - r_pulley - 30, ox + r_pulley + 30],
+            y=[frame_y, frame_y],
             mode="lines", line=dict(color=FAPS_GRAY, width=4),
             showlegend=False, opacity=opa,
         ))
-        # Hatching marks
-        for hx in np.linspace(ox - 80, ox + 80, 9):
+        for hx in np.linspace(ox - r_pulley - 25, ox + r_pulley + 25, 9):
             fig.add_trace(go.Scatter(
-                x=[hx, hx - 8], y=[frame_y, frame_y + 10],
+                x=[hx, hx - 6], y=[frame_y, frame_y + 8],
                 mode="lines", line=dict(color=FAPS_GRAY, width=1),
                 showlegend=False, opacity=opa * 0.5,
             ))
 
-        # ── Motor markers ──
-        m1x, m2x = ox - motor_sep, ox + motor_sep
+        # ── Output link (rotates with pulley) ──
+        # Vertical bar in the link's body frame, extending from the top
+        # rim of the pulley through its centre to the load tip below.
+        # Its rim crossing at the top serves as the cable anchor region.
+        link_top = np.array([ox - r_pulley * np.sin(θ),
+                                  r_pulley * np.cos(θ)])
+        load_end = np.array([ox + load_len * np.sin(θ),
+                                  -load_len * np.cos(θ)])
         fig.add_trace(go.Scatter(
-            x=[m1x], y=[frame_y],
-            mode="markers",
-            marker=dict(size=14, color=TENDON_T0_COL, symbol="square"),
-            showlegend=False, opacity=opa,
-        ))
-        fig.add_trace(go.Scatter(
-            x=[m2x], y=[frame_y],
-            mode="markers",
-            marker=dict(size=14, color=TENDON_T1_COL, symbol="square"),
+            x=[link_top[0], load_end[0]],
+            y=[link_top[1], load_end[1]],
+            mode="lines+markers",
+            line=dict(color=FAPS_GREEN, width=5),
+            marker=dict(size=[0, 9], color=FAPS_GREEN),
             showlegend=False, opacity=opa,
         ))
 
@@ -190,114 +194,152 @@ def antagonistic_joint_figure(*, show_caption: bool = True) -> go.Figure:
             x=pcx, y=pcy, mode="lines",
             line=dict(color=FAPS_BLUE, width=2),
             fill="toself",
-            fillcolor=f"rgba(41, 97, 147, {0.08 * opa})",
+            fillcolor=f"rgba(41, 97, 147, {0.06 * opa})",
             showlegend=False, opacity=opa,
         ))
-        # Joint centre
         fig.add_trace(go.Scatter(
             x=[ox], y=[0], mode="markers",
             marker=dict(size=5, color=FAPS_BLUE),
             showlegend=False, opacity=opa,
         ))
 
-        # ── Cable attachment points on pulley ──
-        # Both cables attach to SIDES of the pulley, perpendicular
-        # to the link direction.  Left side for T₁, right side for T₂.
-        att1_x = ox - r_pulley * np.cos(θ)   # left of link
-        att1_y =    - r_pulley * np.sin(θ)
-        att2_x = ox + r_pulley * np.cos(θ)   # right of link
-        att2_y =      r_pulley * np.sin(θ)
+        # ── Cable attachments at the rim, slightly offset to either
+        # side of the link's BOTTOM crossing (where the link emerges
+        # toward the load) so the two cables remain distinguishable.
+        # Both rotate with the pulley by θ. ──
+        alpha = np.radians(8.0)
+        ang1 = -np.pi / 2 - alpha + θ       # T₁ side (lower-LEFT of bottom)
+        ang2 = -np.pi / 2 + alpha + θ       # T₂ side (lower-RIGHT of bottom)
+        att1 = np.array([ox + r_pulley * np.cos(ang1),
+                              r_pulley * np.sin(ang1)])
+        att2 = np.array([ox + r_pulley * np.cos(ang2),
+                              r_pulley * np.sin(ang2)])
 
-        # Cable T₁ (red, from Motor 1 → left attachment on pulley)
+        # ── Motor anchors above the leftmost / rightmost points so the
+        # free cable segment is a true vertical tangent that descends
+        # past the pulley centre to the wrap entry point. ──
+        m1x = ox - r_pulley
+        m2x = ox + r_pulley
+        for mx, col in [(m1x, TENDON_T0_COL), (m2x, TENDON_T1_COL)]:
+            fig.add_trace(go.Scatter(
+                x=[mx], y=[frame_y],
+                mode="markers",
+                marker=dict(size=14, color=col, symbol="square"),
+                showlegend=False, opacity=opa,
+            ))
+
+        # ── Cables: vertical tangent (motor → side of pulley) + ~90°
+        # wrap around the LOWER hemisphere to the rim attachments. ──
         lw1 = 1.0 + 3.0 * t1
+        lw2 = 1.0 + 3.0 * t2
+        n_arc = 36
+
+        # T₁: tangent at angle 180°, wrap clockwise (angle decreasing
+        # from π through 3π/2 ≡ −π/2) to attachment ang1.
+        a1 = np.linspace(-np.pi, ang1, n_arc)
+        arc1_x = ox + r_pulley * np.cos(a1)
+        arc1_y =      r_pulley * np.sin(a1)
         fig.add_trace(go.Scatter(
-            x=[m1x, att1_x], y=[frame_y, att1_y],
+            x=[m1x, m1x, *arc1_x],
+            y=[frame_y, 0.0, *arc1_y],
             mode="lines", line=dict(color=TENDON_T0_COL, width=lw1),
             showlegend=False, opacity=opa,
         ))
-        # Cable T₂ (orange, from Motor 2 → right attachment on pulley)
-        lw2 = 1.0 + 3.0 * t2
+
+        # T₂: tangent at angle 0°, wrap counter-clockwise (angle
+        # decreasing from 0 to −π/2) through the lower-right quadrant.
+        a2 = np.linspace(0.0, ang2, n_arc)
+        arc2_x = ox + r_pulley * np.cos(a2)
+        arc2_y =      r_pulley * np.sin(a2)
         fig.add_trace(go.Scatter(
-            x=[m2x, att2_x], y=[frame_y, att2_y],
+            x=[m2x, m2x, *arc2_x],
+            y=[frame_y, 0.0, *arc2_y],
             mode="lines", line=dict(color=TENDON_T1_COL, width=lw2),
             showlegend=False, opacity=opa,
         ))
-        # Attachment-point markers (both visibly on the pulley circle)
+
+        # Attachment markers at the rim
         fig.add_trace(go.Scatter(
-            x=[att1_x, att2_x], y=[att1_y, att2_y],
+            x=[att1[0], att2[0]], y=[att1[1], att2[1]],
             mode="markers",
-            marker=dict(size=6, color=[TENDON_T0_COL, TENDON_T1_COL]),
+            marker=dict(size=8, color=[TENDON_T0_COL, TENDON_T1_COL],
+                        line=dict(width=1, color="white")),
             showlegend=False, opacity=opa,
         ))
 
-        # ── Tension direction arrows (centre configuration only) ──
-        if is_center:
-            for att_x, att_y, motor_x, label, col in [
-                (att1_x, att1_y, m1x, "T₁", TENDON_T0_COL),
-                (att2_x, att2_y, m2x, "T₂", TENDON_T1_COL),
-            ]:
-                dx = motor_x - att_x
-                dy = frame_y - att_y
-                length = np.hypot(dx, dy)
-                arrow_len = 30
+        # ── Tension direction arrows on the free vertical segment ──
+        for cable_x, label_t, col, anchor_x, xanchor in [
+            (m1x, "T₁", TENDON_T0_COL, m1x - 6, "right"),
+            (m2x, "T₂", TENDON_T1_COL, m2x + 6, "left"),
+        ]:
+            mid_y = 0.5 * (frame_y + 0.0)
+            fig.add_annotation(
+                x=cable_x, y=mid_y + 10,
+                ax=cable_x, ay=mid_y - 10,
+                xref="x", yref="y", axref="x", ayref="y",
+                showarrow=True, arrowhead=2, arrowsize=1.5,
+                arrowwidth=2, arrowcolor=col,
+                opacity=opa,
+            )
+            if is_center:
                 fig.add_annotation(
-                    x=att_x + arrow_len * dx / length,
-                    y=att_y + arrow_len * dy / length,
-                    ax=att_x, ay=att_y,
-                    xref="x", yref="y", axref="x", ayref="y",
-                    showarrow=True, arrowhead=2, arrowsize=1.5,
-                    arrowwidth=2, arrowcolor=col,
-                    text=label, font=dict(size=11, color=col),
+                    x=anchor_x, y=mid_y, text=label_t,
+                    xanchor=xanchor,
+                    showarrow=False, font=dict(size=12, color=col),
                 )
 
-        # ── Distal link ──
-        lx = ox + link_len * np.sin(θ)
-        ly = -link_len * np.cos(θ)
-        fig.add_trace(go.Scatter(
-            x=[ox, lx], y=[0, ly],
-            mode="lines+markers",
-            line=dict(color=FAPS_GREEN, width=5),
-            marker=dict(size=[0, 7], color=FAPS_GREEN),
-            showlegend=False, opacity=opa,
-        ))
-
-        # ── Torque arc arrow (for deflected states) ──
+        # ── Torque arc — placed in the lower hemisphere on the side
+        # opposite the load-arm tilt so it never crosses the cables
+        # (upper) or the load arm (lower-centre). ──
         if angle_deg != 0:
             arc_r = r_pulley + 14
-            if angle_deg > 0:
-                ax, ay = _arc_xy(ox, 0, arc_r, 90, 90 + 50)
-            else:
-                ax, ay = _arc_xy(ox, 0, arc_r, 90, 90 - 50)
+            opp_side_deg = -90 - 30 * np.sign(angle_deg)
+            half = 28
+            if angle_deg > 0:        # link rotated CCW → τ arc CCW
+                start_a = np.radians(opp_side_deg - half)
+                end_a   = np.radians(opp_side_deg + half)
+            else:                     # link rotated CW  → τ arc CW
+                start_a = np.radians(opp_side_deg + half)
+                end_a   = np.radians(opp_side_deg - half)
+            n_tau = 28
+            arc_a = np.linspace(start_a, end_a, n_tau)
+            ax_arr = ox + arc_r * np.cos(arc_a)
+            ay_arr =      arc_r * np.sin(arc_a)
             fig.add_trace(go.Scatter(
-                x=ax, y=ay, mode="lines",
-                line=dict(color=ICR_COLOR, width=2, dash="dash"),
-                showlegend=False, opacity=0.7,
+                x=ax_arr, y=ay_arr, mode="lines",
+                line=dict(color=ICR_COLOR, width=2.5),
+                showlegend=False, opacity=0.9,
             ))
-            # Arrowhead at arc tip
-            tip_idx = -1
-            ahx, ahy = _arrowhead_xy(
-                ax[tip_idx], ay[tip_idx],
-                ax[tip_idx] - ax[tip_idx - 1],
-                ay[tip_idx] - ay[tip_idx - 1],
-                size=8,
-            )
+            # Arrowhead drawn as a small filled triangle (polygon trace)
+            # so it survives the static SVG/PNG export reliably.
+            tip_x, tip_y = ax_arr[-1], ay_arr[-1]
+            tan_dx = ax_arr[-1] - ax_arr[-3]
+            tan_dy = ay_arr[-1] - ay_arr[-3]
+            tlen = np.hypot(tan_dx, tan_dy) or 1.0
+            ux, uy = tan_dx / tlen, tan_dy / tlen
+            px, py = -uy, ux
+            head_len = 7.0
+            head_w = 4.0
+            base_x = tip_x - head_len * ux
+            base_y = tip_y - head_len * uy
+            tri_x = [tip_x, base_x + head_w * px, base_x - head_w * px, tip_x]
+            tri_y = [tip_y, base_y + head_w * py, base_y - head_w * py, tip_y]
             fig.add_trace(go.Scatter(
-                x=ahx, y=ahy, mode="lines",
-                line=dict(color=ICR_COLOR, width=2),
+                x=tri_x, y=tri_y, mode="lines",
                 fill="toself", fillcolor=ICR_COLOR,
-                showlegend=False, opacity=0.7,
+                line=dict(color=ICR_COLOR, width=0),
+                showlegend=False, opacity=0.95,
             ))
-            # τ label
             fig.add_annotation(
-                x=ox + (arc_r + 12) * np.cos(np.radians(90 + 25 * np.sign(angle_deg))),
-                y=(arc_r + 12) * np.sin(np.radians(90 + 25 * np.sign(angle_deg))),
+                x=ox + (arc_r + 10) * np.cos(np.radians(opp_side_deg)),
+                y=     (arc_r + 10) * np.sin(np.radians(opp_side_deg)),
                 text="τ", showarrow=False,
                 font=dict(size=13, color=ICR_COLOR),
             )
 
         # ── Configuration label below ──
         fig.add_annotation(
-            x=ox, y=-link_len - 18,
+            x=ox, y=-load_len - 28,
             text=label, showarrow=False,
             font=dict(size=11, color=FAPS_GRAY), align="center",
         )
@@ -305,46 +347,39 @@ def antagonistic_joint_figure(*, show_caption: bool = True) -> go.Figure:
         # ── Motor labels (centre config only) ──
         if is_center:
             fig.add_annotation(
-                x=m1x, y=frame_y + 18,
+                x=m1x, y=frame_y + 14,
                 text="M₁", showarrow=False,
                 font=dict(size=11, color=TENDON_T0_COL),
             )
             fig.add_annotation(
-                x=m2x, y=frame_y + 18,
+                x=m2x, y=frame_y + 14,
                 text="M₂", showarrow=False,
                 font=dict(size=11, color=TENDON_T1_COL),
             )
 
     # ── Legend (dummy traces) ──
     for name, color, width in [
-        ("Cable T₁", TENDON_T0_COL, 3),
-        ("Cable T₂", TENDON_T1_COL, 3),
-        ("Distal link", FAPS_GREEN, 4),
+        ("Cable T₁ (left tendon)",  TENDON_T0_COL, 3),
+        ("Cable T₂ (right tendon)", TENDON_T1_COL, 3),
+        ("Output link (rotates with pulley)", FAPS_GREEN, 4),
         ("Pulley (radius r)", FAPS_BLUE, 2),
+        ("Joint torque τ", ICR_COLOR, 2),
     ]:
         fig.add_trace(go.Scatter(
             x=[None], y=[None], mode="lines",
             line=dict(color=color, width=width), name=name,
         ))
 
-    # ── Equation annotation along the bottom (only in notebook mode) ──
-    if show_caption:
-        fig.add_annotation(
-            x=0, y=-link_len - 42,
-            text="Net torque:  τ = r · (T₁ − T₂)          "
-                 "Apparent stiffness:  κ ∝ T₁ + T₂",
-            showarrow=False, font=dict(size=12, color=FAPS_GRAY),
-        )
-
     _apply_schematic_layout(
         fig,
-        title="Antagonistic Tendon Actuation — Single Revolute Joint",
+        title="",
         show_caption=show_caption,
-        width=950, height=520,
+        width=950, height=380,
         x_range=[-340, 340],
-        y_range=[-160, 115] if show_caption else [-120, 115],
+        y_range=[-101, 97],
     )
     return fig
+
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -450,11 +485,7 @@ def torque_stiffness_figure(
         ))
 
     fig.update_layout(
-        title=dict(
-            text=("Torque–Stiffness Feasibility: Antagonistic Pair"
-                  if show_caption else ""),
-            font=dict(size=14),
-        ),
+        title=dict(text="", font=dict(size=14)),
         xaxis=dict(
             title="Normalised torque  τ / τ_max",
             range=[-1.35, 1.35],
@@ -607,12 +638,6 @@ def four_bar_comparison_figure(
         x=ox_p, y=20, text="<b>Parallelogram</b>",
         showarrow=False, font=dict(size=13, color=FAPS_GRAY),
     )
-    fig.add_annotation(
-        x=ox_p, y=-l - 25,
-        text="ICR at ∞ (pure translation)<br>"
-             "Links AD ∥ BC, no crossing",
-        showarrow=False, font=dict(size=10, color=FAPS_GRAY),
-    )
 
     # ─── Draw Antiparallelogram (right) ───
     ox_a = sep
@@ -677,20 +702,15 @@ def four_bar_comparison_figure(
                 showlegend=False,
             ))
             fig.add_annotation(
-                x=icr_w[0] + 12, y=icr_w[1],
+                x=icr_w[0] + 26, y=icr_w[1],
                 text="ICR", showarrow=False,
-                font=dict(size=10, color=ICR_COLOR),
+                xanchor="left",
+                font=dict(size=11, color=ICR_COLOR),
             )
 
     fig.add_annotation(
         x=ox_a, y=20, text="<b>Antiparallelogram</b>",
         showarrow=False, font=dict(size=13, color=FAPS_GRAY),
-    )
-    fig.add_annotation(
-        x=ox_a, y=-l - 25,
-        text="ICR migrates along centrode ellipse<br>"
-             "Links AD, BC cross — variable lever arm",
-        showarrow=False, font=dict(size=10, color=FAPS_GRAY),
     )
 
     # ── Legend ──
@@ -708,11 +728,11 @@ def four_bar_comparison_figure(
 
     _apply_schematic_layout(
         fig,
-        title="Four-Bar Linkage Topologies: Parallelogram vs. Antiparallelogram",
+        title="",
         show_caption=show_caption,
-        width=950, height=550,
+        width=950, height=520,
         x_range=[-sep - 130, sep + 130],
-        y_range=[-l - 50, 45],
+        y_range=[-l - 4, 24],
     )
     return fig
 
@@ -802,13 +822,6 @@ def tensegrity_classes_figure(*, show_caption: bool = True) -> go.Figure:
         x=ox1, y=h + R + 22, text="<b>Class-1 Tensegrity</b>",
         showarrow=False, font=dict(size=13, color=FAPS_GRAY),
     )
-    fig.add_annotation(
-        x=ox1, y=-R - 22,
-        text="No strut–strut contact<br>"
-             "3 struts + 9 cables<br>"
-             "(Snelson, 1948; Skelton & de Oliveira, 2009)",
-        showarrow=False, font=dict(size=9, color=FAPS_GRAY),
-    )
 
     # ──── Class-2: Antiparallelogram X-Joint ────
     ox2 = sep
@@ -886,41 +899,22 @@ def tensegrity_classes_figure(*, show_caption: bool = True) -> go.Figure:
             showlegend=False,
         ))
 
-    # Mark the crossing node (strut–strut contact)
-    # Approximate crossing point of AD and BC
-    def _seg_intersect(p1, p2, p3, p4):
-        d1, d2 = p2 - p1, p4 - p3
-        cross = d1[0] * d2[1] - d1[1] * d2[0]
-        if abs(cross) < 1e-12:
-            return (p1 + p2) / 2
-        t = ((p3[0] - p1[0]) * d2[1] - (p3[1] - p1[1]) * d2[0]) / cross
-        return p1 + t * d1
-
-    cross_pt = _seg_intersect(A2, D2, B2, C2)
-    fig.add_trace(go.Scatter(
-        x=[cross_pt[0]], y=[cross_pt[1]], mode="markers",
-        marker=dict(size=10, color=ACTIVE_COL, symbol="circle",
-                    line=dict(width=2, color="white")),
-        showlegend=False,
-    ))
-    fig.add_annotation(
-        x=cross_pt[0] + 18, y=cross_pt[1],
-        text="Strut contact<br>(class-2 node)",
-        showarrow=True, arrowhead=2, arrowcolor=ACTIVE_COL,
-        font=dict(size=9, color=ACTIVE_COL),
-        ax=40, ay=-20,
-    )
+    # Mark the four corner nodes as class-2 contact points: at every
+    # corner two rigid members (frame/coupler bar + strut) meet, which
+    # is the defining property of a class-2 tensegrity. The crossed
+    # struts AD and BC do NOT touch at the geometric crossing in the
+    # middle — they merely pass over each other in the planar diagram.
+    for pt in [A2, B2, C2, D2]:
+        fig.add_trace(go.Scatter(
+            x=[pt[0]], y=[pt[1]], mode="markers",
+            marker=dict(size=11, color=ACTIVE_COL, symbol="circle",
+                        line=dict(width=2, color="white")),
+            showlegend=False,
+        ))
 
     fig.add_annotation(
-        x=ox2, y=h + 35, text="<b>Class-2 Tensegrity</b>",
+        x=ox2, y=h + R + 22, text="<b>Class-2 Tensegrity</b>",
         showarrow=False, font=dict(size=13, color=FAPS_GRAY),
-    )
-    fig.add_annotation(
-        x=ox2, y=min(C2[1], D2[1]) - 22,
-        text="Up to 2 struts per node<br>"
-             "Antiparallelogram X-joint<br>"
-             "(Fasquelle et al., 2020)",
-        showarrow=False, font=dict(size=9, color=FAPS_GRAY),
     )
 
     # ── Legend ──
@@ -941,14 +935,14 @@ def tensegrity_classes_figure(*, show_caption: bool = True) -> go.Figure:
             name=name,
         ))
 
-    y_lo = min(bot[:, 1].min(), min(C2[1], D2[1])) - 50
-    y_hi = max(top[:, 1].max(), h) + 55
+    y_lo = min(bot[:, 1].min(), min(C2[1], D2[1])) - 4
+    y_hi = max(top[:, 1].max(), h) + R + 28
 
     _apply_schematic_layout(
         fig,
-        title="Tensegrity Structure Classification (Skelton & de Oliveira, 2009)",
+        title="",
         show_caption=show_caption,
-        width=950, height=600,
+        width=950, height=560,
         x_range=[-sep - 120, sep + 120],
         y_range=[y_lo, y_hi],
     )
@@ -1081,41 +1075,37 @@ def cdpm_concept_figure(*, show_caption: bool = True) -> go.Figure:
     ))
 
     # ── Wrench arrow ──
+    # Platform load (e.g. gravity / payload) acts DOWNWARD on the
+    # platform; arrow drawn from a point above the platform centre,
+    # pointing down into it.
     plat_center = (Rot @ np.array([0, 0, z_plat])).flatten()
-    wrench_end = plat_center + np.array([0, 0, 22])
+    wrench_start = plat_center + np.array([0, 0, 28])
     fig.add_trace(go.Scatter3d(
-        x=[plat_center[0], wrench_end[0]],
-        y=[plat_center[1], wrench_end[1]],
-        z=[plat_center[2], wrench_end[2]],
+        x=[wrench_start[0], plat_center[0]],
+        y=[wrench_start[1], plat_center[1]],
+        z=[wrench_start[2], plat_center[2]],
         mode="lines+text",
-        line=dict(color=ICR_COLOR, width=3),
-        text=["", "w"], textposition="top center",
-        textfont=dict(size=11, color=ICR_COLOR),
+        line=dict(color=ICR_COLOR, width=4),
+        text=["w", ""], textposition="top center",
+        textfont=dict(size=12, color=ICR_COLOR),
         showlegend=False,
     ))
-
-    # ── Equation annotations (paper coordinates, notebook only) ──
-    if show_caption:
-        fig.add_annotation(
-            x=0.5, y=-0.06, xref="paper", yref="paper",
-            text="<b>w</b> = <b>A</b><sup>T</sup><b>t</b>      "
-                 "m = 3 cables,  n = 2 DOF  →  redundancy r = 1",
-            showarrow=False, font=dict(size=12, color=FAPS_GRAY),
-        )
-        fig.add_annotation(
-            x=0.5, y=-0.12, xref="paper", yref="paper",
-            text="Wrench closure: m ≥ n + 1 with <b>t</b> ≥ 0 "
-                 "(Verhoeven, 2004)",
-            showarrow=False, font=dict(size=10, color=FAPS_GRAY),
-        )
+    # Discrete cone-style arrowhead at the platform end.
+    fig.add_trace(go.Cone(
+        x=[plat_center[0]], y=[plat_center[1]], z=[plat_center[2]],
+        u=[0], v=[0], w=[-1], anchor="tip",
+        sizemode="absolute", sizeref=8,
+        colorscale=[[0, ICR_COLOR], [1, ICR_COLOR]],
+        showscale=False, showlegend=False,
+    ))
 
     apply_3d_layout(
         fig,
-        title="Cable-Driven Parallel Mechanism — Structure Matrix",
+        title="",
         show_caption=show_caption,
-        height=750 if show_caption else 550,
-        x_range=[-110, 110], y_range=[-110, 110], z_range=[-100, 20],
+        height=460,
+        x_range=[-110, 110], y_range=[-110, 110], z_range=[-95, 25],
+        camera=dict(eye=dict(x=1.55, y=1.55, z=0.45)),
     )
-    if show_caption:
-        fig.update_layout(margin=dict(b=100))
+    fig.update_layout(margin=dict(l=0, r=180, t=0, b=0))
     return fig

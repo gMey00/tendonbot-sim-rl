@@ -2,6 +2,7 @@
 #import "../../../../shared/formatting/macros.typ": *
 #import "../../../../shared/formatting/acronyms.typ": *
 #import "../../../../shared/formatting/template.typ": faps-figure
+#reg-sym("sym:T")
 
 == Workspace Analysis and Dexterity Metrics <sec:workspace_analysis_sampling_metrics>
 
@@ -9,7 +10,7 @@
 
 The workspace of a serial manipulator is the set of all end-effector poses that are reachable under joint limits and kinematic constraints. Workspace analysis is used to verify that a robot can reach task-relevant regions and to identify configurations that should be avoided due to singularities or poor motion quality.~@Rastegar1990WorkspaceMonteCarlo@Dong2013WorkspaceDensity
 
-=== Forward Kinematics and Sampling Motivation
+=== #ac("FK") and Sampling Motivation
 
 #ac("FK") is defined as the mapping from a joint configuration $bold(q)$ to an end-effector pose, i.e., position and orientation of a designated tool frame. For a general serial chain, this mapping can be written as
 
@@ -19,7 +20,7 @@ where $bold(T)_"EE" in S E(3)$ denotes a homogeneous transformation of the end-e
 
 === Monte Carlo Workspace Sampling and Voxel Aggregation
 
-In the Monte Carlo approach, configurations are sampled from a established distribution over the defined joint ranges. In the simplest implementation, each joint $q_i$ is sampled independently and uniformly within its limit interval. For each sample $bold(q)^((k))$, the corresponding end-effector pose is computed by #ac("FK"). The resulting set of poses is then aggregated into a discrete spatial representation, e.g., Cartesian voxels, to estimate reachability statistics per region. This computation is conceptually aligned with established robotics software workflows that generate reachable workspace point sets paired with joint configurations~@mathworks_generaterobotworkspace.
+In the Monte Carlo approach, configurations are sampled from an established distribution over the defined joint ranges. In the simplest implementation, each joint $q_i$ is sampled independently and uniformly within its limit interval. For each sample $bold(q)^((k))$, the corresponding end-effector pose is computed by #ac("FK"). The resulting set of poses is then aggregated into a discrete spatial representation, e.g., Cartesian voxels, to estimate reachability statistics per region. This computation is conceptually aligned with established robotics software workflows that generate reachable workspace point sets paired with joint configurations~@mathworks_generaterobotworkspace.
 
 When voxel aggregation is used, the workspace is partitioned into a regular grid of bins (voxels) in position and optionally orientation space. Each sample contributes to the occupancy count of the voxel containing the sampled pose. This discretization supports additional metrics beyond mere reachability, including density-based indicators of how many joint-space configurations map to a given region.~@Dong2013WorkspaceDensity
 
@@ -33,7 +34,8 @@ $ w(bold(q)) = sqrt(det(J(bold(q)) J(bold(q))^top)). $ <eq:yoshikawa_manipulabil
 This scalar is proportional to the volume of the manipulability ellipsoid and becomes zero at kinematic singularities where the Jacobian loses rank. Higher values indicate that small joint motions can produce motion in a wider range of Cartesian directions, which is desirable for tasks requiring dexterous repositioning and local adjustments.~@Yoshikawa1985Manipulability
 
 ==== Inverse condition number as an isotropy index
-A complementary measure is derived from the Jacobian condition number. Salisbury and Craig introduced the use of Jacobian conditioning to identify well-conditioned (isotropic) operating points and to quantify error amplification through the kinematic mapping. Let $sigma_min$ and $sigma_max$ denote the minimum and maximum singular values of $J(bold(q))$. The inverse condition number is defined as
+A complementary measure is derived from the Jacobian condition number. Salisbury and Craig introduced the use of Jacobian conditioning to identify well-conditioned (isotropic) operating points and to quantify error amplification through the kinematic mapping.
+Let $sigma_min$ and $sigma_max$ denote the minimum and maximum singular values of $J(bold(q))$. The inverse condition number is defined as
 
 $ kappa_"inv" (bold(q)) = sigma_min (J(bold(q))) / sigma_max (J(bold(q))). $ <eq:inv_condition_number>
 

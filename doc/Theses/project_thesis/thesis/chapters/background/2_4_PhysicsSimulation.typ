@@ -28,7 +28,7 @@ Robotic manipulators are modelled as articulated mechanisms. Rigid links connect
 ==== Articulation tendons
 PhysX exposes _articulation tendons_ as additional constraint structures within an articulation. _Fixed tendons_ couple joint coordinates through constant gearing ratios, while _spatial tendons_ define spring-damper and limit constraints between attachment points across links, producing configuration-dependent forces. These constructs enable cable-like actuation or joint coupling to be represented at the physics level without external force computation.~@physx_articulations_513 @omni_physics_tendon_authoring
 
-See @sec:tendon_actuation for their application in the methodology.
+See @sec:tendon_actuation for a discussion of why they are deliberately avoided in the methodology.
 
 === Contact and Friction Models
 
@@ -48,10 +48,10 @@ PhysX supports a classic #acs("PGS")-style solver and the newer #acs("TGS") solv
     table.header(
       [*Parameter*], [*Location*], [*Primary effect*],
     ),
-    [Time step $h$], [Physics scene], [Accuracy vs.~throughput; contact/joint stability~@physx_simulation_541],
-    [Solver iterations], [Actor / island], [Constraint convergence; joint error; contact quality~@physx_rigid_body_dynamics_511],
-    [`contactOffset`/`restOffset`], [Shape], [Contact prediction and resting separation~@physx_advanced_collision_detection_512],
-    [Friction coefficients], [Material], [Sliding/sticking behavior; grasp stability~@physx_material_api_510],
+    [Time step $h$], [Physics scene], [Accuracy vs.~throughput, contact/joint stability~@physx_simulation_541],
+    [Solver iterations], [Actor / island], [Constraint convergence, joint error, contact quality~@physx_rigid_body_dynamics_511],
+    [`contactOffset`/`restOffset`], [Shape], [Contact prediction, resting separation~@physx_advanced_collision_detection_512],
+    [Friction coefficients], [Material], [Sliding/sticking behavior, grasp stability~@physx_material_api_510],
   ),
   caption: [Selected rigid-body simulation parameters relevant to robot learning in Isaac~Sim / PhysX.],
   short-caption: [Key rigid-body simulation parameters],
@@ -62,7 +62,6 @@ The time step $h$ determines how frequently dynamics are integrated and how ofte
 
 Collision detection cost depends on the collider representation. Primitive shapes (spheres, boxes, capsules) provide the best performance and robustness, while convex meshes provide a practical middle ground for complex objects~@physx_rigid_body_collision_510 @physx_geometry_541. Collider selection trades geometric fidelity against computational cost and solver stability. This tradeoff must be balanced against the throughput requirements of #ac("RL") training.
 
-=== GPU-Accelerated Simulation for Parallel RL Environments 
-#highlight(fill: red)[TODO: Recheck this section for accuracy and correct citations]
+=== GPU-Accelerated Simulation for Parallel #ac("RL") Environments 
 
 PhysX provides a #ac("GPU") rigid-body pipeline that accelerates broad-phase, narrow-phase, contact generation, and constraint solving on CUDA-capable hardware. Large performance gains arise when many rigid bodies are active, which aligns with #ac("RL") workloads where hundreds to thousands of environment replicas are simulated in parallel. The key advantage is that physics stepping and policy learning can share device memory, avoiding #ac("CPU")--#ac("GPU") transfer bottlenecks. This design has been demonstrated to yield order-of-magnitude throughput improvements in GPU-based robot learning platforms.~@physx_541_gpu_rigid_bodies@Makoviychuk2021IsaacGym

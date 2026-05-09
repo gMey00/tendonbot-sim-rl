@@ -52,6 +52,9 @@
   "SDF":   (short: "SDF",   long: "Signed Distance Field",                     tag: "abbrev"),
   "TGS":   (short: "TGS",   long: "Temporal Gauss–Seidel",                     tag: "abbrev"),
   "NRMSE": (short: "NRMSE", long: "Normalized Root-Mean-Square Error",          tag: "abbrev"),
+  "SAC":   (short: "SAC",   long: "Soft Actor--Critic",                          tag: "abbrev"),
+  "ICR":   (short: "ICR",   long: "Instantaneous Centre of Rotation",            tag: "abbrev"),
+  "CDPM":  (short: "CDPM",  long: "Cable-Driven Parallel Mechanism",             tag: "abbrev"),
 
   // Symbols
   "sym:gamma":   (short: $gamma$,                        long: "Discount factor",                              tag: "symbol"),

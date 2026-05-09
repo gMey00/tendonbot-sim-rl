@@ -31,9 +31,11 @@
   "DoF":   (short: "DoF",   long: "Degree of Freedom",                          tag: "abbrev", plural: "Degrees of Freedom"),
   "URDF":  (short: "URDF",  long: "Unified Robot Description Format",           tag: "abbrev"),
   "USD":   (short: "USD",   long: "Universal Scene Description",                tag: "abbrev"),
+  "TCP":   (short: "TCP",   long: "Tool Center Point",                          tag: "abbrev"),
   "TUI":   (short: "TUI",   long: "Text-based User Interface",                  tag: "abbrev"),
   "MJCF":  (short: "MJCF",  long: "MuJoCo XML Format",                         tag: "abbrev"),
   "CAD":   (short: "CAD",   long: "Computer-Aided Design",                      tag: "abbrev"),
+  "DH":    (short: "DH",    long: "Denavit\u2013Hartenberg",                          tag: "abbrev"),
   "PD":    (short: "PD",    long: "Proportional-Derivative",                    tag: "abbrev"),
   "PID":   (short: "PID",   long: "Proportional-Integral-Derivative",           tag: "abbrev"),
   "PGS":   (short: "PGS",   long: "Projected Gauss–Seidel",                    tag: "abbrev"),
@@ -52,6 +54,8 @@
   "SDF":   (short: "SDF",   long: "Signed Distance Field",                     tag: "abbrev"),
   "TGS":   (short: "TGS",   long: "Temporal Gauss–Seidel",                     tag: "abbrev"),
   "NRMSE": (short: "NRMSE", long: "Normalized Root-Mean-Square Error",          tag: "abbrev"),
+  "SAC":   (short: "SAC",   long: "Soft Actor–Critic",                          tag: "abbrev"),
+  "IMU":   (short: "IMU",   long: "Inertial Measurement Unit",                  tag: "abbrev"),
 
   // Symbols
   "sym:gamma":   (short: $gamma$,                        long: "Discount factor",                              tag: "symbol"),

@@ -27,7 +27,7 @@ across the task-relevant volume.
 > antiparallelogram's migrating instantaneous center of rotation shifts the
 > forearm tip outward at extreme angles, increasing the effective reach.
 > Therefore, basing the prismatic base positioning and desired workspace
-> geometry on the disc-approximation analysis is conservative — the
+> geometry on the disc-approximation analysis is conservative. The
 > physical robot will be able to reach at least as much, if not more.
 
 ```mermaid

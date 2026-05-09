@@ -36,6 +36,10 @@
   program: program,
   author: author,
   student-id: student-id,
+  supervisors: (
+    [Prof. Dr.-Ing. J. Franke],
+    [M.Sc. A. Schlosser],
+  ),
   duration: duration,
   deadline: deadline,
   title-image: title-image,

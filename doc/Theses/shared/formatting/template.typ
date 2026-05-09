@@ -4,6 +4,8 @@
 
 #import "colors.typ": *
 #import "macros.typ": *
+#import "@preview/subpar:0.2.2"
+#import "@preview/lovelace:0.3.1": pseudocode-list
 
 // ── Short/long caption state ─────────────────────────────────────
 // Stores short captions keyed by "<kind>:<number>" for LOF/LOT use.
@@ -137,18 +139,10 @@
     }
   }
 
-  // ── Figure/table visual separation from body text ──────────────
-  // Extra spacing and a thin rule above/below figures for clear separation
-  // from the body text so captions and tables are not confused with reading text.
-  show figure: it => {
-    v(1.2em)
-    line(length: 100%, stroke: 0.4pt + dunkelgrau)
-    v(0.4em)
-    it
-    v(0.4em)
-    line(length: 100%, stroke: 0.4pt + dunkelgrau)
-    v(1.2em)
-  }
+  // ── Figure spacing ─────────────────────────────────────────────
+  // Use generous block spacing; avoid wrapping the figure with a
+  // show-figure rule (would break sub-figure references in subpar).
+  show figure: set block(above: 1.4em, below: 1.4em)
 
   // Table styling
   set table(
@@ -288,6 +282,36 @@
   }
 }
 
+// ── List of Algorithms (lovelace pseudocode figures) ─────────────
+#let faps-loa() = {
+  context {
+    let shorts = _short-captions.final()
+    let figs = query(figure.where(kind: "algorithm"))
+    if figs.len() == 0 { return }
+    pagebreak()
+    heading(numbering: none)[List of Algorithms]
+    v(12pt)
+    for f in figs {
+      let n = counter(figure.where(kind: "algorithm")).at(f.location()).at(0)
+      let key = "alg:" + str(n)
+      let cap-text = shorts.at(key, default: none)
+      if cap-text == none and f.caption != none {
+        cap-text = f.caption.body
+      }
+      let pg = counter(page).at(f.location()).first()
+      set text(size: 11pt)
+      grid(
+        columns: (auto, 1fr, auto),
+        column-gutter: 4pt,
+        link(f.location())[Algorithm #n: #cap-text],
+        align(bottom, box(width: 100%, repeat[.#h(4pt)])),
+        link(f.location())[#pg],
+      )
+      v(4pt)
+    }
+  }
+}
+
 // ── Figure wrapper with short/long caption support ───────────────
 // Use this instead of bare #figure() when you need separate captions for
 // the in-text display vs the List of Figures.
@@ -340,4 +364,113 @@
     caption
   }
   figure(body, caption: final-caption, kind: table, ..args)
+}
+
+// ── Multi-panel figure wrapper using subpar.grid ─────────────────
+// Renders a panel grid with auto-numbered sub-labels (a)/(b)/(c)…
+// and per-panel sub-captions, while still tracking the short caption
+// of the *outer* figure for the List of Figures.
+//
+// IMPORTANT: pass the outer figure label via the `label:` argument,
+// NOT as a trailing `<…>` after the call. subpar wraps its output in
+// styled content, so a trailing label cannot be referenced.
+//
+// Parameters:
+//   panels:        Array of (body, sub-caption) pairs, one per panel.
+//                  Sub-captions may be `none`.
+//   columns:       Column track sizes (forwarded to subpar.grid).
+//   caption:       Long caption of the outer figure (under the grid).
+//   short-caption: (optional) Short caption for the LOF.
+//   label:         Outer figure label (e.g. `<fig:my_panel>`).
+//   sub-labels:    (optional) Array of labels for each panel.
+//   column-gutter / row-gutter: spacing between panels.
+//   ..args:        Forwarded to subpar.grid.
+//
+// Example:
+//   #faps-subfigure(
+//     columns: (1fr, 1fr),
+//     panels: (
+//       (image("a.png"), [PD elbow]),
+//       (image("b.png"), [Tendon elbow]),
+//     ),
+//     caption: [Step responses across actuation modes.],
+//     short-caption: [Step responses],
+//     label: <fig:steps>,
+//   )
+#let faps-subfigure(
+  panels: (),
+  columns: auto,
+  caption: none,
+  short-caption: none,
+  label: none,
+  sub-labels: none,
+  column-gutter: 12pt,
+  row-gutter: 16pt,
+  ..args,
+) = {
+  let final-caption = if short-caption != none and caption != none {
+    [#context {
+      // Inner panel figures use kind: "subfigure" so they do not step the
+      // image counter. get() here therefore already returns the outer
+      // figure's own number — no +1 needed.
+      let n = counter(figure.where(kind: image)).get().at(0)
+      _short-captions.update(d => { d.insert("fig:" + str(n), short-caption); d })
+    }#caption]
+  } else {
+    caption
+  }
+  // Build alternating (figure, label?) positional arguments for subpar.grid.
+  // kind: "subfigure" keeps inner panels out of query(figure.where(kind: image))
+  // so they neither appear in the LOF nor consume image-counter slots.
+  let positional = ()
+  let i = 0
+  for p in panels {
+    positional.push(figure(p.at(0), caption: p.at(1), kind: "subfigure"))
+    if sub-labels != none and i < sub-labels.len() and sub-labels.at(i) != none {
+      positional.push(sub-labels.at(i))
+    }
+    i += 1
+  }
+  subpar.grid(
+    ..positional,
+    columns: columns,
+    column-gutter: column-gutter,
+    row-gutter: row-gutter,
+    caption: final-caption,
+    label: label,
+    kind: image,  // outer figure must remain kind: image for the LOF
+    ..args,
+  )
+}
+
+// ── Algorithm (lovelace pseudocode) wrapper ──────────────────────
+// Wraps a lovelace `pseudocode-list` in a numbered figure with
+// `kind: "algorithm"`, supporting short captions for the LoA.
+//
+// Example:
+//   #faps-algorithm(
+//     pseudocode-list[
+//       + *for* each step *do*
+//         + observe state $s$
+//         + sample $a tilde pi(s)$
+//     ],
+//     caption: [PPO rollout collection.],
+//     short-caption: [PPO rollout],
+//   ) <alg:ppo_rollout>
+#let faps-algorithm(body, caption: none, short-caption: none, ..args) = {
+  let final-caption = if short-caption != none and caption != none {
+    [#context {
+      let n = counter(figure.where(kind: "algorithm")).get().at(0) + 1
+      _short-captions.update(d => { d.insert("alg:" + str(n), short-caption); d })
+    }#caption]
+  } else {
+    caption
+  }
+  figure(
+    body,
+    caption: final-caption,
+    kind: "algorithm",
+    supplement: [Algorithm],
+    ..args,
+  )
 }

@@ -1,6 +1,6 @@
 // Chapter 4: Methodology
 // Completely rewritten — detailed treatment of robot model construction,
-// kinematics, tendon actuation, validation, and RL task formulation.
+// kinematics, tendon actuation, validation, and #ac("RL") task formulation.
 // All content derived from:  doc/Tensegrity_robot/ documentation,
 // src/tensegrity_pick/ code, and the referenced bibliography.
 #import "../../../shared/formatting/macros.typ": *
@@ -9,7 +9,7 @@
 
 = Methodology <ch:methodology>
 
-This chapter describes the complete workflow for constructing, validating, and using a tendon-driven tensegrity manipulator in simulation for #ac("RL")-based manipulation tasks. The presentation follows the temporal sequence of the project. First, the robot design is introduced (@sec:physical_robot). Next, the process for translating the #ac("CAD") geometry into a physics-ready Isaac Sim simulation model is detailed (@sec:sim_model_construction). The tendon actuation layer that maps cable tensions to joint torques in simulation is then derived (@sec:tendon_actuation). Validation of the resulting model against reference data is presented (@sec:model_validation). Finally, the formulation of #ac("RL") tasks built on top of this model is described (@sec:rl_tasks), together with the training infrastructure (@sec:training_infrastructure).
+This chapter describes the complete workflow for constructing, validating, and using a tendon-driven #highlight(fill: red)[tensegrity manipulator] in simulation for #ac("RL")-based manipulation tasks. First, the robot design is introduced (@sec:physical_robot). Next, the process for translating the #ac("CAD") geometry into a physics-ready Isaac Sim simulation model is detailed (@sec:sim_model_construction). The tendon actuation layer that maps cable tensions to joint torques in simulation is then derived (@sec:tendon_actuation). Validation of the resulting model is presented (@sec:model_validation). Finally, the formulation of #ac("RL") tasks built on top of this model is described (@sec:rl_tasks), together with the training infrastructure (@sec:training_infrastructure).
 
 All implementation is carried out in NVIDIA Isaac Sim~5.1.0 with the IsaacLab framework, using the `skrl` library for #ac("PPO")-based policy training~@SerranoMunoz2023skrl @Schulman2017PPO. The source code is organized as an external IsaacLab extension (`tensegrity_pick`) that provides registered Gymnasium environments for each task and robot variant.
 
@@ -28,7 +28,7 @@ All implementation is carried out in NVIDIA Isaac Sim~5.1.0 with the IsaacLab fr
 // ── §4.5  Model Validation ───────────────────────────────────
 #include "methodology/4_5_Validation.typ"
 
-// ── §4.6  Reinforcement Learning Tasks ───────────────────────
+// ── §4.6  #ac("RL") Tasks ───────────────────────
 #include "methodology/4_6_RLTasks.typ"
 
 // ── §4.7  Training Infrastructure ────────────────────────────

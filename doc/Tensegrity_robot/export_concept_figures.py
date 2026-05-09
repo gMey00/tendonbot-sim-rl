@@ -15,7 +15,9 @@ from helpers.concept_plots import (
     cdpm_concept_figure,
 )
 
-OUT_DIR = os.path.join(os.path.dirname(__file__), "..", "Figures", "Background")
+OUT_DIR = os.path.join(
+    os.path.dirname(__file__), "..", "Theses", "shared", "figures"
+)
 os.makedirs(OUT_DIR, exist_ok=True)
 
 figures = [

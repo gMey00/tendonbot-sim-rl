@@ -102,8 +102,7 @@ K=400 and damping D=20.  These values were determined by
 5. **Summary** — side-by-side current vs recommended gains
 
 The analytical critical damping for the elbow (J_eff ≈ 0.22 kg·m²) is
-D_crit ≈ 18.7 N·m·s/rad.  The initial configuration used D=120 (ζ ≈ 6.4,
-massively overdamped); the damping sweep confirmed **D=20** as the validated
+D_crit ≈ 18.7 N·m·s/rad.  The damping sweep confirmed **D=20** as the validated
 optimum (ζ ≈ 1.07, near-critically damped, fastest settling without
 significant overshoot).
 
@@ -172,7 +171,8 @@ as compressed `.npz` files.
 
 ## 3  Results
 
-### 3.1  NRMSE Comparison (PD vs Tendon vs Klein Gazebo)
+### 3.1  NRMSE Comparison (Elbow Approximation)
+(PD vs Tendon vs Klein Gazebo)
 
 | Joint | Amplitude | Klein (2023) | PD (Isaac) | Tendon (Isaac) |
 |-------|-----------|-------------|-----------|----------------|

@@ -3,8 +3,12 @@
 #import "../../../shared/formatting/acronyms.typ": *
 
 = Background <ch:background>
+//
+// #highlight(fill:red)[TODO: exchange "tensegrity manipulator" with actual name of Robot.]
+//
+This chapter provides an overview of the theoretical and technical background relevant to this thesis. It covers fundamental concepts in #ac("RL"), tendon-driven robotic mechanisms, workspace analysis, physics simulation, and the software architecture of Isaac Sim and Isaac Lab. The goal is to establish a common foundation for understanding the design choices and methodologies employed in the subsequent chapters.
 
-// §2.1 — RL fundamentals: MDP/POMDP formalism, policy gradients, PPO, GAE
+// §2.1 — #ac("RL") fundamentals: MDP/#ac("POMDP") formalism, policy gradients, #ac("PPO"), #ac("GAE")
 #include "background/2_1_ReinforcementLearning.typ"
 
 // §2.2 — Tendon-driven mechanisms: four-bar linkages, cable-driven wrists, J^T mapping, tensegrity
@@ -19,5 +23,5 @@
 // §2.5 — Isaac Sim 5.1 and IsaacLab architecture
 #include "background/2_5_IsaacSimLab.typ"
 
-// §2.6 — Robot and scene description formats (USD, URDF)
+// §2.6 — Robot and scene description formats (#ac("USD"), #ac("URDF"))
 #include "background/2_6_DescriptionFormats.typ"

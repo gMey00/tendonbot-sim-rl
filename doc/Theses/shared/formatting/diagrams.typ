@@ -4,6 +4,8 @@
 // ============================================================
 
 #import "@preview/fletcher:0.5.8" as fletcher: diagram, node, edge
+#import "@preview/finite:0.5.1" as finite: automaton
+#import "@preview/cetz:0.5.0" as cetz
 #import "colors.typ": *
 
 // Derived colors for diagrams
@@ -14,50 +16,108 @@
 #let faps-stroke = fapsgraudunkel
 #let faps-bg = rgb(242, 242, 242) // F2F2F2 — group backgrounds
 
+// Reusable subtitle text inside coloured principal nodes.
+// Pure white at small size keeps contrast high on saturated
+// FAPS-blue / FAPS-green fills.
+#let faps-subtitle(body) = text(size: 7.5pt, fill: white)[#body]
+
+// Reusable side-annotation card. Used for legend-like callouts that
+// must not be confused with topology nodes. Keep the look centralised
+// so all diagrams share the same vocabulary.
+#let faps-annotation(body) = box(
+  inset: 4pt,
+  radius: 2pt,
+  stroke: (dash: "dashed", paint: faps-stroke, thickness: 0.4pt),
+  fill: faps-node-lightgreen.lighten(40%),
+  text(size: 7pt)[#body],
+)
+
 
 // ── 1. RL Agent–Environment Loop ─────────────────────────────
 // Used in: Background § 2.1 (Reinforcement Learning)
-// Shows the MDP interaction loop with manipulation-specific details.
+// Classical Sutton & Barto MDP interaction loop. Two principal
+// nodes are joined by an arced action arrow (top) and an arced
+// observation+reward arrow (bottom). A small unit-delay marker
+// $z^(-1)$ on the feedback path makes explicit that the agent
+// reacts to the environment's previous output. A self-loop on
+// the environment marks episode resets, and the discount
+// factor $gamma$ is annotated next to the reward symbol.
+// Domain-specific contents are placed in dashed annotation
+// cards in the four corners so the loop topology stays clean.
 #let rl-agent-env-loop() = diagram(
-  spacing: (36mm, 12mm),
+  spacing: (56mm, 18mm),
   node-stroke: 0.6pt + faps-stroke,
   node-corner-radius: 3pt,
-  edge-stroke: 0.8pt + faps-stroke,
+  edge-stroke: 0.9pt + faps-stroke,
+  label-sep: 3pt,
 
-  // Agent side
-  node((0, 0), align(center)[*Agent (Policy)*\ $pi_theta (a_t | o_t)$\ #text(size: 7pt)[PPO actor–critic]],
+  // ── Principal nodes ──────────────────────────────────────
+  node((0.15, 0), align(center)[
+    *Agent*\
+    #text(size: 8pt)[Policy $pi_theta (a_t | o_t)$]\
+    #faps-subtitle[PPO actor–critic]
+  ],
     fill: faps-node-blue, stroke: faps-node-blue.darken(30%),
-    width: 34mm, height: 18mm, name: <agent>),
+    width: 50mm, height: 22mm, name: <agent>),
 
-  // Environment side
-  node((1.2, 0), align(center)[*Environment*\ #text(size: 7pt)[Physics Sim (PhysX)\ + Task Logic\ state $s_t$]],
+  node((0.85, 0), align(center)[
+    *Environment*\
+    #text(size: 8pt)[state $s_t$, dynamics $P(s_(t+1) | s_t, a_t)$]\
+    #faps-subtitle[PhysX simulator + task logic]
+  ],
     fill: faps-node-green, stroke: faps-node-green.darken(20%),
-    width: 34mm, height: 20mm, name: <env>),
+    width: 50mm, height: 22mm, name: <env>),
 
-  // Main loop edges — variable-only labels to avoid duplication with boxes
-  edge(<agent>, <env>, "->", bend: -30deg, label-side: left,
-    label: text(size: 7pt)[$a_t$]),
-  edge(<env>, <agent>, "->", bend: -30deg, label-side: left,
-    label: text(size: 7pt)[$o_(t+1)$, $r_t$]),
+  // ── Forward arc: action ──────────────────────────────────
+  edge(<agent.north>, <env.north>, "->",
+    bend: 45deg,
+    label: text(size: 9pt)[*action* $a_t$],
+    label-pos: 0.5, label-side: left),
 
-  // Detail boxes — manipulation-specific content
-  node((-0.15, 1), align(center)[#text(size: 7pt, weight: "bold")[Actions]\ #text(size: 6.5pt)[joint position deltas,\ cable tensions,\ gripper command]],
-    fill: faps-node-lightgreen, stroke: faps-stroke,
-    width: 28mm, height: 16mm, name: <actbox>),
+  // ── Feedback arc: observation + reward, via $z^(-1)$ ─────
+  // The delay marker is offset downwards so the two half-arcs
+  // still read as a single curved feedback path rather than a
+  // pair of straight segments meeting at $z^(-1)$.
+  node((0.5, 0.8), $z^(-1)$,
+    fill: white, stroke: 0.5pt + faps-stroke,
+    width: 7mm, height: 7mm, corner-radius: 3.5mm, name: <delay>),
 
-  node((0.5, 1), align(center)[#text(size: 7pt, weight: "bold")[Observations]\ #text(size: 6.5pt)[partial: $o_t subset.eq s_t$\ $bold(q)$, $dot(bold(q))$, EE pose,\ object state, gripper]],
-    fill: faps-node-lightgreen, stroke: faps-stroke,
-    width: 30mm, height: 18mm, name: <obsbox>),
+  edge(<env.south>, <delay.east>, "->",
+    bend: 22.5deg,
+    label: text(size: 8.5pt)[$o_(t+1), r_(t+1)$ \  #text(size: 7pt)[discount $gamma$]],
+    label-pos: 0.45, label-side: left),
+  edge(<delay.west>, <agent.south>, "->",
+    bend: 22.5deg,
+    label: text(size: 8.5pt)[$o_t, r_t$],
+    label-pos: 0.55, label-side: left),
 
-  node((1.3, 1), align(center)[#text(size: 7pt, weight: "bold")[Reward]\ #text(size: 6.5pt)[gated phases:\ reach #sym.arrow.r grasp\ #sym.arrow.r transport #sym.arrow.r place\ shaping + sparse success]],
-    fill: faps-node-lightgreen, stroke: faps-stroke,
-    width: 28mm, height: 20mm, name: <rewbox>),
+  // ── Episode reset marker — small dashed callout next to env ─
+  node((1.35, 0.0), text(size: 7pt, fill: faps-stroke)[`reset` \ #text(size: 6.5pt)[(episode end)]],
+    stroke: none, fill: none, name: <reset>),
+  edge(<reset>, <env.east>, "->",
+    stroke: (dash: "dashed", paint: faps-stroke, thickness: 0.5pt)),
 
-  // Detail link edges (thin)
-  edge(<agent>, <actbox>, "->", stroke: 0.4pt + faps-stroke),
-  edge(<obsbox>, <agent>, "->", stroke: 0.4pt + faps-stroke),
-  edge(<env>, <rewbox>, "->", stroke: 0.4pt + faps-stroke),
-  edge(<env>, <obsbox>, "->", stroke: 0.4pt + faps-stroke),
+  // ── Side annotations (no incoming/outgoing edges) ────────
+  // Placed in the four corners far enough from the arcs to
+  // avoid visual collision with the action/observation paths.
+  node((-0.1, -0.7), faps-annotation[
+    *Action space*\
+    #text(size: 6.5pt)[joint-position deltas \
+    cable tensions \
+    gripper command]
+  ], shape: "rect", stroke: none, fill: none, name: <actbox>),
+
+  node((1.1, -0.7), faps-annotation[
+    *Observation* $o_t subset.eq s_t$ \
+    #text(size: 6.5pt)[$bold(q)$, $dot(bold(q))$, EE pose \
+    object pose, gripper state]
+  ], shape: "rect", stroke: none, fill: none, name: <obsbox>),
+
+  node((1.1, 0.7), faps-annotation[
+    *Reward* $r_t$ \
+    #text(size: 6.5pt)[dense shaping \
+    sparse success bonus]
+  ], shape: "rect", stroke: none, fill: none, name: <rewbox>),
 )
 
 
@@ -250,7 +310,7 @@
 // ── 7. Methodology Overview Flowchart ────────────────────────
 // Used in: Methodology § 4.1 (Overview of Approach)
 #let methodology-overview() = diagram(
-  spacing: (20mm, 8mm),
+  spacing: (18mm, 5mm),
   node-stroke: 0.6pt + faps-stroke,
   node-corner-radius: 3pt,
   edge-stroke: 0.8pt + faps-stroke,
@@ -258,31 +318,31 @@
   // Stage 1: Construction & Validation
   node((0, 0), align(center)[*Robot Model*\ #text(size: 7pt)[USD Assembly]],
     fill: faps-node-gray, stroke: faps-stroke,
-    width: 26mm, height: 14mm, name: <model>),
-  node((1, 0), align(center)[*Validation*],
+    width: 28mm, height: 12mm, name: <model>),
+  node((1.2, 0), align(center)[*Validation*],
     fill: faps-node-green, stroke: faps-node-green.darken(20%),
-    width: 22mm, height: 14mm, name: <valid>),
+    width: 28mm, height: 12mm, name: <valid>),
 
   // Branch: actuation modes
-  node((-0.3, 1), align(center)[#text(size: 7pt)[PD]], fill: faps-node-lightgreen, stroke: faps-stroke, width: 14mm, height: 10mm, name: <pd>),
-  node((0.3, 1), align(center)[#text(size: 7pt)[Tendon]], fill: faps-node-lightgreen, stroke: faps-stroke, width: 14mm, height: 10mm, name: <ten>),
-  node((0.9, 1), align(center)[#text(size: 7pt)[Physical]], fill: faps-node-lightgreen, stroke: faps-stroke, width: 14mm, height: 10mm, name: <phys>),
+  node((-0.5, 1), align(center)[#text(size: 7pt)[PD]], fill: faps-node-lightgreen, stroke: faps-stroke, width: 14mm, height: 10mm, name: <pd>),
+  node((0., 1), align(center)[#text(size: 7pt)[Tendon]], fill: faps-node-lightgreen, stroke: faps-stroke, width: 14mm, height: 10mm, name: <ten>),
+  node((0.5, 1), align(center)[#text(size: 7pt)[Physical]], fill: faps-node-lightgreen, stroke: faps-stroke, width: 14mm, height: 10mm, name: <phys>),
 
   // Stage 2: Progressive tasks
-  node((1.7, 1), align(center)[*Reach*\ *Task*],
+  node((1.2, 1), align(center)[*Reach*\ *Task*],
     fill: faps-node-blue, stroke: faps-node-blue.darken(30%),
-    width: 22mm, height: 14mm, name: <reach>),
-  node((2.5, 1), align(center)[*Cube Place*\ *Task*],
+    width: 26mm, height: 12mm, name: <reach>),
+  node((2, 1), align(center)[*Cube Place*\ *Task*],
     fill: faps-node-blue, stroke: faps-node-blue.darken(30%),
-    width: 22mm, height: 14mm, name: <place>),
-  node((3.3, 1), align(center)[*Cube Sort*\ #text(size: 7pt)[(outlook)]],
+    width: 26mm, height: 12mm, name: <place>),
+  node((2.8, 1), align(center)[*Cube Sort*\ #text(size: 7pt)[(outlook)]],
     fill: white, stroke: (dash: "dashed", paint: faps-stroke, thickness: 0.5pt),
-    width: 22mm, height: 14mm, name: <sort>),
+    width: 26mm, height: 12mm, name: <sort>),
 
   // Stage 3: Evaluation
-  node((2.5, 2), align(center)[*Cross-Variant*\ *Evaluation*],
+  node((1.6, 2), align(center)[*Cross-Variant* *Evaluation*],
     fill: faps-node-green, stroke: faps-node-green.darken(20%),
-    width: 30mm, height: 14mm, name: <eval>),
+    width: 50mm, height: 12mm, name: <eval>),
 
   // Edges
   edge(<model>, <valid>, "->"),
@@ -299,8 +359,224 @@
 )
 
 
-// ── 8. Reward Pipeline (Cube Place) ─────────────────────────
-// Used in: Methodology § 4.7
+// ── 8. Reward Structure (Cube Place) ────────────────────────
+// Used in: Methodology § 4.6
+//
+// Single Gantt-style chart showing every reward term, in which
+// task phase it is active, its weight, and the gating conditions
+// (was_grasped, was_placed, red curriculum). Replaces the older
+// `reward-pipeline()` block diagram and the `reward-gating-fsm()`
+// automaton, which together (a) duplicated information and
+// (b) overflowed the text width when typeset.
+//
+// Layout: left column = reward name + weight, right strip =
+// six phase columns; coloured bars mark the phases in which a
+// term contributes to the per-step reward. Two latch markers on
+// the top axis show where `was_grasped` and `was_placed` flip on.
+//
+// Width budget: 14 cm (fits the 16 cm thesis text width with
+// breathing room). Height ≈ 9 cm — substantially less vertical
+// real-estate than the previous two-figure stack.
+#let reward-structure() = cetz.canvas({
+  import cetz.draw: *
+
+  // ── geometry ──────────────────────────────────────────────
+  let label-w = 3.5      // left label column width
+  let phase-w = 1.3      // each phase column
+  let n-phases = 6
+  let chart-w = phase-w * n-phases
+  let x0 = label-w
+  let x1 = x0 + chart-w
+  let row-h = 0.36       // bar row height
+  let row-gap = 0.04
+  let header-h = 0.55    // phase header strip
+  let latch-h = 0.45     // latch arrow strip below header
+
+  // ── colour palette (FAPS) ─────────────────────────────────
+  let c-approach = faps-node-lightgreen
+  let c-grasp    = fapsgruen
+  let c-goal     = fapsblau.lighten(35%)
+  let c-success  = fapsblau
+  let c-penalty  = rgb(217, 102, 102)     // muted red
+  let c-reg      = mittelgrau.lighten(20%)
+  let c-grid     = dunkelgrau
+  let c-bg-odd   = rgb(248, 248, 248)
+  let c-text     = faps-stroke
+
+  // ── phase header ──────────────────────────────────────────
+  let phases = (
+    "Reach", "Grasp", "Lift", "Transport", "Release", "Hold",
+  )
+  // Top of the diagram is at y = 0; everything grows downwards
+  // (negative y) so reading order matches drawing order.
+  for (i, p) in phases.enumerate() {
+    let xa = x0 + i * phase-w
+    let xb = xa + phase-w
+    rect((xa, 0), (xb, -header-h),
+      fill: hellgrau, stroke: 0.4pt + c-grid)
+    content(((xa + xb) / 2, -header-h / 2),
+      text(size: 7pt, weight: "bold", fill: c-text)[#p])
+  }
+  // ── latch strip ───────────────────────────────────────────
+  let strip-y0 = -header-h - latch-h - 0.05
+  let strip-y1 = strip-y0 + latch-h
+  // background
+  rect((x0, strip-y0), (x1, strip-y1),
+    fill: rgb(255, 250, 235), stroke: 0.4pt + c-grid)
+  // was_grasped latches at boundary Phase 2 → Phase 3 (i.e. after Lift)
+  let xg = x0 + 2 * phase-w
+  line((xg, strip-y0 - 0.05), (xg, strip-y1 + 0.05),
+    stroke: 0.8pt + fapsgruen.darken(20%))
+  content((xg + 0.05, (strip-y0 + strip-y1) / 2),
+    anchor: "west",
+    text(size: 7pt, weight: "bold", fill: fapsgruen.darken(30%))[
+      #raw("was_grasped") $arrow.t$
+    ])
+  // was_placed latches at boundary Phase 4 → Phase 5 (after Release)
+  let xp = x0 + 5 * phase-w
+  line((xp, strip-y0 - 0.05), (xp, strip-y1 + 0.05),
+    stroke: 0.8pt + fapsblau)
+  content((xp - 0.05, (strip-y0 + strip-y1) / 2),
+    anchor: "east",
+    text(size: 7pt, weight: "bold", fill: fapsblau)[
+      $arrow.t$ #raw("was_placed")
+    ])
+  // strip caption
+  content((x0 - 0.15, (strip-y0 + strip-y1) / 2),
+    anchor: "east",
+    text(size: 7pt, style: "italic", fill: c-text)[Latches])
+
+  // ── reward rows (top-to-bottom, mirrors task progression) ─
+  // Build the row list declaratively so we can compute all y
+  // coordinates without mutating closure-captured state.
+  let approach = (
+    (name: "reaching_object",      weight: "+2", active: (0, 1), gate: none),
+    (name: "reaching_object_fine", weight: "+5", active: (0, 1), gate: none),
+    (name: "red_clearance",        weight: "+5", active: (0, 1),
+      gate: [red active, !#raw("was_grasped")]),
+    (name: "red_green_separation", weight: "+3", active: (0, 1),
+      gate: [red active, !#raw("was_grasped")]),
+  )
+  let grasp = (
+    (name: "grasping",       weight: "+3", active: (1, 2), gate: none),
+    (name: "lifting_object", weight: "+5", active: (2,),
+      gate: [closure, $h > 0.06$ m]),
+    (name: "height_bonus",   weight: "+5", active: (2,),
+      gate: [closure, $h <= 0.30$ m]),
+  )
+  let transport = (
+    (name: "goal_tracking",      weight: "+40", active: (2, 3, 4),
+      gate: [#raw("was_grasped"), !#raw("was_placed")]),
+    (name: "goal_tracking_fine", weight: "+10", active: (2, 3, 4),
+      gate: [#raw("was_grasped"), !#raw("was_placed")]),
+    (name: "release", weight: "+25", active: (4,),
+      gate: [above drum, in radius]),
+  )
+  let success = (
+    (name: "green_in_target",   weight: "+100", active: (4, 5),
+      gate: [#raw("was_grasped")]),
+    (name: "return_to_neutral", weight: "+25",  active: (5,),
+      gate: [#raw("was_placed")]),
+  )
+  let penalties = (
+    (name: "red_in_target", weight: "−12", active: range(n-phases),
+      colour: c-penalty, gate: [red curriculum]),
+    (name: "belt_contact",  weight: "−10", active: range(n-phases),
+      colour: c-penalty, gate: [finger tip $<$ belt]),
+    (name: "action_rate",   weight: "−1e−4 → −5e−3", active: range(n-phases),
+      colour: c-reg, gate: [curriculum ramp]),
+    (name: "joint_vel",     weight: "−1e−4 → −1e−3", active: range(n-phases),
+      colour: c-reg, gate: [curriculum ramp]),
+    (name: "joint_torque",  weight: "−0.025", active: range(n-phases),
+      colour: c-reg, gate: none),
+    (name: "arm_utilization", weight: "+0.25", active: range(n-phases),
+      colour: c-reg, gate: none),
+  )
+
+  let sections = (
+    (title: [Approach (active before grasp)],                          colour: c-approach, rows: approach),
+    (title: [Grasp \& Lift (proximity + closure gated)],               colour: c-grasp,    rows: grasp),
+    (title: [Transport \& Release (gated by #raw("was_grasped"))],     colour: c-goal,     rows: transport),
+    (title: [Success \& Cleanup],                                       colour: c-success,  rows: success),
+    (title: [Penalties \& Regularisation (always)],                    colour: c-penalty,  rows: penalties),
+  )
+
+  let section-gap = 0.32
+  let section-pad = 0.18
+  let row-step    = row-h + row-gap
+
+  // Pre-compute the cursor as a plain expression while drawing
+  let cursor = strip-y0 - 0.2
+  for sec in sections {
+    // section heading rule + label
+    cursor = cursor - section-gap
+    let yc = cursor + 0.16
+    line((x0 - label-w + 0.1, yc), (x1, yc),
+      stroke: (paint: c-grid, thickness: 0.4pt, dash: "dotted"))
+    content((x0 - label-w + 0.15, yc - 0.18),
+      anchor: "west",
+      text(size: 7.5pt, weight: "bold", fill: fapsblau)[#sec.title])
+    cursor = cursor - section-pad
+
+    for r in sec.rows {
+      cursor = cursor - row-step
+      let yt = cursor + row-h
+      let yb = cursor
+      let bar-colour = if "colour" in r { r.colour } else { sec.colour }
+      // alternating background for the chart strip only
+      rect((x0, yb), (x1, yt), fill: c-bg-odd, stroke: none)
+      // phase column separators (light)
+      for i in range(1, n-phases) {
+        let xs = x0 + i * phase-w
+        line((xs, yb), (xs, yt), stroke: 0.3pt + c-grid)
+      }
+      rect((x0, yb), (x1, yt), stroke: 0.3pt + c-grid)
+      // active bars
+      for i in r.active {
+        let xa = x0 + i * phase-w + 0.08
+        let xb = x0 + (i + 1) * phase-w - 0.08
+        rect((xa, yb + 0.05), (xb, yt - 0.05),
+          fill: bar-colour, stroke: 0.3pt + bar-colour.darken(25%),
+          radius: 0.05)
+      }
+      // left label
+      content((x0 - 0.15, (yt + yb) / 2),
+        anchor: "east",
+        text(size: 7.5pt, fill: c-text)[#raw(r.name)])
+      // optional gate annotation
+      if r.gate != none {
+        content((x1 + 0.1, (yt + yb) / 2),
+          anchor: "west",
+          text(size: 6pt, style: "italic", fill: c-text)[#r.gate])
+      }
+    }
+  }
+
+  // ── legend (2 rows, 3 items each, centered under [0, x1]) ──
+  let leg-y  = cursor - 0.58
+  let leg-y2 = leg-y - 0.42
+  // Spread 3 items evenly across the diagram width [0, x1]
+  let leg-step = x1 / 3
+  let swatch(x, y, colour, label) = {
+    rect((x, y - 0.12), (x + 0.30, y + 0.12),
+      fill: colour, stroke: 0.3pt + colour.darken(25%), radius: 0.04)
+    content((x + 0.40, y), anchor: "west",
+      text(size: 6.5pt, fill: c-text)[#label])
+  }
+  // Row 1
+  swatch(0 * leg-step, leg-y,  c-approach, [Approach])
+  swatch(1 * leg-step, leg-y,  c-grasp,    [Grasp / Lift])
+  swatch(2 * leg-step, leg-y,  c-goal,     [Transport / Release])
+  // Row 2
+  swatch(0 * leg-step, leg-y2, c-success,  [Success / Cleanup])
+  swatch(1 * leg-step, leg-y2, c-penalty,  [Penalty])
+  swatch(2 * leg-step, leg-y2, c-reg,      [Regularisation])
+})
+
+
+// ── 8 (legacy). Reward Pipeline (Cube Place) ────────────────
+// Kept for backward compatibility; replaced in §4.6 by
+// `reward-structure()`. Do not reference in new chapters.
 #let reward-pipeline() = diagram(
   spacing: (10mm, 8mm),
   node-stroke: 0.6pt + faps-stroke,
@@ -345,10 +621,43 @@
 )
 
 
+// ── 8b. Reward-Gating FSM (Cube Place) ──────────────────────
+// Used in: Methodology § 4.6 — finite-state view of the
+// `was_grasped` latch and the reward-phase transitions.
+#let reward-gating-fsm() = automaton(
+  (
+    approach:  (grasp:     "proximity<0.10m"),
+    grasp:     (lift:      "closure & contact",
+                approach:  "slip"),
+    lift:      (transport: "Δz>0.10m & low velocity"),
+    transport: (release:   "above drum & xy-aligned"),
+    release:   (success:   "in target & open"),
+    success:   (:),
+  ),
+  initial: "approach",
+  final: ("success",),
+  layout: finite.layout.linear.with(spacing: 3.0),
+  labels: (
+    approach: [Approach],
+    grasp:    [Grasp],
+    lift:     [Lift\ #text(size: 7pt)[#raw("was_grasped") ↑]],
+    transport: [Transport],
+    release:  [Release],
+    success:  [Success],
+    "grasp-approach": (label: text(size: 7pt)[slip], curve: -0.8),
+  ),
+  style: (
+    state:   (fill: faps-node-lightgreen, stroke: 0.6pt + faps-stroke),
+    success: (fill: faps-node-blue.lighten(50%), stroke: 0.8pt + faps-stroke),
+    transition: (stroke: 0.8pt + faps-stroke),
+  ),
+)
+
+
 // ── 9. Mesh Processing Pipeline (CAD → USD → Isaac Lab) ─────
 // Used in: Methodology § 4.3 (Simulation Model Construction)
 #let mesh-processing-pipeline() = diagram(
-  spacing: (15mm, 12mm),
+  spacing: (11mm, 8mm),
   node-stroke: 0.6pt + faps-stroke,
   node-corner-radius: 3pt,
   edge-stroke: 0.8pt + faps-stroke,
@@ -356,12 +665,12 @@
   // Source
   node((0, 0), align(center)[*Fusion 360*\ #text(size: 7pt)[CAD Assembly]],
     fill: faps-node-gray, stroke: faps-stroke,
-    width: 26mm, height: 14mm, name: <cad>),
+    width: 22mm, height: 20mm, name: <cad>),
 
   // Blender processing
   node((1, 0), align(center)[*Blender*\ #text(size: 7pt)[FBX Import]],
     fill: faps-node-lightgreen, stroke: faps-stroke,
-    width: 24mm, height: 14mm, name: <blender>),
+    width: 24mm, height: 20mm, name: <blender>),
   node((1, 1), align(center)[#text(size: 7pt)[Join Parts &\ Fix Origins]],
     fill: faps-node-lightgreen, stroke: faps-stroke,
     width: 22mm, height: 12mm, name: <join>),
@@ -372,23 +681,28 @@
   // USD Builder
   node((2, 0), align(center)[*USD Builder*\ *Script*\ #text(size: 7pt)[Python + Kit]],
     fill: faps-node-green, stroke: faps-node-green.darken(20%),
-    width: 26mm, height: 16mm, name: <builder>),
+    width: 22mm, height: 20mm, name: <builder>),
   node((2, 1), align(center)[#text(size: 7pt)[ArticulationRoot\ RigidBody APIs]],
     fill: faps-node-green, stroke: faps-node-green.darken(20%),
-    width: 24mm, height: 12mm, name: <apis>),
+    width: 22mm, height: 12mm, name: <apis>),
   node((2, 2), align(center)[#text(size: 7pt)[Mass / Inertia /\ Joint Properties]],
     fill: faps-node-green, stroke: faps-node-green.darken(20%),
-    width: 24mm, height: 12mm, name: <props>),
+    width: 22mm, height: 12mm, name: <props>),
 
   // Assembly
-  node((3, 0), align(center)[*Robot*\ *Assembler*\ #text(size: 7pt)[Base + Arm +\ Gripper]],
+  node((3, 0), align(center)[*Robot*\ *Assembler*\ #text(size: 7pt)[USD Composition]],
     fill: faps-node-blue, stroke: faps-node-blue.darken(30%),
-    width: 26mm, height: 16mm, name: <assembler>),
-
+    width: 24mm, height: 20mm, name: <assembler>),
+  node((3, 1), align(center)[#text(size: 7pt)[Base + Arm]],
+    fill: faps-node-green, stroke: faps-node-green.darken(20%),
+    width: 22mm, height: 12mm, name: <arm>),
+  node((3, 2), align(center)[#text(size: 7pt)[Robot + Gripper]],
+    fill: faps-node-green, stroke: faps-node-green.darken(20%),
+    width: 22mm, height: 12mm, name: <gripper>),
   // Output
   node((4, 0), align(center)[*Isaac Lab*\ *Asset*],
     fill: faps-node-blue, stroke: faps-node-blue.darken(30%),
-    width: 22mm, height: 14mm, name: <asset>),
+    width: 22mm, height: 20mm, name: <asset>),
 
   edge(<cad>, <blender>, [FBX], "->"),
   edge(<blender>, <join>, "->"),
@@ -399,6 +713,9 @@
   edge(<apis>, <props>, "->"),
   edge(<props>, <assembler>, "->"),
   edge(<builder>, <assembler>, [USD], "->"),
+  edge(<assembler>, <arm>, "->"),
+  edge(<arm>, <gripper>, "->"),
+  edge(<gripper>, <asset>, "->"),
   edge(<assembler>, <asset>, "->"),
 )
 
@@ -616,4 +933,347 @@
   edge(<p1>, <robot>, "->", stroke: 0.4pt + faps-stroke),
   edge(<p2>, <robot>, "->", stroke: 0.4pt + faps-stroke),
   edge(<p3>, <robot>, "->", stroke: 0.4pt + faps-stroke),
+)
+
+
+// ── 14. Tensegrity Manipulator Kinematic Schematic (Klein-style) ──────
+// NOTE: superseded by the matplotlib version exported from
+// `doc/Tensegrity_robot/kinematic_schematic.ipynb` to
+// `shared/figures/tensegrity_kinematic_schematic.svg`.
+// Kept here (commented out) in case we want to return to a fully native
+// CeTZ rendering later.
+/*
+#let tensegrity-kinematic-schematic() = cetz.canvas(length: 1cm, {
+  import cetz.draw: *
+
+  // Palette
+  let c-stroke   = faps-stroke
+  let c-link     = fapsblau.darken(10%)
+  let c-rev      = fapsgruen.darken(15%)
+  let c-pris     = rgb("#CC6600")
+  let c-axis-y   = rgb("#33AA33")
+  let c-axis-z   = rgb("#3366CC")
+  let c-text     = faps-stroke
+  let c-inset-bg = rgb(248, 248, 248)
+  let c-rod      = fapsblau
+
+  // Helpers ---------------------------------------------------
+  let triad(p, label, anchor: "west", len: 0.40) = {
+    let x = p.at(0)
+    let y = p.at(1)
+    let dx = if anchor == "west" { len } else { -len }
+    line((x, y), (x + dx, y),
+      mark: (end: ">"), stroke: 0.6pt + c-axis-y)
+    line((x, y), (x, y + len),
+      mark: (end: ">"), stroke: 0.6pt + c-axis-z)
+    circle((x, y), radius: 0.06, fill: c-stroke, stroke: none)
+    if label != none {
+      let lx = if anchor == "west" { x + 0.50 } else { x - 0.50 }
+      content((lx, y - 0.05),
+        text(size: 6.5pt, fill: c-text)[#label], anchor: anchor)
+    }
+  }
+
+  let rev-joint(p, label: none, label-anchor: "west", radius: 0.22) = {
+    let x = p.at(0)
+    let y = p.at(1)
+    circle((x, y), radius: radius, fill: white,
+      stroke: 0.8pt + c-rev)
+    circle((x, y), radius: 0.05, fill: c-rev, stroke: none)
+    if label != none {
+      let lx = if label-anchor == "west" {
+        x + radius + 0.18
+      } else {
+        x - radius - 0.18
+      }
+      content((lx, y),
+        text(size: 7pt, fill: c-text)[#label], anchor: label-anchor)
+    }
+  }
+
+  let prism-h(p, label, w: 1.25, h: 0.50) = {
+    let x = p.at(0)
+    let y = p.at(1)
+    rect((x - w/2, y - h/2), (rel: (w, h)),
+      fill: white, stroke: 0.7pt + c-pris)
+    line((x - w/2 + 0.12, y), (x + w/2 - 0.12, y),
+      mark: (start: ">", end: ">"), stroke: 0.6pt + c-pris)
+    content((x, y - h/2 - 0.20),
+      text(size: 7pt, fill: c-text)[#label], anchor: "north")
+  }
+
+  let prism-v(p, label, w: 0.50, h: 1.10) = {
+    let x = p.at(0)
+    let y = p.at(1)
+    rect((x - w/2, y - h/2), (rel: (w, h)),
+      fill: white, stroke: 0.7pt + c-pris)
+    line((x, y - h/2 + 0.12), (x, y + h/2 - 0.12),
+      mark: (start: ">", end: ">"), stroke: 0.6pt + c-pris)
+    content((x + w/2 + 0.18, y),
+      text(size: 7pt, fill: c-text)[#label], anchor: "west")
+  }
+
+  let ceiling(x0, x1, y) = {
+    line((x0, y), (x1, y), stroke: 1.0pt + c-stroke)
+    let n = 14
+    let dx = (x1 - x0) / n
+    for i in range(n) {
+      let xa = x0 + i * dx
+      line((xa, y), (xa - 0.20, y + 0.28), stroke: 0.4pt + c-stroke)
+    }
+  }
+
+  // ─── MAIN SCHEMATIC ────────────────────────────────────────
+  let xc = 5.0
+  let cy = 12.5
+
+  ceiling(2.5, 7.5, cy)
+  content((7.6, cy + 0.15),
+    text(size: 7.5pt, fill: c-text)[*Ceiling — World Frame* $Sigma_W$],
+    anchor: "west")
+
+  line((xc, cy), (xc, 11.95), stroke: 1.6pt + c-link)
+  prism-h((xc, 11.65),
+    [`base_y_joint` — prismatic Y, $plus.minus 0.5$ m])
+  line((xc, 11.40), (xc, 10.85), stroke: 1.6pt + c-link)
+  prism-v((xc, 10.30),
+    [`base_z_joint` — prismatic Z, $-0.5 dots 0$ m])
+  line((xc, 9.75), (xc, 9.15), stroke: 1.6pt + c-link)
+
+  triad((xc, 9.10), [LO 0 — `root_link` $(0,0,0)$])
+  line((xc, 9.10), (xc, 6.50), stroke: 2.6pt + c-link)
+  content((xc - 0.30, 7.80),
+    text(size: 7pt, fill: c-text)[$d_2 = 430$ mm], anchor: "east")
+  content((xc - 0.30, 7.40),
+    text(size: 6.5pt, fill: c-text)[(upper-arm aluminium bracket)],
+    anchor: "east")
+
+  rev-joint((xc, 6.50),
+    label: [`elbow_joint` (rev., $plus.minus 70 degree$, disc-approx.)],
+    label-anchor: "west", radius: 0.26)
+  triad((xc - 0.05, 6.50), none, anchor: "east")
+  content((xc - 0.50, 6.10),
+    text(size: 6.5pt, fill: c-text)[LO 1 — `forearm_link` $(0,0,-0.4975)$],
+    anchor: "east")
+
+  line((xc, 6.50), (xc, 4.30), stroke: 2.6pt + c-link)
+  content((xc - 0.30, 5.40),
+    text(size: 7pt, fill: c-text)[$d_3 = 406$ mm], anchor: "east")
+  content((xc - 0.30, 5.00),
+    text(size: 6.5pt, fill: c-text)[(forearm aluminium tube)],
+    anchor: "east")
+
+  triad((xc - 0.05, 4.25), none, anchor: "east")
+  content((xc - 0.50, 4.55),
+    text(size: 6.5pt, fill: c-text)[LO 3 — `wrist_intermediate_link` $(0,0,-0.836)$],
+    anchor: "east")
+  rev-joint((xc, 4.25),
+    label: [`wrist_x_joint` (rev., $plus.minus 50 degree$)],
+    label-anchor: "west", radius: 0.18)
+  line((xc, 4.25), (xc, 3.55), stroke: 1.6pt + c-link)
+  rev-joint((xc, 3.55),
+    label: [`wrist_y_joint` (rev., $plus.minus 50 degree$)],
+    label-anchor: "west", radius: 0.18)
+
+  line((xc, 3.55), (xc, 2.85), stroke: 2.0pt + c-link)
+  content((xc - 0.30, 3.20),
+    text(size: 7pt, fill: c-text)[$d_4 = 136$ mm], anchor: "east")
+  triad((xc, 2.85), [LO 4 — `tool_link` $(0,0,-0.972)$])
+
+  // Robotiq 2F-140 gripper body
+  let gx = xc
+  let gy = 2.40
+  rect((gx - 0.55, gy - 0.30), (rel: (1.10, 0.30)),
+    fill: hellgrau, stroke: 0.7pt + c-stroke)
+  rect((gx - 0.55, gy - 1.20), (rel: (0.18, 0.95)),
+    fill: hellgrau, stroke: 0.7pt + c-stroke)
+  rect((gx + 0.37, gy - 1.20), (rel: (0.18, 0.95)),
+    fill: hellgrau, stroke: 0.7pt + c-stroke)
+  content((gx + 0.85, gy - 0.55),
+    text(size: 7pt, fill: c-text)[`finger_joint` — Robotiq 2F-140 gripper],
+    anchor: "west")
+
+  // ─── INSET: physical antiparallelogram elbow variant ──────
+  let ix = 12.7
+  let iy = 6.50
+  let iw = 3.6
+  let ih = 4.4
+
+  rect((ix - iw/2, iy - ih/2), (rel: (iw, ih)),
+    fill: c-inset-bg,
+    stroke: (paint: c-stroke, dash: "dashed", thickness: 0.5pt))
+  content((ix, iy + ih/2 - 0.30),
+    text(size: 7.5pt, fill: c-text, weight: "bold")[Physical elbow variant],
+    anchor: "center")
+  content((ix, iy + ih/2 - 0.65),
+    text(size: 6.5pt, fill: c-text)[antiparallelogram four-bar linkage],
+    anchor: "center")
+
+  let A = (ix - 0.50, iy + 0.55)
+  let B = (ix + 0.50, iy + 0.55)
+  let C = (ix - 0.50, iy - 1.10)
+  let D = (ix + 0.50, iy - 1.10)
+
+  let n2 = 8
+  let dxh = (B.at(0) - A.at(0)) / n2
+  for i in range(n2) {
+    let xa = A.at(0) + i * dxh
+    line((xa, A.at(1) + 0.10), (xa - 0.16, A.at(1) + 0.36),
+      stroke: 0.4pt + c-stroke)
+  }
+  line((A.at(0) - 0.10, A.at(1) + 0.10),
+       (B.at(0) + 0.10, A.at(1) + 0.10),
+       stroke: 0.7pt + c-stroke)
+
+  line(A, B, stroke: 1.6pt + c-link)
+  content((ix, A.at(1) + 0.55),
+    text(size: 6.5pt, fill: c-text)[root_link frame ($k_e = 60$ mm)],
+    anchor: "south")
+
+  line(C, D, stroke: 1.6pt + c-link)
+  content((B.at(0) + 0.20, D.at(1) - 0.05),
+    text(size: 6pt, fill: c-text)[forearm coupler ($k_e$)],
+    anchor: "west")
+
+  line(A, D, stroke: 1.6pt + c-rod)
+  line(B, C, stroke: 1.6pt + c-rod)
+  content((ix + 1.05, iy + 0.10),
+    text(size: 6.5pt, fill: c-rod)[$l_e = 150$ mm], anchor: "west")
+
+  for tup in (
+    (A, "A", "east"),
+    (B, "B", "west"),
+    (C, "C", "east"),
+    (D, "D", "west"),
+  ) {
+    let p = tup.at(0)
+    let lbl = tup.at(1)
+    let ax = tup.at(2)
+    circle(p, radius: 0.10, fill: white, stroke: 0.7pt + c-rev)
+    circle(p, radius: 0.03, fill: c-rev, stroke: none)
+    let off = if ax == "east" { -0.18 } else { 0.18 }
+    content((p.at(0) + off, p.at(1)),
+      text(size: 6.5pt, fill: c-rev, weight: "bold")[#lbl],
+      anchor: ax)
+  }
+
+  line((ix, D.at(1) - 0.05), (ix, D.at(1) - 0.55),
+    mark: (end: ">"), stroke: 1.4pt + c-link)
+  content((ix, D.at(1) - 0.70),
+    text(size: 6pt, fill: c-text)[to forearm — loop closure constraint],
+    anchor: "north")
+
+  // Connector from main elbow to inset (drawn below the elbow label so it
+  // does not strike through the joint annotation)
+  line((xc + 0.30, 6.10), (ix - iw/2 - 0.05, 6.10),
+    mark: (end: ">"),
+    stroke: (paint: c-stroke, dash: "dashed", thickness: 0.5pt))
+  content(((xc + ix - iw/2) / 2, 6.25),
+    text(size: 6pt, fill: c-stroke)[detail], anchor: "south")
+
+  // ─── Legend ────────────────────────────────────────────────
+  let lx = 0.4
+  let ly = 1.6
+  rect((lx - 0.1, ly - 1.4), (rel: (5.4, 1.7)),
+    stroke: 0.4pt + c-stroke, fill: c-inset-bg)
+  content((lx, ly + 0.10),
+    text(size: 6.5pt, fill: c-text, weight: "bold")[Legend],
+    anchor: "west")
+  // Row 1: revolute
+  circle((lx + 0.20, ly - 0.30), radius: 0.10,
+    fill: white, stroke: 0.6pt + c-rev)
+  content((lx + 0.45, ly - 0.30),
+    text(size: 6.5pt, fill: c-text)[revolute joint], anchor: "west")
+  // Row 1 col 2: prismatic
+  rect((lx + 2.80, ly - 0.40), (rel: (0.40, 0.20)),
+    fill: white, stroke: 0.6pt + c-pris)
+  content((lx + 3.30, ly - 0.30),
+    text(size: 6.5pt, fill: c-text)[prismatic joint], anchor: "west")
+  // Row 2: triad
+  line((lx + 0.10, ly - 0.85), (lx + 0.40, ly - 0.85),
+    mark: (end: ">"), stroke: 0.5pt + c-axis-y)
+  line((lx + 0.10, ly - 0.85), (lx + 0.10, ly - 0.55),
+    mark: (end: ">"), stroke: 0.5pt + c-axis-z)
+  content((lx + 0.50, ly - 0.75),
+    text(size: 6.5pt, fill: c-text)[link-origin frame ($Y$, $Z$)],
+    anchor: "west")
+  // Row 2 col 2: link
+  line((lx + 2.80, ly - 0.75), (lx + 3.20, ly - 0.75),
+    stroke: 2.0pt + c-link)
+  content((lx + 3.30, ly - 0.75),
+    text(size: 6.5pt, fill: c-text)[rigid link], anchor: "west")
+  // Row 3: crossed rod (linkage)
+  line((lx + 0.10, ly - 1.20), (lx + 0.40, ly - 1.20),
+    stroke: 1.4pt + c-rod)
+  content((lx + 0.50, ly - 1.20),
+    text(size: 6.5pt, fill: c-text)[antiparallelogram side link],
+    anchor: "west")
+})
+*/
+
+
+
+// ── 14. Training Infrastructure Stack ────────────────────────
+// Used in: Methodology § 4.7 (Training Infrastructure)
+#let training-infrastructure-stack() = diagram(
+  spacing: (14mm, 13mm),
+  node-stroke: 0.6pt + faps-stroke,
+  node-corner-radius: 3pt,
+  edge-stroke: 0.8pt + faps-stroke,
+
+  // Algorithm layer (top): PPO + skrl
+  node((0.5, 0), align(center)[*PPO Agent*\ #text(size: 7pt)[`skrl` 1.3]],
+    fill: faps-node-blue, stroke: faps-node-blue.darken(30%),
+    width: 38mm, height: 14mm, name: <ppo>),
+  node((1.5, 0), align(center)[*Sequential Trainer*\ #text(size: 7pt)[Rollout · Update]],
+    fill: faps-node-blue, stroke: faps-node-blue.darken(30%),
+    width: 38mm, height: 14mm, name: <trainer>),
+  node((2.5, 0), align(center)[*Logging*\ #text(size: 7pt)[TensorBoard · Custom TUI]],
+    fill: faps-node-blue, stroke: faps-node-blue.darken(30%),
+    width: 38mm, height: 14mm, name: <log>),
+
+  // Environment layer (middle): Gymnasium + IsaacLab task
+  node((0.5, 1), align(center)[*Gymnasium Wrapper*\ #text(size: 7pt)[`tensegrity_pick`]],
+    fill: faps-node-lightgreen, stroke: faps-stroke,
+    width: 38mm, height: 14mm, name: <gym>),
+  node((1.5, 1), align(center)[*IsaacLab Managers*\ #text(size: 7pt)[Obs · Act · Rew · Term · Curr]],
+    fill: faps-node-lightgreen, stroke: faps-stroke,
+    width: 38mm, height: 14mm, name: <mgrs>),
+  node((2.5, 1), align(center)[*Vectorized Envs*\ #text(size: 7pt)[4 096 parallel · GPU clones]],
+    fill: faps-node-lightgreen, stroke: faps-stroke,
+    width: 38mm, height: 14mm, name: <vec>),
+
+  // Simulation layer (third row): IsaacSim + PhysX
+  node((0.5, 2), align(center)[*IsaacSim 5.1.0*\ #text(size: 7pt)[USD Stage · Cloner]],
+    fill: faps-node-green, stroke: faps-node-green.darken(20%),
+    width: 38mm, height: 14mm, name: <isaac>),
+  node((1.5, 2), align(center)[*PhysX 5*\ #text(size: 7pt)[Articulations · Tendons]],
+    fill: faps-node-green, stroke: faps-node-green.darken(20%),
+    width: 38mm, height: 14mm, name: <physx>),
+  node((2.5, 2), align(center)[*USD Assets*\ #text(size: 7pt)[Robot · Scene · Props]],
+    fill: faps-node-green, stroke: faps-node-green.darken(20%),
+    width: 38mm, height: 14mm, name: <usd>),
+
+  // Hardware layer (bottom)
+  node((1.0, 3), align(center)[*NVIDIA RTX A6000*\ #text(size: 7pt)[48 GB VRAM · CUDA]],
+    fill: faps-node-gray, stroke: faps-stroke,
+    width: 50mm, height: 14mm, name: <gpu>),
+  node((2.0, 3), align(center)[*Workstation Host*\ #text(size: 7pt)[Linux · Conda env]],
+    fill: faps-node-gray, stroke: faps-stroke,
+    width: 50mm, height: 14mm, name: <host>),
+
+  // Group enclosures
+  node(enclose: (<ppo>, <trainer>, <log>),
+    stroke: 0.4pt + faps-node-blue, fill: none, inset: 4mm, snap: -1, name: <alg>),
+  node(enclose: (<gym>, <mgrs>, <vec>),
+    stroke: 0.4pt + faps-stroke, fill: none, inset: 4mm, snap: -1, name: <env>),
+  node(enclose: (<isaac>, <physx>, <usd>),
+    stroke: 0.4pt + faps-stroke, fill: none, inset: 4mm, snap: -1, name: <sim>),
+  node(enclose: (<gpu>, <host>),
+    stroke: 0.4pt + faps-stroke, fill: none, inset: 4mm, snap: -1, name: <hw>),
+
+  // Inter-layer arrows
+  edge(<alg>, <env>, "->", stroke: 1pt + faps-stroke, label: text(size: 7pt)[actions / obs]),
+  edge(<env>, <sim>, "->", stroke: 1pt + faps-stroke, label: text(size: 7pt)[step()]),
+  edge(<sim>, <hw>, "->", stroke: 1pt + faps-stroke, label: text(size: 7pt)[CUDA tensors]),
 )

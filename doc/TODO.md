@@ -151,3 +151,33 @@ These items cannot be done without a running Isaac Sim 5.1 instance.
 - 🟢 **`shirts_sort/README.md`** — still template; fill observations, rewards, and variants tables once task is implemented
 - 🟢 **`doc/tendon_simulation.md`** — add section on cloth co-simulation constraints (PBD particle cloth & rigid-body gripper contact model)
 - 🟢 **`doc/workflow_guide.md`** — add "Cloth object workflow" section: run checker → run make_pbd_cloth → verify in Sim → train with proxy → swap to cloth
+
+---
+
+## Methodology Re-validation  🟡 Project Thesis follow-ups
+
+Action items raised by the systematic methodology review of the Project Thesis (`reports/methodology_review/`). These translate documentation fixes already applied to the chapters into matching code/training changes.
+
+### Per-tendon cable saturation (M2)
+
+- 🔴 **Switch `TendonActuatorCfg` to per-tendon `max_tension`** ([src/tensegrity_pick/.../tendon_actuator.py](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shared/tendon_actuator.py))\
+  Replace the scalar `max_tension: float = 500.0` with a per-tendon list (`[480, 480, 80, 80, 80]` N) so the elbow and wrist tendons saturate at their Klein-derived hardware limits (160 N motor-side $\times$ 3:1 elbow pulley, 80 N for the wrist cables).
+- 🔴 **Update `tensegrity_robot_cfg.py` actuator definition** ([src/tensegrity_pick/.../tensegrity_robot_cfg.py](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shared/tensegrity_robot_cfg.py))\
+  Wire the new per-tendon saturation list into the `IdealPDActuator`-based tendon actuator group. Verify Klein-style scaling in `step_response_test.py` (cable saturation column should drop from `600 N` to `80 N` for wrist tests).
+- 🟡 **Retrain tendon variants after the saturation update**\
+  - `Template-Tensegrity-Reach-Tendon-v0` (PPO, 2 048 envs, headless)\
+  - `Template-Tensegrity-Cube-Place-Tendon-v0` (PPO, 2 048 envs, headless)\
+  Compare reward curves against the existing 500 N baselines and update the §5 results tables once converged.
+- 🟡 **Re-run step-response validation with the new saturations** ([test/test_step_response.py](../test/test_step_response.py))\
+  Regenerate the per-axis CSVs and the aggregate metrics that feed appendix A.7.
+
+### Wrist effort limit (M1)
+
+- ✅ ~~**Code already at 3.5 Nm wrist effort**~~\
+  Verified in `tensegrity_robot_cfg.py`; chapter §4.2/§4.4 prose, table, and equations now match (3.5 Nm with $\approx 10\%$ controller headroom).
+- 🟢 **Audit §5 results tables** for any remaining `3.0 Nm` references and replace with `3.5 Nm` when the next results revision is written.
+
+### Documentation review report
+
+- 🟡 **Close out remaining Major/Minor issues**\
+  See [`reports/methodology_review/reports/00_chapter_scope_structure.md`](../reports/methodology_review/reports/00_chapter_scope_structure.md) — Blocker (B1–B3) and Major (M1–M9) items are now fixed in the chapters; Minor (m1–m11) and Cross-section (X1–X12) items are still open.
