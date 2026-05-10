@@ -5,10 +5,14 @@ reference against the three Isaac Sim arm variants (PD, constant-tension
 tendon, physical antiparallelogram tendon) along the four canonical
 performance indicators (rise time, settling time, overshoot, NRMSE).
 
-The Klein record only contains NRMSE; rise/settling/overshoot for that
-column are rendered as hatched "n/a" bars to keep the visual structure
-intact.  The physical variant's per-joint means are taken from the
-aggregates that are otherwise hard-coded in ``5_0_Results.typ``.
+Bars show the mean across the per-joint amplitude sweep and error
+bars show ±1σ across the same sweep.  For the simulation variants a
+``None`` overshoot value is treated as a true zero-overshoot reading
+(the recorded trace never exceeded the setpoint), so all three
+sim-variant overshoot bars are populated from gathered data.  Klein
+entries that were not reported in Tabelle 4.2 (rise / overshoot for
+several amplitudes, all settling times) remain hatched ``n/a``
+placeholders.
 
 Run::
 
@@ -26,18 +30,10 @@ import numpy as np
 import common as c
 
 # ── Constants ────────────────────────────────────────────────────────────────
-# Per-joint means for the *physical* variant are not stored as raw CSVs.
-# They are duplicated from the inline annotations in 5_0_Results.typ to keep
-# this script the single source of truth for the bar chart.
-PHYSICAL_MEANS: Final[dict[str, dict[str, float]]] = {
-    "elbow_joint":   {"rise_ms": 105.7, "settle_ms": 161.0, "nrmse_pct": 13.3},
-    "wrist_x_joint": {"rise_ms": 105.3, "settle_ms": 233.0, "nrmse_pct": 12.5},
-    "wrist_y_joint": {"rise_ms": 108.3, "settle_ms": 183.0, "nrmse_pct": 12.3},
-}
-
 JOINTS: Final = ("elbow_joint", "wrist_x_joint", "wrist_y_joint")
 JOINT_LABELS: Final = ("Elbow", "Wrist X", "Wrist Y")
 VARIANTS: Final = ("Klein (2023)", "PD", "Tendon", "Physical")
+VARIANT_KEYS: Final = ("klein", "pd", "tendon", "physical")
 VARIANT_COLORS: Final = (
     c.pcfg.AMBER,        # Klein reference
     c.pcfg.FAPS_BLUE,    # PD
@@ -46,35 +42,43 @@ VARIANT_COLORS: Final = (
 )
 
 
-def _aggregate_joint_means(records: list[dict]) -> dict[str, dict[str, dict[str, float]]]:
-    """Return ``means[joint][source][metric] = value`` (mean over amplitudes)."""
+def _aggregate_joint_stats(records: list[dict]) -> dict[str, dict[str, dict[str, tuple[float, float]]]]:
+    """Return ``stats[joint][source][metric] = (mean, std)`` over amplitudes.
+
+    For the simulation variants (``pd``, ``tendon``, ``physical``) a
+    ``None`` overshoot value is interpreted as a genuine zero-overshoot
+    measurement (the recorded trace never exceeded the setpoint), and
+    contributes ``0.0`` to the aggregate.  For the Klein reference,
+    ``None`` indicates that the metric was not reported in Tabelle 4.2,
+    so those entries are skipped.
+    """
     accum: dict = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
     for r in records:
         j = r["joint"]
-        for src in ("klein", "pd", "tendon"):
-            for metric in ("nrmse", "rise_ms", "settling_ms"):
+        for src in VARIANT_KEYS:
+            for metric in ("nrmse", "rise_ms", "settling_ms", "overshoot"):
                 key = f"{src}_{metric}"
-                if key in r and r[key] is not None:
-                    accum[j][src][metric].append(float(r[key]))
+                v = r.get(key)
+                if v is not None:
+                    accum[j][src][metric].append(float(v))
+                elif src != "klein" and metric == "overshoot":
+                    # No overshoot detected in the simulated trace ⇒ 0 %.
+                    accum[j][src][metric].append(0.0)
 
-    means: dict = {j: {} for j in JOINTS}
+    stats: dict = {j: {} for j in JOINTS}
     for j in JOINTS:
         for src, metrics in accum[j].items():
-            means[j][src] = {m: float(np.mean(vs)) for m, vs in metrics.items()}
-    # Patch in the physical variant from the constant table.
-    for j in JOINTS:
-        phys = PHYSICAL_MEANS[j]
-        means[j]["physical"] = {
-            "rise_ms":     phys["rise_ms"],
-            "settling_ms": phys["settle_ms"],
-            "nrmse":       phys["nrmse_pct"],
-        }
-    return means
+            stats[j][src] = {
+                m: (float(np.mean(vs)), float(np.std(vs, ddof=0)))
+                for m, vs in metrics.items()
+            }
+    return stats
 
 
 def _bar_panel(ax: plt.Axes, title: str, ylabel: str,
-               values: list[list[float | None]]) -> None:
-    """Grouped bar chart with a hatched fallback for ``None`` entries."""
+               means: list[list[float | None]],
+               stds: list[list[float | None]]) -> None:
+    """Grouped bar chart with ±1σ error bars and hatched ``n/a`` fallback."""
     n_groups = len(JOINTS)
     n_bars = len(VARIANTS)
     bar_w = 0.78 / n_bars
@@ -83,19 +87,24 @@ def _bar_panel(ax: plt.Axes, title: str, ylabel: str,
     for idx, variant in enumerate(VARIANTS):
         offset = (idx - (n_bars - 1) / 2) * bar_w
         xs = base + offset
-        for x, v in zip(xs, values[idx]):
-            if v is None or v == 0:
+        for x, v, s in zip(xs, means[idx], stds[idx]):
+            if v is None:
                 ax.bar(x, 1.0, width=bar_w * 0.9,
                        color="#F0F0F0", edgecolor="#A0A0A0",
                        hatch="///", linewidth=0.4, zorder=2)
                 ax.text(x, 0.5, "n/a", ha="center", va="center",
                         rotation=90, fontsize=6.5, color="#777777", zorder=3)
             else:
+                err = float(s) if s is not None and s > 0 else None
                 ax.bar(x, v, width=bar_w * 0.9,
                        color=VARIANT_COLORS[idx], edgecolor="white",
                        linewidth=0.4, zorder=2,
+                       yerr=err,
+                       error_kw=dict(ecolor="#333333", elinewidth=0.7,
+                                     capsize=2.0, capthick=0.6),
                        label=variant if x == xs[0] else None)
-                ax.text(x, v, f"{v:.0f}" if v >= 10 else f"{v:.1f}",
+                top = v + (err or 0.0)
+                ax.text(x, top, f"{v:.0f}" if v >= 10 else f"{v:.1f}",
                         ha="center", va="bottom",
                         fontsize=7, color="#333333", zorder=3)
 
@@ -104,41 +113,49 @@ def _bar_panel(ax: plt.Axes, title: str, ylabel: str,
     ax.set_ylabel(ylabel)
     ax.set_title(title, fontsize=10, fontweight="bold", loc="left")
     ax.set_axisbelow(True)
-    # leave headroom for value labels
+    # leave headroom for value labels and error caps
     cur_top = ax.get_ylim()[1]
-    ax.set_ylim(0, cur_top * 1.15)
+    ax.set_ylim(0, cur_top * 1.18)
 
 
 def main() -> None:
     c.init()
     records = c.load_validation_metrics()
-    means = _aggregate_joint_means(records)
+    stats = _aggregate_joint_stats(records)
 
-    # ── extract per-metric series ───────────────────────────────────────────
-    def per_metric(metric: str) -> list[list[float | None]]:
-        out: list[list[float | None]] = []
-        for src in ("klein", "pd", "tendon", "physical"):
-            row = []
+    # ── extract per-metric (mean, std) series ───────────────────────────────
+    def per_metric(metric: str) -> tuple[list[list[float | None]], list[list[float | None]]]:
+        means: list[list[float | None]] = []
+        stds: list[list[float | None]] = []
+        for src in VARIANT_KEYS:
+            mrow: list[float | None] = []
+            srow: list[float | None] = []
             for j in JOINTS:
-                row.append(means[j].get(src, {}).get(metric))
-            out.append(row)
-        return out
+                ms = stats[j].get(src, {}).get(metric)
+                if ms is None:
+                    mrow.append(None)
+                    srow.append(None)
+                else:
+                    mrow.append(ms[0])
+                    srow.append(ms[1])
+            means.append(mrow)
+            stds.append(srow)
+        return means, stds
 
-    rise   = per_metric("rise_ms")
-    settle = per_metric("settling_ms")
-    nrmse  = per_metric("nrmse")
-    # Overshoot is currently not measured anywhere — full hatched panel.
-    overshoot: list[list[float | None]] = [[None] * 3 for _ in VARIANTS]
+    rise_m,  rise_s  = per_metric("rise_ms")
+    set_m,   set_s   = per_metric("settling_ms")
+    nrm_m,   nrm_s   = per_metric("nrmse")
+    over_m,  over_s  = per_metric("overshoot")
 
     fig, axes = plt.subplots(
         2, 2,
         figsize=c.pcfg.scaled(11, 7.5, scale=1.0),
         constrained_layout=True,
     )
-    _bar_panel(axes[0, 0], "(a) Rise time (10–90 %)",  "Rise time / ms",      rise)
-    _bar_panel(axes[0, 1], "(b) Settling time (±2 %)", "Settling time / ms",  settle)
-    _bar_panel(axes[1, 0], "(c) Peak overshoot",        "Overshoot / %",       overshoot)
-    _bar_panel(axes[1, 1], "(d) Normalised RMSE",       "NRMSE / %",           nrmse)
+    _bar_panel(axes[0, 0], "(a) Rise time (10–90 %)",  "Rise time / ms",      rise_m, rise_s)
+    _bar_panel(axes[0, 1], "(b) Settling time (±2 %)", "Settling time / ms",  set_m,  set_s)
+    _bar_panel(axes[1, 0], "(c) Peak overshoot",        "Overshoot / %",       over_m, over_s)
+    _bar_panel(axes[1, 1], "(d) Normalised RMSE",       "NRMSE / %",           nrm_m,  nrm_s)
 
     # Single shared legend across the figure
     handles = [
@@ -150,7 +167,7 @@ def main() -> None:
                       edgecolor="#A0A0A0", hatch="///", linewidth=0.4)
     )
     fig.legend(
-        handles, list(VARIANTS) + ["n/a (not recorded)"],
+        handles, list(VARIANTS) + ["n/a (not reported by Klein)"],
         loc="lower center", ncol=5, frameon=False,
         fontsize=8, bbox_to_anchor=(0.5, -0.04),
     )

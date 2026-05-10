@@ -7,9 +7,9 @@ panels for Elbow / Wrist-X / Wrist-Y at the recorded amplitudes:
 * ``step_tendon_grouped.png``    – Constant-tension tendon
 * ``step_physical_grouped.png``  – Physical antiparallelogram tendon
 
-Wrist-X traces have not been re-recorded for the new pipeline; those
-panels render a grey "data not recorded" placeholder so the layout
-stays consistent and readers immediately see what is missing.
+All nine joint × amplitude combinations are now available for every
+actuation mode.  Run :mod:`regenerate_step_data` first if any CSVs
+appear to be out of date with the source NPZ archive.
 
 Run::
 
@@ -112,26 +112,21 @@ def main() -> None:
         suptitle="PD model — step responses",
         elbow_template="step_pd_elbow_{amp}.csv",
         wrist_y_template="step_pd_wrist_y_{amp}.csv",
+        wrist_x_template="step_pd_wrist_x_{amp}.csv",
     )
     _three_panel_figure(
         "step_tendon_grouped.png",
         suptitle="Constant-tension tendon — step responses",
         elbow_template="step_tendon_elbow_{amp}.csv",
         wrist_y_template="step_tendon_wrist_y_{amp}.csv",
+        wrist_x_template="step_tendon_wrist_x_{amp}.csv",
     )
     _three_panel_figure(
         "step_physical_grouped.png",
         suptitle="Physical antiparallelogram tendon — step responses",
-        elbow_template=None,
-        wrist_y_template=None,
-        elbow_message=(
-            "Re-run `step_response` on the physical antiparallelogram "
-            "elbow (Kp=75, Ki=6, Kd=3) at 20°, 30°, 40°."
-        ),
-        wrist_x_message=(
-            "Wrist behaviour identical to constant-tension tendon — "
-            "see `step_tendon_grouped`."
-        ),
+        elbow_template="step_physical_elbow_{amp}.csv",
+        wrist_y_template="step_physical_wrist_y_{amp}.csv",
+        wrist_x_template="step_physical_wrist_x_{amp}.csv",
     )
 
 
