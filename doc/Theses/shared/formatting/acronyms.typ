@@ -56,6 +56,7 @@
   "NRMSE": (short: "NRMSE", long: "Normalized Root-Mean-Square Error",          tag: "abbrev"),
   "SAC":   (short: "SAC",   long: "Soft Actor–Critic",                          tag: "abbrev"),
   "IMU":   (short: "IMU",   long: "Inertial Measurement Unit",                  tag: "abbrev"),
+  "APM":   (short: "APM",   long: "Anti-Parallelogram Mechanism",              tag: "abbrev"),
 
   // Symbols
   "sym:gamma":   (short: $gamma$,                        long: "Discount factor",                              tag: "symbol"),

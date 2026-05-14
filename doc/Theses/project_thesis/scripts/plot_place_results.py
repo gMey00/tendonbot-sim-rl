@@ -26,21 +26,21 @@ REG_RAMP_STEP: Final = 200_000
 
 def _convergence_figure() -> None:
     fig, axes = plt.subplots(
-        2, 2,
-        figsize=c.pcfg.scaled(11, 7.0, scale=1.0),
+        4, 1,
+        figsize=c.pcfg.scaled(11, 15.0, scale=1.0),
         constrained_layout=True,
     )
     panels = [
         ("Reward_Totalrewardmean",
          "(a) Total reward (mean)", "Reward",  True),
         ("Info_Metrics_grasp_rate",
-         "(b) Grasp success rate",  "Rate",    False),
+         "(b) Grasp success rate",  "Rate",    True),
         ("Info_Metrics_place_success_rate",
-         "(c) Place success rate",  "Rate",    False),
+         "(c) Place success rate",  "Rate",    True),
         ("Policy_Standarddeviation",
-         "(d) Policy std σ",        "σ",       False),
+         "(d) Policy std σ",        "σ",       True),
     ]
-    for ax, (metric, title, ylabel, show_legend) in zip(axes.flat, panels):
+    for ax, (metric, title, ylabel, show_legend) in zip(axes, panels):
         c.plot_variants_curve(
             ax, "cube_place", metric,
             x_max=PLACE_X_MAX,
@@ -57,70 +57,70 @@ def _convergence_figure() -> None:
 def _curriculum_figure() -> None:
     """Highlight curriculum effect on the PD variant."""
     fig, axes = plt.subplots(
-        2, 2,
-        figsize=c.pcfg.scaled(11, 7.0, scale=1.0),
+        4, 1,
+        figsize=c.pcfg.scaled(11, 15.0, scale=1.0),
         constrained_layout=True,
     )
     variant = "tensegrity_pd"
 
     # (a) Total reward
     steps, vals = c.load_rl_csv("cube_place", variant, "Reward_Totalrewardmean")
-    axes[0, 0].plot(c.steps_to_k(steps), vals,
-                    color=c.pcfg.FAPS_BLUE, alpha=0.25, linewidth=0.7)
-    axes[0, 0].plot(c.steps_to_k(steps), c.smooth(vals),
-                    color=c.pcfg.FAPS_BLUE, linewidth=1.4, label="Total reward")
-    c.add_curriculum_marker(axes[0, 0], RED_CUBE_STEP, "Red cube in")
-    c.add_curriculum_marker(axes[0, 0], REG_RAMP_STEP, "Reg. ramp")
-    axes[0, 0].set_title("(a) Total reward — PD variant",
-                         fontsize=10, fontweight="bold", loc="left")
-    axes[0, 0].set_xlabel("Timesteps / k"); axes[0, 0].set_ylabel("Reward")
-    axes[0, 0].set_xlim(0, c.steps_to_k(PLACE_X_MAX))
-    axes[0, 0].legend(loc="lower right", fontsize=8)
+    axes[0].plot(c.steps_to_k(steps), vals,
+                 color=c.pcfg.FAPS_BLUE, alpha=0.25, linewidth=0.7)
+    axes[0].plot(c.steps_to_k(steps), c.smooth(vals),
+                 color=c.pcfg.FAPS_BLUE, linewidth=1.4, label="Total reward")
+    c.add_curriculum_marker(axes[0], RED_CUBE_STEP, "Red cube in")
+    c.add_curriculum_marker(axes[0], REG_RAMP_STEP, "Reg. ramp")
+    axes[0].set_title("(a) Total reward — PD variant",
+                      fontsize=10, fontweight="bold", loc="left")
+    axes[0].set_xlabel("Timesteps / k"); axes[0].set_ylabel("Reward")
+    axes[0].set_xlim(0, c.steps_to_k(PLACE_X_MAX))
+    axes[0].legend(loc="upper left", fontsize=8)
 
     # (b) Task metrics
     for metric, label, color in (
-        ("Info_Metrics_grasp_rate",         "Grasp",  c.pcfg.FAPS_BLUE),
-        ("Info_Metrics_place_success_rate", "Place",  c.pcfg.FAPS_GREEN),
+        ("Info_Metrics_grasp_rate",         "Grasp",    c.pcfg.FAPS_BLUE),
+        ("Info_Metrics_place_success_rate", "Place",    c.pcfg.FAPS_GREEN),
         ("Info_Metrics_red_on_conveyor_rate", "Red safe", c.pcfg.MUTED_RED),
     ):
         steps, vals = c.load_rl_csv("cube_place", variant, metric)
-        axes[0, 1].plot(c.steps_to_k(steps), c.smooth(vals, 0.85),
-                        color=color, linewidth=1.3, label=label)
-    c.add_curriculum_marker(axes[0, 1], RED_CUBE_STEP)
-    c.add_curriculum_marker(axes[0, 1], REG_RAMP_STEP)
-    axes[0, 1].set_title("(b) Task metrics — PD variant",
-                         fontsize=10, fontweight="bold", loc="left")
-    axes[0, 1].set_xlabel("Timesteps / k"); axes[0, 1].set_ylabel("Rate")
-    axes[0, 1].set_xlim(0, c.steps_to_k(PLACE_X_MAX)); axes[0, 1].set_ylim(0, 1.0)
-    axes[0, 1].legend(loc="lower right", fontsize=8)
+        axes[1].plot(c.steps_to_k(steps), c.smooth(vals, 0.85),
+                     color=color, linewidth=1.3, label=label)
+    c.add_curriculum_marker(axes[1], RED_CUBE_STEP)
+    c.add_curriculum_marker(axes[1], REG_RAMP_STEP)
+    axes[1].set_title("(b) Task metrics — PD variant",
+                      fontsize=10, fontweight="bold", loc="left")
+    axes[1].set_xlabel("Timesteps / k"); axes[1].set_ylabel("Rate")
+    axes[1].set_xlim(0, c.steps_to_k(PLACE_X_MAX)); axes[1].set_ylim(0, 1.0)
+    axes[1].legend(loc="lower right", fontsize=8)
 
     # (c) Regularisation penalties
     for metric, label, color in (
-        ("Info_Episode_Reward_action_rate",  "Action rate",   c.pcfg.AMBER),
+        ("Info_Episode_Reward_action_rate",  "Action rate",    c.pcfg.AMBER),
         ("Info_Episode_Reward_joint_vel",    "Joint velocity", c.pcfg.TEAL),
     ):
         steps, vals = c.load_rl_csv("cube_place", variant, metric)
-        axes[1, 0].plot(c.steps_to_k(steps), c.smooth(vals),
-                        color=color, linewidth=1.3, label=label)
-    c.add_curriculum_marker(axes[1, 0], REG_RAMP_STEP, "Reg. ramp")
-    axes[1, 0].set_title("(c) Regularisation penalties",
-                         fontsize=10, fontweight="bold", loc="left")
-    axes[1, 0].set_xlabel("Timesteps / k"); axes[1, 0].set_ylabel("Penalty / step")
-    axes[1, 0].set_xlim(0, c.steps_to_k(PLACE_X_MAX))
-    axes[1, 0].legend(loc="lower right", fontsize=8)
+        axes[2].plot(c.steps_to_k(steps), c.smooth(vals),
+                     color=color, linewidth=1.3, label=label)
+    c.add_curriculum_marker(axes[2], REG_RAMP_STEP, "Reg. ramp")
+    axes[2].set_title("(c) Regularisation penalties",
+                      fontsize=10, fontweight="bold", loc="left")
+    axes[2].set_xlabel("Timesteps / k"); axes[2].set_ylabel("Penalty / step")
+    axes[2].set_xlim(0, c.steps_to_k(PLACE_X_MAX))
+    axes[2].legend(loc="upper right", fontsize=8)
 
     # (d) Red-cube safety reward
     steps, vals = c.load_rl_csv(
         "cube_place", variant, "Info_Episode_Reward_cube_off_conveyor")
-    axes[1, 1].plot(c.steps_to_k(steps), c.smooth(vals, 0.85),
-                    color=c.pcfg.MUTED_RED, linewidth=1.3,
-                    label="Cube off conveyor")
-    c.add_curriculum_marker(axes[1, 1], RED_CUBE_STEP, "Red cube in")
-    axes[1, 1].set_title("(d) Red-cube penalty",
-                         fontsize=10, fontweight="bold", loc="left")
-    axes[1, 1].set_xlabel("Timesteps / k"); axes[1, 1].set_ylabel("Penalty / step")
-    axes[1, 1].set_xlim(0, c.steps_to_k(PLACE_X_MAX))
-    axes[1, 1].legend(loc="lower right", fontsize=8)
+    axes[3].plot(c.steps_to_k(steps), c.smooth(vals, 0.85),
+                 color=c.pcfg.MUTED_RED, linewidth=1.3,
+                 label="Cube off conveyor")
+    c.add_curriculum_marker(axes[3], RED_CUBE_STEP, "Red cube in")
+    axes[3].set_title("(d) Red-cube penalty",
+                      fontsize=10, fontweight="bold", loc="left")
+    axes[3].set_xlabel("Timesteps / k"); axes[3].set_ylabel("Penalty / step")
+    axes[3].set_xlim(0, c.steps_to_k(PLACE_X_MAX))
+    axes[3].legend(loc="upper right", fontsize=8)
 
     c.save(fig, c.RESULTS_FIG_DIR / "place_curriculum.png", tight=False)
 

@@ -160,12 +160,12 @@ The disc-approximation model achieves near-complete coverage (99.7~%) of the des
   short-caption: [Curriculum stages effect on training],
 ) <fig:curriculum_effect>
 
-== Summary of Key Results <sec:results_summary>
+// == Summary of Key Results <sec:results_summary>
 
-The experimental evaluation yields three main findings:
+// The experimental evaluation yields three main findings:
 
-+ *PD and tendon variants achieve comparable RL performance.* On the reach task, both variants converge within 48k timesteps to total rewards above $+0.75$, with position tracking errors below $1"cm"$. On the cube place task, both achieve grasp rates above $94%$ and place success rates above $90%$. The cable-mediated tendon transmission does not introduce a measurable performance penalty in the RL setting, suggesting that the disc-approximation tension mapping is sufficiently transparent to the policy.
+// + *PD and tendon variants achieve comparable RL performance.* On the reach task, both variants converge within 48k timesteps to total rewards above $+0.75$, with position tracking errors below $1"cm"$. On the cube place task, both achieve grasp rates above $94%$ and place success rates above $90%$. The cable-mediated tendon transmission does not introduce a measurable performance penalty in the RL setting, suggesting that the disc-approximation tension mapping is sufficiently transparent to the policy.
 
-+ *The physical tendon variant presents a significant control challenge.* With effort-based actuation through the four-bar antiparallelogram linkage, the physical variant converges more slowly and to lower final performance on both tasks. On reach, it achieves a total reward of $-0.46$ (compared to $+0.79$ for PD) with $3 times$ the policy uncertainty. On cube place, it fails to acquire the grasping skill entirely. This result highlights the difficulty of RL with indirect force transmission and motivates future work on hierarchical control architectures.
+// + *The physical tendon variant presents a significant control challenge.* With effort-based actuation through the four-bar antiparallelogram linkage, the physical variant converges more slowly and to lower final performance on both tasks. On reach, it achieves a total reward of $-0.46$ (compared to $+0.79$ for PD) with $3 times$ the policy uncertainty. On cube place, it fails to acquire the grasping skill entirely. This result highlights the difficulty of RL with indirect force transmission and motivates future work on hierarchical control architectures.
 
-+ *Curriculum learning enables robust multi-stage manipulation.* The staged introduction of the red distractor cube and regularization penalties in the cube place task produces smooth curriculum transitions with only brief transient performance dips, validating the curriculum design described in @ch:methodology.
+// + *Curriculum learning enables robust multi-stage manipulation.* The staged introduction of the red distractor cube and regularization penalties in the cube place task produces smooth curriculum transitions with only brief transient performance dips, validating the curriculum design described in @ch:methodology.

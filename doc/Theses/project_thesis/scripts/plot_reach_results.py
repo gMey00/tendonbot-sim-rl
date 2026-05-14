@@ -23,8 +23,8 @@ REACH_X_MAX: Final = 48_000  # last PD timestep — used as common x-cutoff
 
 def _convergence_figure() -> None:
     fig, axes = plt.subplots(
-        2, 2,
-        figsize=c.pcfg.scaled(11, 7.0, scale=1.0),
+        4, 1,
+        figsize=c.pcfg.scaled(11, 15.0, scale=1.0),
         constrained_layout=True,
     )
 
@@ -32,14 +32,14 @@ def _convergence_figure() -> None:
         ("Reward_Totalrewardmean",
          "(a) Total reward (mean)",      "Reward",            True),
         ("Info_Episode_Reward_end_effector_position_tracking",
-         "(b) Position tracking",         "Reward / step",     False),
+         "(b) Position tracking",         "Reward / step",     True),
         ("Info_Episode_Reward_end_effector_orientation_tracking",
-         "(c) Orientation tracking",      "Reward / step",     False),
+         "(c) Orientation tracking",      "Reward / step",     True),
         ("Policy_Standarddeviation",
-         "(d) Policy std deviation σ",    "σ",                 False),
+         "(d) Policy std deviation σ",    "σ",                 True),
     ]
 
-    for ax, (metric, title, ylabel, show_legend) in zip(axes.flat, panels):
+    for ax, (metric, title, ylabel, show_legend) in zip(axes, panels):
         c.plot_variants_curve(
             ax, "reach", metric,
             x_max=REACH_X_MAX,

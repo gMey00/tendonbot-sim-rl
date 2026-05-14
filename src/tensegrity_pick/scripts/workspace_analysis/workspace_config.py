@@ -64,7 +64,7 @@ ROBOTS: dict[str, RobotConfig] = {
             "elbow_joint", "wrist_y_joint", "wrist_x_joint",
         ),
         mount_height=2.30,
-        output_directory="outputs/workspace_analysis_tensegrity",
+        output_directory="outputs/workspace_analysis/tensegrity",
         mount_rotations={
             "down": (1.0, 0.0, 0.0, 0.0),
             "up": (0.0, 0.0, 1.0, 0.0),
@@ -86,7 +86,7 @@ ROBOTS: dict[str, RobotConfig] = {
         antiparallelogram_closure=True,
         num_settle_steps=4,
         mount_height=2.30,
-        output_directory="outputs/workspace_analysis_tensegrity_physical",
+        output_directory="outputs/workspace_analysis/tensegrity_physical",
         mount_rotations={
             "down": (1.0, 0.0, 0.0, 0.0),
             "up": (0.0, 0.0, 1.0, 0.0),
@@ -100,7 +100,7 @@ ROBOTS: dict[str, RobotConfig] = {
             "wrist_1_joint", "wrist_2_joint", "wrist_3_joint",
         ),
         mount_height=1.40,
-        output_directory="outputs/workspace_analysis_ur10e",
+        output_directory="outputs/workspace_analysis/ur10e",
         mount_rotations={
             "down": (0.0, 0.0, 1.0, 0.0),
             "up": (1.0, 0.0, 0.0, 0.0),
@@ -114,7 +114,7 @@ ROBOTS: dict[str, RobotConfig] = {
             "joint_5", "joint_6", "joint_7",
         ),
         mount_height=1.40,
-        output_directory="outputs/workspace_analysis_kinova",
+        output_directory="outputs/workspace_analysis/kinova",
         mount_rotations={
             "down": (0.0, 0.0, 1.0, 0.0),
             "up": (1.0, 0.0, 0.0, 0.0),

@@ -1216,7 +1216,7 @@
 // ── 14. Training Infrastructure Stack ────────────────────────
 // Used in: Methodology § 4.7 (Training Infrastructure)
 #let training-infrastructure-stack() = diagram(
-  spacing: (14mm, 13mm),
+  spacing: (10mm, 14mm),
   node-stroke: 0.6pt + faps-stroke,
   node-corner-radius: 3pt,
   edge-stroke: 0.8pt + faps-stroke,
@@ -1224,35 +1224,35 @@
   // Algorithm layer (top): PPO + skrl
   node((0.5, 0), align(center)[*PPO Agent*\ #text(size: 7pt)[`skrl` 1.3]],
     fill: faps-node-blue, stroke: faps-node-blue.darken(30%),
-    width: 38mm, height: 14mm, name: <ppo>),
+    width: 43mm, height: 14mm, name: <ppo>),
   node((1.5, 0), align(center)[*Sequential Trainer*\ #text(size: 7pt)[Rollout · Update]],
     fill: faps-node-blue, stroke: faps-node-blue.darken(30%),
-    width: 38mm, height: 14mm, name: <trainer>),
+    width: 43mm, height: 14mm, name: <trainer>),
   node((2.5, 0), align(center)[*Logging*\ #text(size: 7pt)[TensorBoard · Custom TUI]],
     fill: faps-node-blue, stroke: faps-node-blue.darken(30%),
-    width: 38mm, height: 14mm, name: <log>),
+    width: 43mm, height: 14mm, name: <log>),
 
   // Environment layer (middle): Gymnasium + IsaacLab task
   node((0.5, 1), align(center)[*Gymnasium Wrapper*\ #text(size: 7pt)[`tensegrity_pick`]],
     fill: faps-node-lightgreen, stroke: faps-stroke,
-    width: 38mm, height: 14mm, name: <gym>),
+    width: 43mm, height: 14mm, name: <gym>),
   node((1.5, 1), align(center)[*IsaacLab Managers*\ #text(size: 7pt)[Obs · Act · Rew · Term · Curr]],
     fill: faps-node-lightgreen, stroke: faps-stroke,
-    width: 38mm, height: 14mm, name: <mgrs>),
+    width: 43mm, height: 14mm, name: <mgrs>),
   node((2.5, 1), align(center)[*Vectorized Envs*\ #text(size: 7pt)[4 096 parallel · GPU clones]],
     fill: faps-node-lightgreen, stroke: faps-stroke,
-    width: 38mm, height: 14mm, name: <vec>),
+    width: 43mm, height: 14mm, name: <vec>),
 
   // Simulation layer (third row): IsaacSim + PhysX
   node((0.5, 2), align(center)[*IsaacSim 5.1.0*\ #text(size: 7pt)[USD Stage · Cloner]],
     fill: faps-node-green, stroke: faps-node-green.darken(20%),
-    width: 38mm, height: 14mm, name: <isaac>),
+    width: 43mm, height: 14mm, name: <isaac>),
   node((1.5, 2), align(center)[*PhysX 5*\ #text(size: 7pt)[Articulations · Tendons]],
     fill: faps-node-green, stroke: faps-node-green.darken(20%),
-    width: 38mm, height: 14mm, name: <physx>),
+    width: 43mm, height: 14mm, name: <physx>),
   node((2.5, 2), align(center)[*USD Assets*\ #text(size: 7pt)[Robot · Scene · Props]],
     fill: faps-node-green, stroke: faps-node-green.darken(20%),
-    width: 38mm, height: 14mm, name: <usd>),
+    width: 43mm, height: 14mm, name: <usd>),
 
   // Hardware layer (bottom)
   node((1.0, 3), align(center)[*NVIDIA RTX A6000*\ #text(size: 7pt)[48 GB VRAM · CUDA]],

@@ -71,21 +71,17 @@ def _reward_overview() -> None:
 
 
 def _grid_figure(out_name: str, panels: list[tuple[str, str, str]]) -> None:
-    """Generic 2×2 grid of variant-curve panels (panel = (metric, title, y_label))."""
+    """Generic 4x1 vertical stack of variant-curve panels (panel = (metric, title, y_label))."""
     fig, axes = plt.subplots(
-        2, 2,
-        figsize=c.pcfg.scaled(11, 7.0, scale=1.0),
+        4, 1,
+        figsize=c.pcfg.scaled(11, 15.0, scale=1.0),
         constrained_layout=True,
     )
-    for ax, (metric, title, ylabel) in zip(axes.flat, panels):
+    for ax, (metric, title, ylabel) in zip(axes, panels):
         c.plot_variants_curve(ax, TASK, metric,
                               x_max=REACH_X_MAX,
-                              y_label=ylabel, title=title)
-    # Single legend at bottom
-    handles = [plt.Line2D([0], [0], color=c.VARIANT_COLOR[v], linewidth=1.4,
-                           label=c.VARIANT_LABEL[v]) for v in c.VARIANTS]
-    fig.legend(handles=handles, loc="lower center", ncol=3,
-               frameon=False, fontsize=8, bbox_to_anchor=(0.5, -0.03))
+                              y_label=ylabel, title=title,
+                              show_legend=True)
     c.save(fig, c.APPENDIX_FIG_DIR / out_name, tight=False)
 
 
@@ -114,10 +110,10 @@ def main() -> None:
         ("Loss_Valueloss",   "(d) Value loss",   "Loss"),
     ])
 
-    # Two extra panels (no full grid)
+    # Two extra panels (vertical stack)
     fig, axes = plt.subplots(
-        1, 2,
-        figsize=c.pcfg.scaled(11, 3.5, scale=1.0),
+        2, 1,
+        figsize=c.pcfg.scaled(11, 7.5, scale=1.0),
         constrained_layout=True,
     )
     c.plot_variants_curve(axes[0], TASK, "Loss_Entropyloss",
@@ -125,7 +121,7 @@ def main() -> None:
                           title="(a) Entropy loss", show_legend=True)
     c.plot_variants_curve(axes[1], TASK, "Learning_Learningrate",
                           x_max=REACH_X_MAX, y_label="LR",
-                          title="(b) Learning rate")
+                          title="(b) Learning rate", show_legend=True)
     c.save(fig, c.APPENDIX_FIG_DIR / "reach_diagnostics_extra.png", tight=False)
 
 
