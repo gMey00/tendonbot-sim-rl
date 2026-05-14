@@ -64,3 +64,6 @@ doc/Literatur/sources/**
 *.synctex.gz
 *.synctex.gz(busy)
 *.ist
+
+# local backups
+_backups/**
