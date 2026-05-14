@@ -1,0 +1,58 @@
+{
+  "robot": "tensegrity_physical",
+  "mount_height_m": 2.3,
+  "mount_direction": "down",
+  "total_samples": 1957773,
+  "samples_inside_desired_ws": 633755,
+  "desired_ws_coverage_fraction": 0.9901,
+  "desired_ws_voxels_reached": 33664,
+  "desired_ws_voxels_total": 34000,
+  "yoshikawa_global": {
+    "n": 1957773,
+    "mean": 5.9e-05,
+    "median": 1e-06,
+    "std": 8e-05,
+    "min": 0.0,
+    "max": 0.000396,
+    "p5": 0.0,
+    "p25": 0.0,
+    "p75": 0.00011,
+    "p95": 0.000226
+  },
+  "yoshikawa_inside_ws": {
+    "n": 633755,
+    "mean": 6.2e-05,
+    "median": 1e-06,
+    "std": 8.2e-05,
+    "min": 0.0,
+    "max": 0.000396,
+    "p5": 0.0,
+    "p25": 0.0,
+    "p75": 0.000117,
+    "p95": 0.000231
+  },
+  "condition_global": {
+    "n": 1957773,
+    "mean": 0.0,
+    "median": 0.0,
+    "std": 0.0,
+    "min": 0.0,
+    "max": 0.0,
+    "p5": 0.0,
+    "p25": 0.0,
+    "p75": 0.0,
+    "p95": 0.0
+  },
+  "condition_inside_ws": {
+    "n": 633755,
+    "mean": 0.0,
+    "median": 0.0,
+    "std": 0.0,
+    "min": 0.0,
+    "max": 0.0,
+    "p5": 0.0,
+    "p25": 0.0,
+    "p75": 0.0,
+    "p95": 0.0
+  }
+}

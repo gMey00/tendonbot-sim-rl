@@ -1,0 +1,58 @@
+{
+  "robot": "tensegrity",
+  "mount_height_m": 2.3,
+  "mount_direction": "down",
+  "total_samples": 2000000,
+  "samples_inside_desired_ws": 702277,
+  "desired_ws_coverage_fraction": 0.9968,
+  "desired_ws_voxels_reached": 33890,
+  "desired_ws_voxels_total": 34000,
+  "yoshikawa_global": {
+    "n": 2000000,
+    "mean": 4.9e-05,
+    "median": 0.0,
+    "std": 6.6e-05,
+    "min": 0.0,
+    "max": 0.000333,
+    "p5": 0.0,
+    "p25": 0.0,
+    "p75": 9e-05,
+    "p95": 0.000186
+  },
+  "yoshikawa_inside_ws": {
+    "n": 702277,
+    "mean": 5.2e-05,
+    "median": 1e-06,
+    "std": 6.9e-05,
+    "min": 0.0,
+    "max": 0.000326,
+    "p5": 0.0,
+    "p25": 0.0,
+    "p75": 0.0001,
+    "p95": 0.000191
+  },
+  "condition_global": {
+    "n": 2000000,
+    "mean": 0.0,
+    "median": 0.0,
+    "std": 0.0,
+    "min": 0.0,
+    "max": 0.0,
+    "p5": 0.0,
+    "p25": 0.0,
+    "p75": 0.0,
+    "p95": 0.0
+  },
+  "condition_inside_ws": {
+    "n": 702277,
+    "mean": 0.0,
+    "median": 0.0,
+    "std": 0.0,
+    "min": 0.0,
+    "max": 0.0,
+    "p5": 0.0,
+    "p25": 0.0,
+    "p75": 0.0,
+    "p95": 0.0
+  }
+}
