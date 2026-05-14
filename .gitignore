@@ -7,11 +7,16 @@ __pycache__/
 
 # Training artifacts
 **/logs/
-**/outputs/
+src/tensegrity_pick/outputs/*
+!src/tensegrity_pick/outputs/workspace_analysis/
+!src/tensegrity_pick/outputs/model_validation/
 **/runs/
 **/recordings/
 **/wandb/
 **/.neptune/
+
+
+
 
 # Omniverse / Isaac Sim
 *.dmp
