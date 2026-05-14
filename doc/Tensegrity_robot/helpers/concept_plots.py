@@ -139,7 +139,7 @@ def antagonistic_joint_figure(*, show_caption: bool = True) -> go.Figure:
     r_pulley = 28
     load_len = 70           # short distal extension showing the load
     frame_y = 80
-    col_spacing = 220
+    col_spacing = 200
 
     configs = [
         # (angle_deg, T1_norm, T2_norm, label)
@@ -347,12 +347,12 @@ def antagonistic_joint_figure(*, show_caption: bool = True) -> go.Figure:
         # ── Motor labels (centre config only) ──
         if is_center:
             fig.add_annotation(
-                x=m1x, y=frame_y + 14,
+                x=m1x, y=frame_y + 17,
                 text="M₁", showarrow=False,
                 font=dict(size=11, color=TENDON_T0_COL),
             )
             fig.add_annotation(
-                x=m2x, y=frame_y + 14,
+                x=m2x, y=frame_y + 17,
                 text="M₂", showarrow=False,
                 font=dict(size=11, color=TENDON_T1_COL),
             )
@@ -375,8 +375,8 @@ def antagonistic_joint_figure(*, show_caption: bool = True) -> go.Figure:
         title="",
         show_caption=show_caption,
         width=950, height=380,
-        x_range=[-340, 340],
-        y_range=[-101, 97],
+        x_range=[-250, 340],
+        y_range=[-97, 97],
     )
     return fig
 
@@ -431,10 +431,10 @@ def torque_stiffness_figure(
 
     # Corner labels
     corners = [
-        (0, 0, "T₁=T₂=0", "top center"),
-        (1, 0.5, "T₁=T_max, T₂=0<br>(max CW torque)", "middle left"),
-        (0, 1, "T₁=T₂=T_max<br>(max stiffness)", "bottom center"),
-        (-1, 0.5, "T₁=0, T₂=T_max<br>(max CCW torque)", "middle right"),
+        (0, 0, "T₁=T₂=0", "top right"),
+        (1, 0.5, "T₁=T_max, T₂=0<br>(max CW torque)", "center right"),
+        (0, 1, "T₁=T₂=T_max<br>(max stiffness)", "bottom right"),
+        (-1, 0.5, "T₁=0, T₂=T_max<br>(max CCW torque)", "center left"),
     ]
     for tx, ty, txt, anchor in corners:
         fig.add_trace(go.Scatter(
@@ -466,7 +466,7 @@ def torque_stiffness_figure(
     fig.add_annotation(
         x=0, y=0.5, text="κ modulation<br>at τ = 0",
         showarrow=False, font=dict(size=10, color=ICR_COLOR),
-        xshift=55,
+        xshift=40,
     )
 
     # Scan lines showing constant-torque stiffness range
@@ -501,7 +501,7 @@ def torque_stiffness_figure(
         plot_bgcolor="white",
         legend=dict(x=0.02, y=0.98, font=dict(size=10)),
         margin=dict(l=70, r=30, t=70 if show_caption else 10, b=60 if show_caption else 40),
-        width=750, height=550 if show_caption else 480,
+        width=850, height=550 if show_caption else 480,
     )
     return fig
 
@@ -581,7 +581,7 @@ def four_bar_comparison_figure(
     theta_0 = np.arcsin(k / l)
 
     # Horizontal offset between the two mechanisms
-    sep = 220
+    sep = 150
 
     # Multiple poses for ghost overlay
     angles_para = np.radians([-20, 0, 20])        # parallelogram input angles
@@ -715,7 +715,7 @@ def four_bar_comparison_figure(
 
     # ── Legend ──
     for name, color, dash, width in [
-        ("Frame (AB = DC)", FAPS_GRAY, "solid", 4),
+        ("Frame (AB)", FAPS_GRAY, "solid", 4),
         ("Crank / rocker (AD, BC)", FAPS_BLUE, "solid", 3),
         ("Crossed link (AD)", ACTIVE_COL, "solid", 3),
         ("Coupler (DC)", FAPS_GREEN, "solid", 4),
@@ -731,7 +731,7 @@ def four_bar_comparison_figure(
         title="",
         show_caption=show_caption,
         width=950, height=520,
-        x_range=[-sep - 130, sep + 130],
+        x_range=[-sep - 30, sep + 130],
         y_range=[-l - 4, 24],
     )
     return fig
@@ -755,7 +755,7 @@ def tensegrity_classes_figure(*, show_caption: bool = True) -> go.Figure:
     - Fasquelle et al. (2020) — antiparallelogram as class-2 tensegrity
     """
     fig = go.Figure()
-    sep = 200
+    sep = 150
 
     # ──── Class-1: Triangular Prism ────
     # Top triangle (rotated 60° from bottom)
@@ -826,11 +826,11 @@ def tensegrity_classes_figure(*, show_caption: bool = True) -> go.Figure:
     # ──── Class-2: Antiparallelogram X-Joint ────
     ox2 = sep
     k = 55.0    # frame/coupler half-width
-    l = 130.0   # link length
+    l = 200.0   # link length
 
     # Frame (top bar)
-    A2 = np.array([ox2 - k, h])
-    B2 = np.array([ox2 + k, h])
+    A2 = np.array([ox2 - k, h + 20])
+    B2 = np.array([ox2 + k, h + 20])
 
     # Links cross: AD and BC
     theta_eq = np.arcsin(2 * k / l)
@@ -935,15 +935,15 @@ def tensegrity_classes_figure(*, show_caption: bool = True) -> go.Figure:
             name=name,
         ))
 
-    y_lo = min(bot[:, 1].min(), min(C2[1], D2[1])) - 4
-    y_hi = max(top[:, 1].max(), h) + R + 28
+    y_lo = min(bot[:, 1].min(), min(C2[1], D2[1]))
+    y_hi = max(top[:, 1].max(), h) + R # + 28
 
     _apply_schematic_layout(
         fig,
         title="",
         show_caption=show_caption,
         width=950, height=560,
-        x_range=[-sep - 120, sep + 120],
+        x_range=[-sep - 50, sep + 120],
         y_range=[y_lo, y_hi],
     )
     return fig
@@ -1103,7 +1103,7 @@ def cdpm_concept_figure(*, show_caption: bool = True) -> go.Figure:
         fig,
         title="",
         show_caption=show_caption,
-        height=460,
+        height=500,
         x_range=[-110, 110], y_range=[-110, 110], z_range=[-95, 25],
         camera=dict(eye=dict(x=1.55, y=1.55, z=0.45)),
     )

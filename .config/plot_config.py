@@ -48,7 +48,7 @@ from faps_colors import (  # noqa: F401 – re-exported
 )
 
 # ── Global toggle ────────────────────────────────────────────────────────────
-SHOW_TITLES: bool = True
+SHOW_TITLES: bool = False
 """Set to ``False`` to suppress all figure suptitles / axes titles.
 Useful when the LaTeX caption already provides the title."""
 

@@ -57,10 +57,10 @@ where $bold(Z)_i$ denote the complex link vectors, $theta$ is the input angle, $
 ) <fig:four_bar_types>
 
 ==== Antiparallelogram topology
- The antiparallelogram is a special case of the four-bar linkage in which the two side links (cranks) are of equal length and _cross_ each other, while the frame and coupler share a common length~@Dijksman1977Antiparallelogram @McCarthy2011. This crossed topology produces qualitatively different kinematics from the more common parallelogram arrangement. @fig:four_bar_types contrasts both topologies and visualises the swept workspace and #ac("ICR") behaviour.
+ The antiparallelogram is a special case of the four-bar linkage in which the two side links (cranks) are of equal length and _cross_ each other, while the frame and coupler share a common length~@Dijksman1976MotionGeometry @McCarthy2011. This crossed topology produces qualitatively different kinematics from the more common parallelogram arrangement. @fig:four_bar_types contrasts both topologies and visualises the swept workspace and #ac("ICR") behaviour.
 
 ==== Centrode geometry and #ac("ICR") migration
- The #ac("ICR") of the coupler relative to the frame traces a curve called the _fixed centrode_. For a standard revolute joint, the #ac("ICR") is fixed at the joint axis. For the antiparallelogram, Dijksman~@Dijksman1977Antiparallelogram showed that the fixed centrode is an _ellipse_, meaning the #ac("ICR") migrates continuously during motion. Stachel~@Stachel2000Antiparallelogram derived the ellipse semi-axes as $beta$ and $sqrt(beta^2 - alpha^2)$, where $alpha$ and $beta$ are determined by the link lengths.
+ The #ac("ICR") of the coupler relative to the frame traces a curve called the _fixed centrode_. For a standard revolute joint, the #ac("ICR") is fixed at the joint axis. For the antiparallelogram, Dijksman~@Dijksman1976MotionGeometry showed that the fixed centrode is an _ellipse_, meaning the #ac("ICR") migrates continuously during motion. Bryant and Sangwin~@BryantSangwin2008HowRound give the ellipse semi-axes as $beta$ and $sqrt(beta^2 - alpha^2)$, where $alpha$ and $beta$ are determined by the link lengths.
 This migrating #ac("ICR") produces a _nonlinear, configuration-dependent transmission ratio_. The effective lever arm between the tendon attachment point and the output rotation axis changes continuously with the elbow angle, complicating the force-torque relationship.
 
 ==== Implications for tendon actuation

@@ -29,7 +29,7 @@ __pycache__/
 *.log
 
 # Literature sources (PDFs/HTML kept locally only — not pushed due to size and copyright)
-doc/Literature/_archive/**
+doc/Literatur/_archive/**
 doc/Literatur/sources/**
 !doc/Literatur/sources/
 !doc/Literatur/sources/README.md

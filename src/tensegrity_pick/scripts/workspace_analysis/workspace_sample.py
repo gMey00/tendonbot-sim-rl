@@ -398,7 +398,7 @@ def sample_workspace(
     upper = joint_limits[:, 1]
 
     # Clamp infinite limits (continuous-rotation joints) to ±π so that
-    # uniform random sampling stays finite.
+    # uniform random sampling stays finite. (Needed for Kinova)
     lower = torch.clamp(lower, min=-math.pi)
     upper = torch.clamp(upper, max=math.pi)
 

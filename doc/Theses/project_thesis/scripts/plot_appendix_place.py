@@ -46,19 +46,16 @@ def _envelope_panel(ax: plt.Axes,
 def _grid_figure(out_name: str, panels: list[tuple[str, str, str]],
                  *, y_lim: tuple[float, float] | None = None) -> None:
     fig, axes = plt.subplots(
-        2, 2,
-        figsize=c.pcfg.scaled(11, 7.0, scale=1.0),
+        4, 1,
+        figsize=c.pcfg.scaled(11, 15.0, scale=1.0),
         constrained_layout=True,
     )
-    for ax, (metric, title, ylabel) in zip(axes.flat, panels):
+    for ax, (metric, title, ylabel) in zip(axes, panels):
         c.plot_variants_curve(ax, TASK, metric,
-                              x_max=PLACE_X_MAX, y_label=ylabel, title=title)
+                              x_max=PLACE_X_MAX, y_label=ylabel, title=title,
+                              show_legend=True)
         if y_lim is not None:
             ax.set_ylim(*y_lim)
-    handles = [plt.Line2D([0], [0], color=c.VARIANT_COLOR[v], linewidth=1.4,
-                           label=c.VARIANT_LABEL[v]) for v in c.VARIANTS]
-    fig.legend(handles=handles, loc="lower center", ncol=3,
-               frameon=False, fontsize=8, bbox_to_anchor=(0.5, -0.03))
     c.save(fig, c.APPENDIX_FIG_DIR / out_name, tight=False)
 
 
