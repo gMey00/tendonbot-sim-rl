@@ -1,0 +1,8 @@
+{
+  "status": "completed",
+  "task": "Template-Reach-Tensegrity-v0",
+  "target_timesteps": 48000,
+  "run_dir": "/home/robot/studentische-arbeiten/logs/skrl/reach/tensegrity/2026-04-06_17-53-45_ppo_torch",
+  "algorithm": "ppo",
+  "framework": "torch"
+}

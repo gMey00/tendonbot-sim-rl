@@ -1,0 +1,8 @@
+{
+  "status": "completed",
+  "task": "Template-Tensegrity-Cube-Place-v0",
+  "target_timesteps": 300000,
+  "run_dir": "/home/robot/studentische-arbeiten/src/tensegrity_pick/logs/skrl/cube_place/2026-04-05_10-54-14_ppo_torch",
+  "algorithm": "ppo",
+  "framework": "torch"
+}

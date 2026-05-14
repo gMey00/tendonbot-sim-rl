@@ -6,9 +6,11 @@ __pycache__/
 .pytest_cache/
 
 # Training artifacts
-**/logs/
+logs/*
+src/tensegrity_pick/logs/*
+!src/tensegrity_pick/logs/theses_logs/
 src/tensegrity_pick/outputs/*
-!src/tensegrity_pick/outputs/workspace_analysis/**
+!src/tensegrity_pick/outputs/workspace_analysis/
 !src/tensegrity_pick/outputs/model_validation/
 **/runs/
 **/recordings/
