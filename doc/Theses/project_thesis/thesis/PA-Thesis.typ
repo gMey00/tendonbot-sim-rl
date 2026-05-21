@@ -71,4 +71,5 @@
 #bibliography("../../shared/bibliography/literature.bib", style: "../../shared/bibliography/iso690-numeric-alphabetical.csl")
 
 // ── Appendices ───────────────────────────────────────────────────
+#_in-appendix.update(true)
 #include "chapters/A_Appendices.typ"

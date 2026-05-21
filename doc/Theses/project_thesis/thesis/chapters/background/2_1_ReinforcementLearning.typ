@@ -8,7 +8,7 @@
 
 Robotic manipulation requires generating control commands that achieve a goal while dealing with uncertainty, partial observability, contacts, and high-dimensional configuration spaces. Classical approaches rely on analytical models, trajectory optimisation, and carefully engineered feedback control. However, accurate models of frictional contact, deformable objects, or cluttered interactions are often difficult to obtain, and manually designing robust policies can be time-consuming. #ac("RL") provides an alternative. It enables learning control policies from interaction data by optimising a task objective, thereby reducing reliance on explicit modelling and hand-crafted strategies. General #ac("RL") background and formalism are treated in standard texts such as Sutton and Barto~@SuttonBarto2018, and robotics-specific perspectives (including practical constraints and common failure modes) are discussed in Kober _et al._~@Kober2013Survey.
 
-#reg-sym("sym:S", "sym:A", "sym:r", "sym:gamma", "sym:theta", "sym:pi", "sym:J", "sym:Ahat", "sym:epsilon")
+#reg-sym("sym:S", "sym:A", "sym:r", "sym:gamma", "sym:theta", "sym:pi", "sym:J", "sym:Ahat", "sym:epsilon", "sym:lambda")
 
 #faps-figure(
   rl-agent-env-loop(),
@@ -18,6 +18,8 @@ Robotic manipulation requires generating control commands that achieve a goal wh
 
 ==== #ac("MDP") viewpoint and partial observability
 A manipulation task can be modelled as a #ac("MDP") $cal(M) = (cal(S), cal(A), P, r, gamma)$, where $cal(S)$ is the state space, $cal(A)$ the action space, $P(s_(t+1) | s_t, a_t)$ the transition dynamics, $r(s_t, a_t)$ the reward, and $gamma in [0,1)$ the discount factor. A policy $pi_theta (a | s)$ (parameterized by $theta$) induces trajectories $(s_0, a_0, r_0, dots, s_T)$ and is trained to maximize the expected discounted return $J(theta) = EE_(pi_theta)[sum_(t=0)^T gamma^t r_t].$~@SuttonBarto2018
+
+#pagebreak()
 
 In real manipulation systems, the full state $s_t$ is typically not directly accessible. Instead, control is based on observations $o_t$ (e.g., proprioception, gripper state, pose estimates, perception features). This partial observability is formally captured by the #ac("POMDP") framework, which generalises the #ac("MDP") with an observation model $O(o_t | s_t, a_(t-1))$ and renders the optimal policy history-dependent in general~@Spaan2012POMDP @SuttonBarto2018. In practice, this motivates careful observation design and, where appropriate, augmenting policies with memory (e.g., recurrent networks) or stacking observation histories to approximate the Markov property~@Kober2013Survey. @fig:rl_agent_environment_loop illustrates this interaction loop with the manipulation-specific action, observation, and reward structure used in this thesis.
 

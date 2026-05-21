@@ -9,7 +9,7 @@
 Translating the #ac("CAD") assembly of the tensegrity manipulator into a physics-ready Isaac Sim asset requires a multi-stage pipeline that processes raw geometry, defines articulation topology, assigns physics properties, and assembles the final robot. This section describes each stage in detail.
 
 #faps-figure(
-  image("../../../assets/figures/simulation/tensegrity_variants.png", width: 95%),
+  image("../../../assets/figures/simulation/tensegrity_variants.png", width: 100%),
   caption: [Robot model variants rendered in Isaac Sim. Next to the elbow-disc model established by Klein~@Klein2023, a four-bar antiparallelogram model was added. Each available with full- and low-resolution visual meshes.],
   short-caption: [Robot model variants rendered in Isaac Sim],
 ) <fig:robot_variants>
@@ -21,7 +21,7 @@ The original #ac("CAD") assembly is authored in Autodesk Fusion~360 and exported
 #faps-figure(
   mesh-processing-pipeline(),
   caption: [Mesh processing pipeline from #ac("CAD") to Isaac Lab asset. Fusion~360 exports the assembly as FBX. Blender performs geometry preparation (joining, origin correction, decimation, and collision mesh extraction). The #ac("USD") Builder Script assigns articulation, rigid-body, and collision #acp("API"). The Robot Assembler combines base, arm, and gripper into a complete manipulator.],
-  short-caption: [Mesh processing pipeline from #ac("CAD") to Isaac Lab asset],
+  short-caption: [Mesh processing pipeline],
 ) <fig:mesh_pipeline>
 
 The Blender processing stage performs three principal operations:
@@ -30,7 +30,7 @@ The Blender processing stage performs three principal operations:
 
 - *Visual mesh decimation:* For each visual mesh, a low-polygon variant is generated using Blender's _Decimate_ modifier (ratio $approx 0.1$--$0.3$ depending on mesh complexity). Both the full-resolution and the decimated variants are kept for rendering only. Collision is handled by separate, hand-built meshes.
 
-- *Hand-built collision meshes:* For every link a strongly simplified, hand-built convex mesh was modelled in Blender. Automatic convex-hull or convex-decomposition tools were avoided because, on the original #ac("CAD") geometry, they produce collision shells with an unnecessarily high triangle count that significantly slow down the GPU-accelerated PhysX broad- and narrow-phase. The hand-built shells are sufficient for the contact events that occur in the manipulation tasks of this work and result in markedly lower collision overhead. The same collision meshes are shared between the full-resolution and low-resolution variants. @fig:collider_comparison contrasts the resulting collision shells of both arm variants.
+- *Hand-built collision meshes:* For every link a strongly simplified, hand-built convex mesh was modelled in Blender. Automatic convex-hull or convex-decomposition tools were avoided,because they produced collision shells with an unnecessarily high triangle count, that significantly slow down the GPU-accelerated PhysX broad- and narrow-phase. The hand-built shells are sufficient for the contact events that occur in the manipulation tasks of this work and result in markedly lower collision overhead. The same collision meshes are shared between the full-resolution and low-resolution variants. @fig:collider_comparison contrasts the resulting collision shells of both arm variants.
 
 All mesh outputs are exported in USDC format and organised in a per-link structure expected by the custom #ac("USD") builder script.
 
@@ -41,7 +41,7 @@ All mesh outputs are exported in USDC format and organised in a per-link structu
     (image("../../../assets/figures/simulation/tensegrity_colliders_physical.png", width: 70%), [Physical antiparallelogram variant]),
   ),
   caption: [Hand-built collision geometry of the two arm variants. All shells are modelled manually in Blender as strongly simplified convex hulls. Automatically generated convex decompositions were avoided to keep the #ac("GPU") collision cost low.],
-  short-caption: [Hand-built collision geometry of the two arm variants],
+  short-caption: [Collision geometry of the two arm variants],
   label: <fig:collider_comparison>,
 )
 
@@ -81,7 +81,7 @@ The key simplification is that the effective tendon lever arm for the elbow is t
 @fig:elbow_comparison quantifies the kinematic deviation. Because the antiparallelogram's migrating #ac("ICR") shifts the coupler outward at large deflections, the disc arc always falls _inside_ the physical trajectory. The maximum deviation remains below 30~mm across the operational range ($plus.minus 70 degree$), confirming that the approximation is acceptable for the simulation tasks. Importantly, the disc model _underestimates_ the elbow's effective reach, which means workspace analyses and task designs based on this variant are conservative. The physical robot can reach at least as far.
 
 #faps-figure(
-  image("../../../assets/figures/robot/elbow_comparison_static.svg", width: 80%),
+  image("../../../assets/figures/robot/elbow_comparison_static.svg", width: 100%),
   caption: [Kinematic comparison of the antiparallelogram mechanism and its disc approximation. _Upper:_ Forearm-tip trajectories for both models across $plus.minus 75 degree$. _Lower:_ Positional deviation as a function of elbow angle. The disc approximation consistently underestimates the physical reach, making workspace designs based on it conservative.],
   short-caption: [Antiparallelogram vs. disc approximation kinematic comparison],
 ) <fig:elbow_comparison>

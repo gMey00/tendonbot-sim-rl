@@ -1,12 +1,18 @@
-"""Appendix A.4 — complete reach-task training curves.
+"""Appendix A.5 — complete reach-task training curves.
 
-Generates four detailed figures that consolidate the per-section
-sub-figures previously rendered in cetz inline:
+Loads scalars directly from the TensorBoard event files declared in
+:data:`common.RUNS`. Variants with missing tfevents are skipped silently.
 
-* ``reach_reward_overview.png`` — combined mean/max/min reward + policy σ
-* ``reach_components.png``      — task reward components (4-panel)
-* ``reach_diagnostics.png``     — regularisation + losses (4-panel)
-* ``reach_diagnostics_extra.png`` — entropy loss + learning rate (2-panel)
+All figures use a single shared variant legend at the bottom. Only the
+total-reward overview panel draws the min/max envelope — every other
+panel shows the smoothed mean line per variant without a ghost raw line.
+
+Generates:
+
+* ``reach_reward_overview.png``    — total-reward envelope + policy σ
+* ``reach_components.png``         — task reward components (4-panel)
+* ``reach_diagnostics.png``        — regularisation + losses (4-panel)
+* ``reach_diagnostics_extra.png``  — entropy loss + learning rate (2-panel)
 """
 
 from __future__ import annotations
@@ -14,7 +20,6 @@ from __future__ import annotations
 from typing import Final
 
 import matplotlib.pyplot as plt
-import numpy as np
 
 import common as c
 
@@ -22,107 +27,76 @@ REACH_X_MAX: Final = 48_000
 TASK: Final = "reach"
 
 
-def _plot_envelope(ax: plt.Axes, metric_mean: str,
-                   metric_max: str, metric_min: str) -> None:
-    """Mean (solid) + min/max (filled envelope) for all three variants."""
-    for variant in c.VARIANTS:
-        s_mean, v_mean = c.load_rl_csv(TASK, variant, metric_mean)
-        if len(s_mean) == 0:
-            continue
-        mask = s_mean <= REACH_X_MAX
-        s_mean, v_mean = s_mean[mask], v_mean[mask]
-
-        _, v_max = c.load_rl_csv(TASK, variant, metric_max)
-        _, v_min = c.load_rl_csv(TASK, variant, metric_min)
-        v_max = v_max[: len(v_mean)]
-        v_min = v_min[: len(v_mean)]
-
-        x = c.steps_to_k(s_mean)
-        color = c.VARIANT_COLOR[variant]
-        if len(v_min) == len(v_mean) and len(v_max) == len(v_mean):
-            ax.fill_between(x, v_min, v_max, color=color, alpha=0.15)
-        ax.plot(x, c.smooth(v_mean), color=color, linewidth=1.4,
-                label=c.VARIANT_LABEL[variant])
-
-    ax.set_xlabel("Timesteps / k"); ax.set_ylabel("Reward")
-    ax.set_xlim(0, c.steps_to_k(REACH_X_MAX))
-    ax.legend(loc="lower right", fontsize=8)
+def _stacked_figure(out_name: str, panels: list[tuple[str, str, str]],
+                    *, panel_h: float = 3.5) -> None:
+    n = len(panels)
+    fig, axes = plt.subplots(
+        n, 1,
+        figsize=c.pcfg.scaled(11, panel_h * n + 0.6, scale=1.0),
+        constrained_layout=False,
+    )
+    axes_iter = axes if n > 1 else [axes]
+    for ax, (metric, title, ylabel) in zip(axes_iter, panels):
+        c.plot_variants_curve(ax, TASK, metric,
+                              x_max=REACH_X_MAX, y_label=ylabel, title=title)
+    fig.tight_layout(rect=(0, 0.06 if n <= 2 else 0.04, 1, 1))
+    c.figure_bottom_legend(fig, axes_iter, ncol=3,
+                           y=0.01 if n <= 2 else 0.005)
+    c.save(fig, c.APPENDIX_FIG_DIR / out_name, tight=False)
 
 
 def _reward_overview() -> None:
     fig, axes = plt.subplots(
         2, 1, sharex=True,
-        figsize=c.pcfg.scaled(11, 7.5, scale=1.0),
-        constrained_layout=True,
+        figsize=c.pcfg.scaled(11, 7, scale=1.0),
+        constrained_layout=False,
     )
-    _plot_envelope(axes[0],
-                   "Reward_Totalrewardmean",
-                   "Reward_Totalrewardmax",
-                   "Reward_Totalrewardmin")
+    c.plot_envelope(axes[0], TASK,
+                    "Reward / Total reward (mean)",
+                    "Reward / Total reward (min)",
+                    "Reward / Total reward (max)",
+                    x_max=REACH_X_MAX)
     axes[0].set_title("(a) Total reward (mean ± min/max envelope)",
                       fontsize=10, fontweight="bold", loc="left")
+    axes[0].set_ylabel("Reward")
 
-    c.plot_variants_curve(axes[1], TASK, "Policy_Standarddeviation",
+    c.plot_variants_curve(axes[1], TASK, "Policy / Standard deviation",
                           x_max=REACH_X_MAX, y_label="σ",
-                          title="(b) Policy standard deviation",
-                          show_legend=True)
-
+                          title="(b) Policy standard deviation")
+    fig.tight_layout(rect=(0, 0.07, 1, 1))
+    # Pin the left margin to match the stacked figures (tight_layout sets a
+    # wider margin here because "Reward" is longer than "Rate"/"Steps").
+    fig.subplots_adjust(left=0.0957)
+    c.figure_bottom_legend(fig, axes, ncol=3, y=0.01)
     c.save(fig, c.APPENDIX_FIG_DIR / "reach_reward_overview.png", tight=False)
-
-
-def _grid_figure(out_name: str, panels: list[tuple[str, str, str]]) -> None:
-    """Generic 4x1 vertical stack of variant-curve panels (panel = (metric, title, y_label))."""
-    fig, axes = plt.subplots(
-        4, 1,
-        figsize=c.pcfg.scaled(11, 15.0, scale=1.0),
-        constrained_layout=True,
-    )
-    for ax, (metric, title, ylabel) in zip(axes, panels):
-        c.plot_variants_curve(ax, TASK, metric,
-                              x_max=REACH_X_MAX,
-                              y_label=ylabel, title=title,
-                              show_legend=True)
-    c.save(fig, c.APPENDIX_FIG_DIR / out_name, tight=False)
 
 
 def main() -> None:
     c.init()
-
     _reward_overview()
 
-    _grid_figure("reach_components.png", [
-        ("Info_Episode_Reward_end_effector_position_tracking",
-            "(a) Position tracking", "Reward / step"),
-        ("Info_Episode_Reward_end_effector_orientation_tracking",
-            "(b) Orientation tracking", "Reward / step"),
-        ("Info_Episode_Reward_end_effector_position_tracking_fine_grained",
-            "(c) Fine-grained position", "Reward / step"),
-        ("Info_Episode_Reward_pose_reached",
-            "(d) Pose reached bonus", "Reward / step"),
+    _stacked_figure("reach_components.png", [
+        ("Info / Episode_Reward/end_effector_position_tracking",
+            "(a) Position tracking", "Reward"),
+        ("Info / Episode_Reward/end_effector_orientation_tracking",
+            "(b) Orientation tracking", "Reward"),
+        ("Info / Episode_Reward/end_effector_position_tracking_fine_grained",
+            "(c) Fine-grained position", "Reward"),
+        ("Info / Episode_Reward/pose_reached",
+            "(d) Pose-reached bonus (binary × 1e-6)", "Reward"),
     ])
 
-    _grid_figure("reach_diagnostics.png", [
-        ("Info_Episode_Reward_action_rate",
-            "(a) Action-rate penalty",  "Penalty"),
-        ("Info_Episode_Reward_joint_vel",
-            "(b) Joint-velocity penalty", "Penalty"),
-        ("Loss_Policyloss",  "(c) Policy loss",  "Loss"),
-        ("Loss_Valueloss",   "(d) Value loss",   "Loss"),
+    _stacked_figure("reach_diagnostics.png", [
+        ("Info / Episode_Reward/action_rate", "(a) Action-rate penalty",  "Penalty"),
+        ("Info / Episode_Reward/joint_vel",   "(b) Joint-velocity penalty","Penalty"),
+        ("Loss / Policy loss",                "(c) Policy loss",           "Loss"),
+        ("Loss / Value loss",                 "(d) Value loss",            "Loss"),
     ])
 
-    # Two extra panels (vertical stack)
-    fig, axes = plt.subplots(
-        2, 1,
-        figsize=c.pcfg.scaled(11, 7.5, scale=1.0),
-        constrained_layout=True,
-    )
-    c.plot_variants_curve(axes[0], TASK, "Loss_Entropyloss",
-                          x_max=REACH_X_MAX, y_label="Loss",
-                          title="(a) Entropy loss", show_legend=True)
-    c.plot_variants_curve(axes[1], TASK, "Learning_Learningrate",
-                          x_max=REACH_X_MAX, y_label="LR",
-                          title="(b) Learning rate", show_legend=True)
-    c.save(fig, c.APPENDIX_FIG_DIR / "reach_diagnostics_extra.png", tight=False)
+    _stacked_figure("reach_diagnostics_extra.png", [
+        ("Loss / Entropy loss",         "(a) Entropy loss",  "Loss"),
+        ("Learning / Learning rate",    "(b) Learning rate", "LR"),
+    ], panel_h=3.2)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@
 #import "../../../../shared/formatting/acronyms.typ": *
 #import "../../../../shared/formatting/template.typ": faps-table, faps-algorithm
 #import "@preview/lovelace:0.3.1": pseudocode-list
+#reg-sym("sym:Kp", "sym:Ki", "sym:Kd")
 
 == Model Validation <sec:model_validation>
 
@@ -20,25 +21,27 @@ Each arm joint receives a step position command while all other joints are held 
 ==== Controller configuration
 A #ac("PID") position controller computes the torque command for each arm joint during tendon-driven testing. The control law is:
 $ tau = K_p (q^* - q) + K_i integral_0^t (q^* - q) d t' + K_d dot((q^* - q)) + tau_g $ <eq:pid_control>
-where $q^*$ is the target position, $q$ is the measured position, and $tau_g$ is a feedforward gravity compensation term. The derivative term acts on the position error rather than on the measured velocity alone; this matches the implementation in `step_response_test.py`, which differentiates the position error between consecutive control steps. The gravity compensation for the elbow joint is computed as:
+where $q^*$ is the target position, $q$ is the measured position, and $tau_g$ is a feedforward gravity compensation term. The derivative term acts on the position error rather than on the measured velocity alone. The gravity compensation for the elbow joint is computed as:
 $ tau_g = m_e dot g dot l_c dot sin(theta_"elbow") $ <eq:gravity_comp>
 with $m_e = 2.49 "kg"$ (sum of the forearm and wrist link masses from @tab:link_params, $2.092 + 0.400 ≈ 2.49$~kg, approximating the moving mass distal to the elbow axis), $g = 9.81 "m/s"^2$, $l_c = 0.26 "m"$ (combined center of mass from elbow axis), and $theta_"elbow"$ the current elbow angle. For the wrist joints, gravity compensation uses $m_e = 0.40 "kg"$ (the wrist link mass alone) and $l_c = 0.068 "m"$.
 
-The PID gains used in Isaac Sim are scaled approximately $133 times$ from Klein's original Gazebo gains ($K_p = 0.3$, $K_i = 0.03$, $K_d = 0.02$, all reproduced verbatim from~@Klein2023). The chapter quotes two distinct gain sets: the elbow-test baseline ($K_p = 50$, $K_i = 4$, $K_d = 2$) and the operational gains used during #ac("RL") rollouts. The baseline tests are defined in `test/test_step_response.py`, while the operational gains live in `tensegrity_robot_cfg.py`; the latter is the authoritative source for everything outside the validation pipeline. The scaling itself compensates for the different effective rotational inertia representation between the two simulators (Gazebo uses ODE/DART with generalized-coordinate dynamics; Isaac Sim uses PhysX with reduced-coordinate articulations that exhibit different numerical conditioning, yielding an effective rotational inertia of approximately $J_"step" approx 0.103 "kg" dot "m"^2$ at the elbow as identified by the step-response fit; the larger $J_"crit" approx 0.22 "kg" dot "m"^2$ used in @subsec:pd_tuning includes the forearm and end-effector contributions about the elbow axis and is the value relevant for the analytical critical-damping computation). @tab:step_test_matrix summarizes the test parameters. The per-test cable saturation values shown in the table are the legacy uniform 500~N envelope; once the per-tendon split documented in @subsec:drive_system (480~N elbow / 80~N wrist) is migrated into the validation script, the elbow row stays inside the new envelope while the wrist saturation will be tightened from 600~N to 80~N. The wrist joint-level effort limit (3.5~Nm) is unchanged.
+The PID gains used in Isaac Sim are scaled approximately $133 times$ from Klein's original Gazebo gains ($K_p = 0.3$, $K_i = 0.03$, $K_d = 0.02$) ~@Klein2023. The scaling itself compensates for the different effective rotational inertia representation between the two simulators (Gazebo uses ODE/DART with generalized-coordinate dynamics. Isaac Sim uses PhysX with reduced-coordinate articulations that exhibit different numerical conditioning, yielding an effective rotational inertia of approximately $J_"step" approx 0.103 "kg" dot "m"^2$ at the elbow as identified by the step-response fit. The larger $J_"crit" approx 0.22 "kg" dot "m"^2$ used in @subsec:pd_tuning includes the forearm and end-effector contributions about the elbow axis and is the value relevant for the analytical critical-damping computation). @tab:step_test_matrix summarizes the test parameters.
 
 #faps-table(
   table(
     columns: (auto, auto, auto, auto, auto),
     table.header([*Joint*], [*Step amplitudes*], [*PID gains*], [*Saturation*], [*Min. tension*]),
-    [`elbow_joint`], [$20 degree$, $30 degree$, $40 degree$], [$K_p = 50, K_i = 4, K_d = 2$], [400~N], [6~N],
-    [`wrist_y_joint`], [$10 degree$, $20 degree$, $30 degree$], [$K_p = 10, K_i = 1.5, K_d = 0.6$], [600~N], [5~N],
-    [`wrist_x_joint`], [$10 degree$, $20 degree$, $30 degree$], [$K_p = 10, K_i = 1.5, K_d = 0.6$], [600~N], [5~N],
+    [`elbow_joint`], [$20 degree$, $30 degree$, $40 degree$], [$K_p = 50, K_i = 4, K_d = 2$], [480~N], [6~N],
+    [`wrist_y_joint`], [$10 degree$, $20 degree$, $30 degree$], [$K_p = 10, K_i = 1.5, K_d = 0.6$], [180~N], [5~N],
+    [`wrist_x_joint`], [$10 degree$, $20 degree$, $30 degree$], [$K_p = 10, K_i = 1.5, K_d = 0.6$], [180~N], [5~N],
   ),
   caption: [Step-response test matrix for the tendon-driven arm. PID gains are scaled from Klein's originals~@Klein2023 to compensate for simulator-specific inertia representation. The minimum tension maintains cable pre-tension on inactive tendons to prevent slack.],
   short-caption: [Step-response test matrix],
 ) <tab:step_test_matrix>
 
-The *physical-linkage variant* uses moderately increased elbow gains ($K_p = 75$, $K_i = 6$, $K_d = 3$, saturation 500~N) to account for the higher effective inertia of the four-bar linkage mechanism. Wrist gains remain identical to the disc-approximation variant.
+The *physical-linkage variant* uses moderately increased elbow gains ($K_p = 75$, $K_i = 6$, $K_d = 3$) to account for the higher effective inertia of the four-bar linkage mechanism. Wrist gains remain identical to the disc-approximation variant.
+
+#pagebreak()
 
 ==== Performance metrics
 Four standard metrics quantify the step-response behavior:
@@ -54,19 +57,18 @@ In addition to the explicit PID tendon controller, the arm joints are also teste
 
 #faps-algorithm(
   pseudocode-list(booktabs: true, numbered-title: [PD gain tuning procedure])[
-    + *Step-response baseline.* Run all base ($2$ joints $times$ $3$ amplitudes) and arm ($3$ joints $times$ $3$ amplitudes) steps at the current gains.
-    + *Arm damping sweep.* Fix stiffness $K = 400$; sweep damping $D in {120, 60, 30, 25, 20, 15}$.
+    + *Step-response baseline:* Run all base ($2$ joints $times$ $3$ amplitudes) and arm ($3$ joints $times$ $3$ amplitudes) steps at the current gains.
+    + *Arm damping sweep:* Fix stiffness $K = 400$: sweep damping $D in {120, 60, 30, 25, 20, 15}$.
       + *for each* $D$ *do* run step-response on every arm joint.
       + *select* $D^*$ minimizing the average settling time across all arm joints.
-    + *Cross-coupling check.* For each arm joint, command $plus.minus 0.30 "rad"$ steps; monitor base drift with threshold $0.01 "rad/m"$ to ensure arm motion does not destabilize the base.
-    + *Gripper grasp test.* Close fingers on a test cube; lift, hold, and verify grip is maintained under the tuned arm dynamics.
-    + *Summary comparison.* Present current vs. recommended gains side-by-side.
+    + *Cross-coupling check:* For each arm joint, command $plus.minus 0.30 "rad"$ steps: monitor base drift with threshold $0.01 "rad/m"$ to ensure arm motion does not destabilize the base.
+    + *Gripper grasp test:* Close fingers on a test cube: lift, hold, and verify grip is maintained under the tuned arm dynamics.
   ],
   caption: [PD gain tuning procedure for the `ImplicitActuator` arm and base drives. Damping sweeps select the value minimizing settling time without significant overshoot.],
   short-caption: [PD gain tuning procedure],
 ) <alg:pd_tuning>
 
-The analytical critical damping for the elbow ($J_"crit" approx 0.22 "kg" dot "m"^2$, including forearm and end-effector contributions about the elbow axis; cf.\ the smaller step-response-fit value $J_"step" approx 0.103 "kg" dot "m"^2$ in @subsec:step_response, which captures only the joint's apparent inertia under the controlled step) is $D_"crit" approx 18.7 "N" dot "m" dot "s/rad"$. The initial configuration used $D = 120$ ($zeta approx 6.4$, massively overdamped); the damping sweep confirmed $D = 20$ as the optimal value ($zeta approx 1.07$, near-critically damped), providing the fastest settling without significant overshoot. The base prismatic joints use $K = 8000$, $D = 800$, tuned analogously via a damping sweep over ${1600, 1200, 800, 600, 400, 200}$.
+The analytical critical damping for the elbow is $D_"crit" approx 18.7 "N" dot "m" dot "s/rad"$. The damping sweep confirmed $D = 20$ as the optimal value ($zeta approx 1.07$, near-critically damped), providing the fastest settling without significant overshoot. The base prismatic joints use $K = 8000$, $D = 800$, tuned analogously via a damping sweep over ${1600, 1200, 800, 600, 400, 200}$.
 
 === Monte Carlo Workspace Analysis <subsec:workspace_analysis>
 

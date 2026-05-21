@@ -6,10 +6,11 @@
 #   make appendix   # only Appendix A.4–A.7 figures
 #   make clean      # remove generated PNGs
 #
-# A working Python environment with matplotlib, numpy, and pandas is
-# required.  The plot configuration lives in ../../../../.config/.
+# A working Python environment with matplotlib, numpy, pandas, and
+# tensorboard is required (the latter for reading the skrl event files).
+# The plot configuration lives in ../../../../.config/.
 
-PYTHON ?= python3
+PYTHON ?= /opt/homebrew/bin/python3
 SCRIPT_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 RESULTS_DIR := $(SCRIPT_DIR)../assets/figures/results
 APPENDIX_DIR := $(SCRIPT_DIR)../assets/figures/appendix

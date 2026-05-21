@@ -69,6 +69,8 @@ This migrating #ac("ICR") produces a _nonlinear, configuration-dependent transmi
 ==== Loop-closure enforcement
  The antiparallelogram can bifurcate into a parallelogram configuration at an instability point where the two side links are collinear. In physical mechanisms, cables or mechanical stops prevent this mode-switching by constraining the linkage to the crossed configuration.~@FuretWenger2019
 
+#pagebreak()
+
 === #acp("CDPM") <sec:bg_cdpm>
 
 The wrist mechanism of the #highlight(fill:red)[tensegrity manipulator] is a #ac("CDPM") where three active cables, arranged symmetrically around a universal joint, control two rotational degrees of freedom. This subsection introduces the general framework. The specific structure matrix for the thesis robot's wrist is derived in @subsec:wrist_mechanism of the methodology.
@@ -87,7 +89,7 @@ where $bold(w) in bb(R)^n$ is the desired platform wrench, $bold(t) in bb(R)^m$ 
 Since cables can only pull ($bold(t) >= 0$), a minimum of $n + 1$ cables is required for an $n$-#ac("DoF") platform to achieve _wrench closure_ (the ability to generate arbitrary wrenches at a given pose)~@GouttefardeGosselin2006. The _wrench-feasible workspace_ is the more practical criterion, defined as the set of poses where all required wrenches can be sustained with tensions within prescribed bounds $T_min <= T_i <= T_max$, accounting for both minimum tension (preventing cable slack) and actuator saturation~@Bosscher2006WrenchFeasible. For a system with $m > n + 1$ cables, the null space of $bold(A)^top$ provides freedom to adjust the tension distribution without affecting the net wrench. Pott _et al._~@Pott2009ClosedFormForce developed a closed-form algorithm for computing feasible tension distributions in this redundant case, decomposing the solution as $bold(t) = bold(t)_"particular" + bold(N) lambda$, where $bold(N)$ spans the null space and $lambda$ is chosen to satisfy the tension bounds.
 
 #faps-figure(
-  image("../../../assets/figures/background/concept_cdpm.svg", width: 100%),
+  image("../../../assets/figures/background/concept_cdpm.png", width: 100%),
   caption: [Three-dimensional schematic of a #ac("CDPM") with $m = 3$ cables and $n = 2$ rotational degrees of freedom, illustrating the general #ac("CDPM") concept underlying the wrist mechanism. Three cables (red, blue, orange) connect base frame anchors $b_i$ at $120 degree$ intervals on the fixed ring to platform anchors $p_i$ on the tilted movable ring. Each cable's unit direction vector $bold(u)_i$ and the resultant platform wrench $bold(w)$ are indicated. 
   // The static equilibrium is governed by the structure matrix: $bold(w) = bold(A)^top bold(t)$, where the one degree of redundancy ($m - n = 1$) enables tension optimisation under the positive-tension constraint $bold(t) >= 0$.
   ],

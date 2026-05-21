@@ -12,8 +12,7 @@ are exported as PNG and embedded with `image()`.
 project_thesis/
 ├── assets/
 │   ├── data/                        # ← input CSVs / JSON (read-only)
-│   │   ├── step_response/
-│   │   └── rl_training/<task>/<variant>/
+│   │   └── step_response/
 │   └── figures/
 │       ├── results/                 # ← Results §5 outputs
 │       └── appendix/                # ← Appendix A.4–A.7 outputs
@@ -59,6 +58,7 @@ shared across both theses *and* the Isaac Lab task plotting scripts in
 | `figures/appendix/place_manipulation.png`      | `appendices/A_5_PlaceMetrics.typ` |
 | `figures/appendix/place_placement.png`         | `appendices/A_5_PlaceMetrics.typ` |
 | `figures/appendix/place_regularization.png`    | `appendices/A_5_PlaceMetrics.typ` |
+| `figures/appendix/place_safety.png`            | `appendices/A_5_PlaceMetrics.typ` |
 | `figures/appendix/place_diagnostics.png`       | `appendices/A_5_PlaceMetrics.typ` |
 
 ## Usage
@@ -95,7 +95,7 @@ cd doc/Theses/project_thesis/scripts && make clean
 1. Add a `plot_<topic>.py` file with a top-level `main()`.
 2. Inside, import `common as c`, call `c.init()`, and write outputs to
    `c.RESULTS_FIG_DIR / "<name>.png"` or `c.APPENDIX_FIG_DIR / "..."`.
-3. Use the helpers in `common.py` (`load_step_csv`, `load_rl_csv`,
+3. Use the helpers in `common.py` (`load_step_csv`, `load_rl`, `final_mean`,
    `plot_variants_curve`, `add_curriculum_marker`, `missing_panel`).
 4. Append the module name to the `MODULES` tuple in `build_all_plots.py`
    and add a target to `Makefile`.
@@ -107,6 +107,13 @@ cd doc/Theses/project_thesis/scripts && make clean
 * `matplotlib` ≥ 3.8
 * `numpy` ≥ 1.26
 * `pandas` ≥ 2.2
+* `tensorboard` ≥ 2.13   (needed to parse `events.out.tfevents.*`)
+
+The RL training curves are read directly from the skrl TensorBoard event
+files under `src/tensegrity_pick/logs/skrl/theses_logs/<task>/<run>/`.
+The per-task / per-variant run selection lives in the `RUNS` dictionary
+in `common.py`; set the entry to `None` for any run whose tfevents file
+is missing locally and the plot scripts will skip the variant cleanly.
 
 These are the same versions used by the Isaac Lab task plotting
 scripts; the `env_isaaclab` conda environment satisfies them.

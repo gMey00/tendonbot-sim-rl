@@ -14,6 +14,10 @@
 // the short caption is used in the List of Figures / List of Tables.
 #let _short-captions = state("short-captions", (:))
 
+// Flag set to true once the appendix section begins; used to exclude appendix
+// figures and tables from the List of Figures / List of Tables.
+#let _in-appendix = state("in-appendix", false)
+
 // Main thesis template function
 #let faps-thesis(
   title: "",
@@ -144,11 +148,14 @@
   // show-figure rule (would break sub-figure references in subpar).
   show figure: set block(above: 1.4em, below: 1.4em)
 
-  // Table styling
+  // Table styling — FAPS: green header row (row 0), plain stroke elsewhere
   set table(
     stroke: 0.5pt + dunkelgrau,
     inset: 6pt,
+    fill: (col, row) => if row == 0 { faps-gruen } else { none },
   )
+  // Ensure header text is black (readable on green)
+  show table.header: set text(fill: black)
 
   // Math equations left-aligned
   set math.equation(numbering: "(1)")
@@ -233,6 +240,7 @@
     let shorts = _short-captions.final()
     let figs = query(figure.where(kind: image))
     for f in figs {
+      if _in-appendix.at(f.location()) { continue }
       let n = counter(figure.where(kind: image)).at(f.location()).at(0)
       let key = "fig:" + str(n)
       let cap-text = shorts.at(key, default: none)
@@ -262,6 +270,7 @@
     let shorts = _short-captions.final()
     let figs = query(figure.where(kind: table))
     for f in figs {
+      if _in-appendix.at(f.location()) { continue }
       let n = counter(figure.where(kind: table)).at(f.location()).at(0)
       let key = "tab:" + str(n)
       let cap-text = shorts.at(key, default: none)

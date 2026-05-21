@@ -11,27 +11,27 @@
 #import "@preview/cetz-plot:0.1.3": plot, chart
 #import "colors.typ": *
 
-// ── Color palette for plots (matches faps_colors.py) ────────────────────────
-#let plot-blue    = fapsblau         // #296193 — PD model
-#let plot-green   = fapsgruen        // #97C139 — Tendon model
-#let plot-amber   = rgb("#CC8800")   // Klein (2023) reference
-#let plot-red     = rgb("#CC3333")   // alert / error
-#let plot-purple  = rgb("#7755AA")   // physical tendon model
-#let plot-teal    = rgb("#22AAAA")   // teal accent
-#let plot-orange  = rgb("#DD6622")   // dark orange
-#let plot-grey    = fapsgraudunkel   // neutral
+// ── Color palette for plots (FAPS official palette) ─────────────────────────
+#let plot-blue    = fau-blau             // FAU-Blau (0,47,108) — PD model
+#let plot-green   = faps-gruen           // FAPS-Grün (151,193,57) — Tendon model
+#let plot-amber   = sonderfa-orange      // Sonderfarbe Orange (245,130,31)
+#let plot-red     = sonderfa-echtrot     // Sonderfarbe Echtrot (220,30,38)
+#let plot-purple  = hausfarbe-tuertkis   // Hausfarbe Türkis (52,103,125) — Physical model
+#let plot-teal    = tf-metallic          // TF Metallic (119,159,181)
+#let plot-orange  = sonderfa-orange      // Sonderfarbe Orange (245,130,31)
+#let plot-grey    = grau-1               // Grau 1 (149,162,171)
 
 // Amplitude colors for multi-trace step response plots
 #let amp-colors = (plot-blue, plot-green, plot-amber)
 
-// Damping sweep colors (high D → low D: grey → blue → green → amber → red)
+// Damping sweep colors (high D → low D: grey → teal → teal-dark → orange → blue → red)
 #let damping-colors = (
-  fapsgraudunkel,   // D=120 (overdamped)
-  rgb("#22AAAA"),   // D=60
-  rgb("#7755AA"),   // D=30
-  plot-amber,       // D=25
-  fapsblau,         // D=20 (optimal)
-  rgb("#CC3333"),   // D=15 (underdamped)
+  grau-1,              // D=120 (overdamped) — Grau 1
+  tf-metallic,         // D=60  — TF Metallic
+  hausfarbe-tuertkis,  // D=30  — Hausfarbe Türkis
+  sonderfa-orange,     // D=25  — Sonderfarbe Orange
+  fau-blau,            // D=20 (optimal) — FAU-Blau
+  sonderfa-echtrot,    // D=15 (underdamped) — Sonderfarbe Echtrot
 )
 
 // ── Shared plot dimensions ──────────────────────────────────────────────────

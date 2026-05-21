@@ -6,11 +6,12 @@ tendon, physical antiparallelogram tendon) along the four canonical
 performance indicators (rise time, settling time, overshoot, NRMSE).
 
 Bars show the mean across the per-joint amplitude sweep and error
-bars show ±1σ across the same sweep.  For the simulation variants a
-``None`` overshoot value is treated as a true zero-overshoot reading
-(the recorded trace never exceeded the setpoint), so all three
-sim-variant overshoot bars are populated from gathered data.  Klein
-entries that were not reported in Tabelle 4.2 (rise / overshoot for
+bars show ±1σ across the same sweep.  Metrics are read directly from
+the precomputed NPZ archives in
+``src/tensegrity_pick/outputs/model_validation/``.  For the simulation
+variants a NaN overshoot value indicates that the recorded trace never
+exceeded the setpoint, so it contributes 0\u202f% to the overshoot panel.
+Klein entries that were not reported in Tabelle\u202f4.2 (rise / overshoot for
 several amplitudes, all settling times) remain hatched ``n/a``
 placeholders.
 
@@ -29,7 +30,7 @@ import numpy as np
 
 import common as c
 
-# ── Constants ────────────────────────────────────────────────────────────────
+# ── Constants ────────────────────────────────────────────────────────────────────────────
 JOINTS: Final = ("elbow_joint", "wrist_x_joint", "wrist_y_joint")
 JOINT_LABELS: Final = ("Elbow", "Wrist X", "Wrist Y")
 VARIANTS: Final = ("Klein (2023)", "PD", "Tendon", "Physical")
@@ -42,28 +43,46 @@ VARIANT_COLORS: Final = (
 )
 
 
-def _aggregate_joint_stats(records: list[dict]) -> dict[str, dict[str, dict[str, tuple[float, float]]]]:
+def _aggregate_joint_stats() -> dict[str, dict[str, dict[str, tuple[float, float]]]]:
     """Return ``stats[joint][source][metric] = (mean, std)`` over amplitudes.
 
-    For the simulation variants (``pd``, ``tendon``, ``physical``) a
-    ``None`` overshoot value is interpreted as a genuine zero-overshoot
-    measurement (the recorded trace never exceeded the setpoint), and
-    contributes ``0.0`` to the aggregate.  For the Klein reference,
-    ``None`` indicates that the metric was not reported in Tabelle 4.2,
-    so those entries are skipped.
+    Metrics are read directly from the precomputed NPZ archives.  For the
+    simulation variants (``pd``, ``tendon``, ``physical``) a NaN
+    ``overshoot_pct`` value indicates that the recorded trace never exceeded
+    the setpoint and contributes ``0.0`` to the aggregate.  For the Klein
+    reference, ``None`` indicates that the metric was not reported in
+    Tabelle\u202f4.2, so those entries are omitted (renders as an n/a hatched bar).
     """
     accum: dict = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
-    for r in records:
-        j = r["joint"]
-        for src in VARIANT_KEYS:
-            for metric in ("nrmse", "rise_ms", "settling_ms", "overshoot"):
-                key = f"{src}_{metric}"
-                v = r.get(key)
-                if v is not None:
-                    accum[j][src][metric].append(float(v))
-                elif src != "klein" and metric == "overshoot":
-                    # No overshoot detected in the simulated trace ⇒ 0 %.
-                    accum[j][src][metric].append(0.0)
+
+    for joint in JOINTS:
+        for amp in c.JOINT_AMPS[joint]:
+            # ─ Simulation variants from NPZ ───────────────────────────────────
+            for src in ("pd", "tendon", "physical"):
+                data = c.load_npz_trial(src, joint, amp)
+                if data is None:
+                    continue
+                rise = float(data["rise_time_ms"])
+                settle = float(data["settling_time_ms"])
+                ov = float(data["overshoot_pct"])
+                nrmse = float(data["nrmse_pct"])
+                if not np.isnan(rise):
+                    accum[joint][src]["rise_ms"].append(rise)
+                if not np.isnan(settle):
+                    accum[joint][src]["settling_ms"].append(settle)
+                # NaN overshoot ⇒ trace never exceeded setpoint ⇒ 0 %.
+                accum[joint][src]["overshoot"].append(0.0 if np.isnan(ov) else ov)
+                accum[joint][src]["nrmse"].append(nrmse)
+
+            # ─ Klein (2023) Gazebo reference ─────────────────────────────────
+            klein = c.KLEIN_TABLE_4_2.get((joint, amp), {})
+            if klein.get("nrmse") is not None:
+                accum[joint]["klein"]["nrmse"].append(klein["nrmse"])
+            if klein.get("rise_ms") is not None:
+                accum[joint]["klein"]["rise_ms"].append(klein["rise_ms"])
+            if klein.get("overshoot") is not None:
+                accum[joint]["klein"]["overshoot"].append(klein["overshoot"])
+            # Klein settling_ms: not provided in Tabelle 4.2 → renders as n/a.
 
     stats: dict = {j: {} for j in JOINTS}
     for j in JOINTS:
@@ -120,8 +139,7 @@ def _bar_panel(ax: plt.Axes, title: str, ylabel: str,
 
 def main() -> None:
     c.init()
-    records = c.load_validation_metrics()
-    stats = _aggregate_joint_stats(records)
+    stats = _aggregate_joint_stats()
 
     # ── extract per-metric (mean, std) series ───────────────────────────────
     def per_metric(metric: str) -> tuple[list[list[float | None]], list[list[float | None]]]:

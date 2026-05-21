@@ -22,6 +22,8 @@ Sim-to-real transfer is fundamentally limited by discrepancies between simulated
 
 Rigid-body simulation assumes that each object moves as a rigid transform (no deformation), with state represented by position/orientation and linear/angular velocity. PhysX represents the simulated world as actors (static, kinematic, dynamic) with attached collision shapes and material properties. Dynamics are advanced under external loads, contact constraints, and joint constraints.~@physx_welcome_513@physx_rigid_body_dynamics_511
 
+#pagebreak()
+
 ==== Articulated bodies 
 Robotic manipulators are modelled as articulated mechanisms. Rigid links connected by joints that constrain relative motion and optionally apply actuation. PhysX provides an _articulation_ abstraction simulated in _reduced coordinates_, where the configuration is parameterized by the root pose and joint coordinates rather than the world pose of each link. This formulation improves numerical fidelity for mechanisms with large mass ratios and long kinematic chains compared to independently simulating rigid bodies connected by generic constraints.~@physx_articulations_513
 
@@ -41,6 +43,9 @@ PhysX supports a classic #acs("PGS")-style solver and the newer #acs("TGS") solv
 
 #reg-sym("sym:h")
 
+~@tab:physx_rigid_body_parameters summarizes key simulation parameters that influence the fidelity and stability of rigid-body dynamics in PhysX.
+The time step $h$ determines how frequently dynamics are integrated and how often the policy interacts with the environment. Overly large $h$ can lead to missed collisions and unstable joint behavior, whereas smaller $h$ improves accuracy at increased compute cost~@physx_simulation_541 @physx_best_practices_541. 
+
 #faps-table(
   table(
     columns: (auto, auto, auto),
@@ -56,9 +61,6 @@ PhysX supports a classic #acs("PGS")-style solver and the newer #acs("TGS") solv
   caption: [Selected rigid-body simulation parameters relevant to robot learning in Isaac~Sim / PhysX.],
   short-caption: [Key rigid-body simulation parameters],
 ) <tab:physx_rigid_body_parameters>
-
-~@tab:physx_rigid_body_parameters summarizes key simulation parameters that influence the fidelity and stability of rigid-body dynamics in PhysX.
-The time step $h$ determines how frequently dynamics are integrated and how often the policy interacts with the environment. Overly large $h$ can lead to missed collisions and unstable joint behavior, whereas smaller $h$ improves accuracy at increased compute cost~@physx_simulation_541 @physx_best_practices_541. 
 
 Collision detection cost depends on the collider representation. Primitive shapes (spheres, boxes, capsules) provide the best performance and robustness, while convex meshes provide a practical middle ground for complex objects~@physx_rigid_body_collision_510 @physx_geometry_541. Collider selection trades geometric fidelity against computational cost and solver stability. This tradeoff must be balanced against the throughput requirements of #ac("RL") training.
 

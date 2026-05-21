@@ -35,7 +35,7 @@
   "TUI":   (short: "TUI",   long: "Text-based User Interface",                  tag: "abbrev"),
   "MJCF":  (short: "MJCF",  long: "MuJoCo XML Format",                         tag: "abbrev"),
   "CAD":   (short: "CAD",   long: "Computer-Aided Design",                      tag: "abbrev"),
-  "DH":    (short: "DH",    long: "Denavit\u2013Hartenberg",                          tag: "abbrev"),
+  "DH":    (short: "DH",    long: "Denavit–Hartenberg",                          tag: "abbrev"),
   "PD":    (short: "PD",    long: "Proportional-Derivative",                    tag: "abbrev"),
   "PID":   (short: "PID",   long: "Proportional-Integral-Derivative",           tag: "abbrev"),
   "PGS":   (short: "PGS",   long: "Projected Gauss–Seidel",                    tag: "abbrev"),
@@ -57,6 +57,14 @@
   "SAC":   (short: "SAC",   long: "Soft Actor–Critic",                          tag: "abbrev"),
   "IMU":   (short: "IMU",   long: "Inertial Measurement Unit",                  tag: "abbrev"),
   "APM":   (short: "APM",   long: "Anti-Parallelogram Mechanism",              tag: "abbrev"),
+  "KL":    (short: "KL",    long: "Kullback–Leibler",                            tag: "abbrev"),
+  "DC":    (short: "DC",    long: "Direct Current",                            tag: "abbrev"),
+  "BLDC":  (short: "BLDC",  long: "Brushless Direct Current",                  tag: "abbrev"),
+  "ELU":   (short: "ELU",   long: "Exponential Linear Unit",                   tag: "abbrev"),
+  "PLA":   (short: "PLA",   long: "Polylactic Acid",                           tag: "abbrev"),
+  "AI":    (short: "AI",    long: "Artificial Intelligence",                   tag: "abbrev"),
+  "LR":    (short: "LR",    long: "Learning Rate",                             tag: "abbrev"),
+  "SSH":   (short: "SSH",   long: "Secure Shell",                               tag: "abbrev"),
 
   // Symbols
   "sym:gamma":   (short: $gamma$,                        long: "Discount factor",                              tag: "symbol"),
@@ -77,6 +85,15 @@
   "sym:tau":     (short: $bold(tau)$,                    long: "Joint torque vector",                          tag: "symbol"),
   "sym:T":       (short: $bold(T)$,                      long: "Tendon tension vector",                        tag: "symbol"),
   "sym:Jt":      (short: $bold(J)^top$,                  long: "Tendon Jacobian transpose",                    tag: "symbol"),
+  "sym:q":       (short: $bold(q)$,                      long: "Joint configuration vector",                   tag: "symbol"),
+  "sym:lambda":  (short: $lambda$,                       long: "GAE bias-variance trade-off parameter",        tag: "symbol"),
+  "sym:Kp":      (short: $K_p$,                          long: "Proportional gain",                            tag: "symbol"),
+  "sym:Ki":      (short: $K_i$,                          long: "Integral gain",                                tag: "symbol"),
+  "sym:Kd":      (short: $K_d$,                          long: "Derivative gain",                              tag: "symbol"),
+  "sym:re":      (short: $r_e$,                          long: "Elbow effective lever arm",                    tag: "symbol"),
+  "sym:rw":      (short: $r_w$,                          long: "Wrist platform radius",                        tag: "symbol"),
+  "sym:rs":      (short: $r_s$,                          long: "Motor spool radius",                           tag: "symbol"),
+  "sym:Tmax":    (short: $T_"max"$,                      long: "Maximum cable tension",                        tag: "symbol"),
 )
 
 // -- Acronym access functions -------------------------------------------------

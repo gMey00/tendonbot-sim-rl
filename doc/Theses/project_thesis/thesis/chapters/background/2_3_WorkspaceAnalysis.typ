@@ -6,7 +6,7 @@
 
 == Workspace Analysis and Dexterity Metrics <sec:workspace_analysis_sampling_metrics>
 
-#reg-sym("sym:w", "sym:J_mat", "sym:kappa")
+#reg-sym("sym:w", "sym:J_mat", "sym:kappa", "sym:q")
 
 The workspace of a serial manipulator is the set of all end-effector poses that are reachable under joint limits and kinematic constraints. Workspace analysis is used to verify that a robot can reach task-relevant regions and to identify configurations that should be avoided due to singularities or poor motion quality.~@Rastegar1990WorkspaceMonteCarlo@Dong2013WorkspaceDensity
 

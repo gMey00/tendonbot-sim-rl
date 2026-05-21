@@ -31,7 +31,7 @@ Standard #ac("URDF") supports only serial kinematic chains. Closed-loop dependen
       [*Format*], [*Primary scope*], [*Role in simulation*],
     ),
     [#ac("USD")], [Scene graph with composition], [World assembly, physics/rendering schemas~@openusd_usd_faq @openusd_usdphysics_schema],
-    [#ac("URDF")], [Robot kinematics + rigid-body data], [Robot model interchange; converted into #ac("USD")~@ros2_urdf_main @isaacsim_import_urdf_510],
+    [#ac("URDF")], [Robot kinematics + rigid-body data], [Robot model interchange, converted into #ac("USD")~@ros2_urdf_main @isaacsim_import_urdf_510],
   ),
   caption: [Roles of #ac("USD") and #ac("URDF") in typical robotics simulation pipelines.],
   short-caption: [#ac("USD") and #ac("URDF") roles in simulation],
