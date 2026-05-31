@@ -61,7 +61,11 @@ class CommandsCfg:
         asset_name="robot",
         body_name=MISSING,
         joint_names=MISSING,
-        resampling_time_range=(4.0, 4.0),
+        # Resample only at episode reset: the cadence is set far larger than
+        # episode_length_s (6.0s) so the mid-episode timer never fires.
+        # One target per episode -> success_rate / reach_time mean exactly
+        # "reached the target" and "time to that target".
+        resampling_time_range=(1.0e9, 1.0e9),
         success_threshold=0.05,
         debug_vis=True,
     )
@@ -234,7 +238,9 @@ class ReachEnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         self.decimation = 2
         self.sim.render_interval = self.decimation
-        self.episode_length_s = 12.0
+        # 6s gives a single FK-sampled target ample settling time while pinning
+        # one target per episode (see ee_pose.resampling_time_range above).
+        self.episode_length_s = 6.0
         self.viewer.eye = (3.5, 3.5, 3.5)
         # simulation settings
         self.sim.dt = 1.0 / 60.0

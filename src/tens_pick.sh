@@ -63,6 +63,46 @@ python scripts/skrl/train.py   --task=Template-Tensegrity-Reach-v0      --headle
 
 python scripts/skrl/play.py    --task=Template-Tensegrity-Reach-Play-v0 --num_envs=10
 
+# --- Reach: multi-seed training sweep — 3 variants × 5 seeds ---------------
+# NOTE: the single-run lines above use the OLD task IDs `Template-Tensegrity-Reach-*`.
+#       The CURRENTLY REGISTERED IDs are `Template-Reach-Tensegrity-*`
+#       (see scripts/list_envs.py). The sweep below uses the registered IDs.
+# Each run lands in its own logs/skrl/reach/<variant>/<timestamp>_ppo_torch/ dir.
+# Seeds hold everything-else-fixed; reports training-seed variance (Henderson et al. 2018).
+REACH_VARIANTS=(
+  "Template-Reach-Tensegrity-v0"                  # PD
+  "Template-Reach-Tensegrity-Tendon-v0"           # simulated tendon
+  "Template-Reach-Tensegrity-Physical-Tendon-v0"  # physical tendon (PhysX tendons)
+)
+for task in "${REACH_VARIANTS[@]}"; do
+  for s in 0 1 2 3 4; do
+    echo "[seed-sweep] training ${task} with seed=${s}"
+    python scripts/skrl/train.py --task "${task}" --headless --seed "${s}"
+  done
+done
+
+# --- Reach: baseline / checkpoint evaluation (see scripts/skrl/evaluate.py) -
+REACH_PLAY_VARIANTS=(
+  "Template-Reach-Tensegrity-Play-v0"                  # PD
+  "Template-Reach-Tensegrity-Tendon-Play-v0"           # tendon
+  "Template-Reach-Tensegrity-Physical-Tendon-Play-v0"  # physical tendon
+)
+# zero + random: every variant × every seed
+for task in "${REACH_PLAY_VARIANTS[@]}"; do
+  for s in 0 1 2 3 4; do
+    python scripts/skrl/evaluate.py --agent zero   --task "$task" --seed "$s" --num_episodes 10 --headless
+    python scripts/skrl/evaluate.py --agent random --task "$task" --seed "$s" --num_episodes 10 --headless
+  done
+done
+# heuristic: PD variant only × 5 seeds (single task-level reference)
+for s in 0 1 2 3 4; do
+  python scripts/skrl/evaluate.py --agent heuristic \
+      --task Template-Reach-Tensegrity-Play-v0 --seed "$s" --num_episodes 10 --headless
+done
+# PPO checkpoints: per (variant, seed) — point --checkpoint at the run dir
+# python scripts/skrl/evaluate.py --agent checkpoint --task <PLAY_ID> --seed <s> \
+#     --checkpoint logs/skrl/reach/<variant>/<run_dir> --num_episodes 10 --headless
+
 # ---------------------------------------------------------------------------
 # Cube Place  —  Template-Tensegrity-Cube-Place-v0 / -Play-v0
 # ---------------------------------------------------------------------------

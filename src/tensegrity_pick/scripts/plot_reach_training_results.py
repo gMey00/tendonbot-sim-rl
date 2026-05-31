@@ -22,13 +22,15 @@ sys.path.insert(0, str(_Path(__file__).resolve().parents[3] / ".config"))
 import plot_config as pcfg
 pcfg.apply_style()
 
-# Relative sub-paths (joined with --root at runtime)
+# Relative sub-paths (joined with --root at runtime). The canonical extension
+# tree lives under src/tensegrity_pick/source/... — older versions of this
+# script wrote to a stray top-level source/ tree, which is the wrong location.
 _LOG_SUBDIR: Final = "logs/skrl/reach"
 _FIGURES_SUBDIR: Final = (
-    "source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures"
+    "src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures"
 )
 _REPORTS_SUBDIR: Final = (
-    "source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/reports"
+    "src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/reports"
 )
 
 VARIANT_NAMES: Final[list[str]] = [
@@ -677,7 +679,14 @@ def main() -> None:
         default=None,
         help="Specific run directory name (e.g. 2026-03-13_21-01-58_ppo_torch)",
     )
-    parser.add_argument("--variant", type=str, required=True, choices=VARIANT_NAMES)
+    parser.add_argument(
+        "--variant",
+        type=str,
+        required=False,
+        default=None,
+        choices=VARIANT_NAMES,
+        help="Required for single-run mode; ignored in --seeds / --baselines modes.",
+    )
     parser.add_argument(
         "--root",
         type=str,
@@ -708,8 +717,49 @@ def main() -> None:
         default=0.98,
         help="Minimum ratio of logged/checkpoint steps to configured timesteps to consider a run complete.",
     )
+    parser.add_argument(
+        "--seeds",
+        type=str,
+        nargs="+",
+        default=None,
+        help=(
+            "Seed-aggregation mode: list of *_ppo_torch run directories "
+            "(absolute paths or paths relative to --root). Variants are inferred "
+            "from the parent directory name. Plots mean ± std bands across seeds, "
+            "one curve per variant. Mutually exclusive with --baselines."
+        ),
+    )
+    parser.add_argument(
+        "--baselines",
+        type=str,
+        nargs="+",
+        default=None,
+        help=(
+            "Baseline-comparison mode: list of evaluate.py JSON files. "
+            "Plots a grouped bar chart of success_rate per variant for the "
+            "{zero, random, checkpoint} agents, plus a dashed reference line "
+            "at the PD heuristic's mean success rate. Mutually exclusive with --seeds."
+        ),
+    )
     args = parser.parse_args()
 
+    if args.seeds is not None and args.baselines is not None:
+        parser.error("--seeds and --baselines are mutually exclusive")
+
+    if args.seeds is not None:
+        _main_seeds(args)
+        return
+    if args.baselines is not None:
+        _main_baselines(args)
+        return
+
+    if args.variant is None:
+        parser.error("--variant is required in single-run mode")
+
+    _main_single(args)
+
+
+def _main_single(args) -> None:
     root = Path(args.root).resolve()
     if args.logs_dir:
         logs_root = Path(args.logs_dir).resolve()
@@ -780,6 +830,219 @@ def main() -> None:
     print(f"  ✓ {report_name}")
 
     print("Done — 6 figures + stats + report generated.")
+
+
+# ---------------------------------------------------------------------------
+# Seed-aggregation mode (CS-4 part A)
+# ---------------------------------------------------------------------------
+
+def _infer_variant_from_run_path(run_path: Path) -> str:
+    """Variant = name of the parent directory under logs/skrl/reach/."""
+    name = run_path.parent.name
+    if name in VARIANT_NAMES:
+        return name
+    raise ValueError(
+        f"Cannot infer variant from {run_path}: parent directory '{name}' "
+        f"is not one of {VARIANT_NAMES}"
+    )
+
+
+def _common_step_grid(step_arrays: list[np.ndarray], n: int = 400) -> np.ndarray:
+    lo = max(float(s[0]) for s in step_arrays if len(s))
+    hi = min(float(s[-1]) for s in step_arrays if len(s))
+    if hi <= lo:
+        raise ValueError("Seed runs do not overlap in step range")
+    return np.linspace(lo, hi, n)
+
+
+def _interp_seeds(step_arrays: list[np.ndarray], value_arrays: list[np.ndarray]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    grid = _common_step_grid(step_arrays)
+    interped = np.vstack([
+        np.interp(grid, s, v) for s, v in zip(step_arrays, value_arrays)
+    ])
+    return grid, interped.mean(axis=0), interped.std(axis=0)
+
+
+_AGG_TAG_TOTAL_REWARD = ("Reward/total", "Reward / Total reward (mean)")
+# skrl prefixes scalar tags with "Info / "; the reward term names are
+# position_reached / orientation_reached / pose_reached (see reach_env_cfg.py).
+_AGG_TAG_SUCCESS = (
+    "Info / Episode_Reward/position_reached",
+    "Info / Episode_Reward/pose_reached",
+    "Info / Episode_Reward/orientation_reached",
+    "Episode_Reward/position_reached",
+    "Episode_Reward/pose_reached",
+    "Episode_Reward/orientation_reached",
+)
+
+
+def _main_seeds(args) -> None:
+    root = Path(args.root).resolve()
+    figures_dir = root / _FIGURES_SUBDIR / "aggregate"
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    # Group input run paths by inferred variant.
+    by_variant: dict[str, list[Path]] = {}
+    for raw in args.seeds:
+        p = Path(raw)
+        if not p.is_absolute():
+            p = (root / p).resolve()
+        if not p.exists():
+            raise FileNotFoundError(p)
+        by_variant.setdefault(_infer_variant_from_run_path(p), []).append(p)
+
+    print(f"Seed aggregation over {sum(len(v) for v in by_variant.values())} runs "
+          f"across {len(by_variant)} variants")
+    for variant, runs in by_variant.items():
+        print(f"  {variant}: {len(runs)} seed(s)")
+
+    palette = [_C_BLUE, _C_GREEN, _C_AMBER, _C_RED, _C_PURPLE, _C_TEAL]
+
+    fig, axes = plt.subplots(1, 2, figsize=(13.5, 4.5))
+
+    # Panel A: total reward
+    for (variant, runs), colour in zip(by_variant.items(), palette):
+        steps_list: list[np.ndarray] = []
+        vals_list: list[np.ndarray] = []
+        for run in runs:
+            acc = load_event_accumulator(run)
+            steps, vals = load_scalars(acc, _AGG_TAG_TOTAL_REWARD[0])
+            if not len(steps):
+                steps, vals = load_scalars(acc, _AGG_TAG_TOTAL_REWARD[1])
+            if len(steps):
+                steps_list.append(steps)
+                vals_list.append(smooth(vals))
+        if not steps_list:
+            print(f"  [warn] no total-reward tag for variant {variant}")
+            continue
+        grid, mean, std = _interp_seeds(steps_list, vals_list)
+        axes[0].plot(steps_to_k(grid), mean, color=colour, label=VARIANT_LABELS[variant])
+        axes[0].fill_between(steps_to_k(grid), mean - std, mean + std, alpha=0.20, color=colour)
+
+    axes[0].set_xlabel("Steps [k]")
+    axes[0].set_ylabel("Total reward (smoothed)")
+    axes[0].set_title("Mean ± std across seeds")
+    axes[0].grid(True, alpha=0.3)
+    axes[0].legend(loc="lower right", fontsize=8)
+    add_curriculum_marker(axes[0], args.curriculum_step)
+
+    # Panel B: success rate (Episode_Reward / SUCCESS_WEIGHT → fraction)
+    for (variant, runs), colour in zip(by_variant.items(), palette):
+        steps_list, vals_list = [], []
+        for run in runs:
+            acc = load_event_accumulator(run)
+            steps, vals = np.array([]), np.array([])
+            for cand in _AGG_TAG_SUCCESS:
+                steps, vals = load_scalars(acc, cand)
+                if len(steps):
+                    break
+            if len(steps):
+                steps_list.append(steps)
+                vals_list.append(smooth(vals / SUCCESS_WEIGHT))
+        if not steps_list:
+            continue
+        grid, mean, std = _interp_seeds(steps_list, vals_list)
+        axes[1].plot(steps_to_k(grid), mean, color=colour, label=VARIANT_LABELS[variant])
+        axes[1].fill_between(steps_to_k(grid), mean - std, mean + std, alpha=0.20, color=colour)
+
+    axes[1].set_xlabel("Steps [k]")
+    axes[1].set_ylabel("Success rate")
+    axes[1].set_ylim(0.0, 1.05)
+    axes[1].set_title("Mean ± std across seeds")
+    axes[1].grid(True, alpha=0.3)
+    axes[1].legend(loc="lower right", fontsize=8)
+    add_curriculum_marker(axes[1], args.curriculum_step)
+
+    out = figures_dir / "07_seed_aggregated.png"
+    finalise(fig, out, title="PPO learning curves (seed aggregation)")
+    print(f"  ✓ {out}")
+
+
+# ---------------------------------------------------------------------------
+# Baseline-comparison mode (CS-4 part B)
+# ---------------------------------------------------------------------------
+
+_AGENT_LABEL = {
+    "zero": "Zero",
+    "random": "Random",
+    "checkpoint": "PPO",
+    "heuristic": "DLS-IK (PD only)",
+}
+_AGENT_ORDER = ["zero", "random", "checkpoint"]
+
+
+def _main_baselines(args) -> None:
+    root = Path(args.root).resolve()
+    figures_dir = root / _FIGURES_SUBDIR / "aggregate"
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    # records[(variant, agent)] = list of success_rate means (one per seed)
+    records: dict[tuple[str, str], list[float]] = {}
+
+    for raw in args.baselines:
+        p = Path(raw)
+        if not p.is_absolute():
+            p = (root / p).resolve()
+        payload = json.loads(p.read_text())
+        variant = payload["variant"]
+        agent = payload["agent"]
+        sr_mean = payload["metrics"]["success_rate"]["mean"]
+        records.setdefault((variant, agent), []).append(float(sr_mean))
+
+    print(f"Loaded {len(args.baselines)} baseline JSON files into "
+          f"{len(records)} (variant, agent) groups")
+    for (variant, agent), vals in sorted(records.items()):
+        print(f"  {variant:32s} {agent:11s}  n={len(vals)}  mean={np.mean(vals):.3f}")
+
+    variants_present = sorted({v for (v, _) in records.keys()})
+
+    # Verification gate: expect 5 seeds per (variant, agent in zero/random/checkpoint)
+    for variant in variants_present:
+        for agent in _AGENT_ORDER:
+            n = len(records.get((variant, agent), []))
+            if n and n != 5:
+                print(f"  [warn] expected 5 seeds for ({variant}, {agent}); got {n}")
+
+    fig, ax = plt.subplots(figsize=(max(8, 2.5 * len(variants_present)), 4.5))
+
+    n_groups = len(variants_present)
+    n_bars = len(_AGENT_ORDER)
+    bar_w = 0.8 / n_bars
+    x = np.arange(n_groups)
+    colours = {"zero": _C_GREY, "random": _C_AMBER, "checkpoint": _C_BLUE}
+
+    for i, agent in enumerate(_AGENT_ORDER):
+        means = []
+        stds = []
+        for variant in variants_present:
+            vals = records.get((variant, agent), [])
+            means.append(float(np.mean(vals)) if vals else 0.0)
+            stds.append(float(np.std(vals)) if vals else 0.0)
+        offset = (i - (n_bars - 1) / 2) * bar_w
+        ax.bar(
+            x + offset, means, bar_w, yerr=stds, capsize=3,
+            color=colours[agent], label=_AGENT_LABEL[agent], edgecolor=_C_DARK, linewidth=0.5,
+        )
+
+    # Heuristic reference line (PD variant only).
+    heur_vals = records.get(("tensegrity", "heuristic"), [])
+    if heur_vals:
+        h_mean = float(np.mean(heur_vals))
+        ax.axhline(
+            h_mean, color=_C_RED, linestyle="--", linewidth=1.2,
+            label=f"{_AGENT_LABEL['heuristic']} mean = {h_mean:.2f}",
+        )
+
+    ax.set_xticks(x)
+    ax.set_xticklabels([VARIANT_LABELS[v] for v in variants_present], rotation=15, ha="right")
+    ax.set_ylabel("Success rate")
+    ax.set_ylim(0.0, 1.05)
+    ax.grid(True, axis="y", alpha=0.3)
+    ax.legend(loc="upper left", fontsize=8)
+
+    out = figures_dir / "08_baseline_comparison.png"
+    finalise(fig, out, title="Reach baselines vs. learned policy (mean ± std over seeds)")
+    print(f"  ✓ {out}")
 
 
 if __name__ == "__main__":

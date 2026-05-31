@@ -37,6 +37,8 @@ docker/.container.cfg
 # Outputs
 **/output/*
 **/outputs/*
+!**/outputs/workspace_analysis/
+!**/outputs/model_validation/
 **/videos/*
 **/wandb/*
 **/.neptune/*
@@ -56,6 +58,9 @@ _build
 # RL-Games
 **/runs/*
 **/logs/*
+!**/logs/skrl/
+**/logs/skrl/*
+!**/logs/skrl/theses_logs/
 **/recordings/*
 
 # Pre-Trained Checkpoints

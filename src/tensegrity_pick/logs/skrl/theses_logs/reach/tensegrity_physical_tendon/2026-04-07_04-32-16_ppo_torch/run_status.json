@@ -1,8 +1,0 @@
-{
-  "status": "completed",
-  "task": "Template-Reach-Tensegrity-Physical-Tendon-v0",
-  "target_timesteps": 96000,
-  "run_dir": "/home/robot/studentische-arbeiten/src/tensegrity_pick/logs/skrl/reach/tensegrity_physical_tendon/2026-04-07_04-32-16_ppo_torch",
-  "algorithm": "ppo",
-  "framework": "torch"
-}

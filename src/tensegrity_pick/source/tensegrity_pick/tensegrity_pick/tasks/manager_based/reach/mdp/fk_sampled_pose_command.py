@@ -115,7 +115,6 @@ class FKSampledPoseCommand(CommandTerm):
 
         step_dt = self._env.step_dt
         reached_mask = self._has_reached[env_ids]
-        success_rate = reached_mask.float().mean().item()
 
         if reached_mask.any():
             reach_times = self._first_reach_step[env_ids][reached_mask] * step_dt
@@ -125,7 +124,10 @@ class FKSampledPoseCommand(CommandTerm):
             reach_time_mean = float("nan")
             reach_time_variance = float("nan")
 
-        self.metrics["success_rate"][env_ids] = reached_mask.float()
+        # Write metrics so super().reset() picks them up into the extras dict
+        # (this is what populates the TensorBoard Episode_Reward/* tags).
+        success_values = reached_mask.float()
+        self.metrics["success_rate"][env_ids] = success_values
         self.metrics["reach_time_mean"][env_ids] = reach_time_mean
         self.metrics["reach_time_variance"][env_ids] = reach_time_variance
 
@@ -133,8 +135,17 @@ class FKSampledPoseCommand(CommandTerm):
         self._first_reach_step[env_ids] = float("inf")
         self._has_reached[env_ids] = False
 
-        _ = success_rate
-        return super().reset(env_ids)
+        # super().reset() reads metrics into extras THEN zeroes them.
+        extras = super().reset(env_ids)
+
+        # Restore the metric tensors so external consumers (eval harness,
+        # downstream observers) can still read the just-finished episode's
+        # success / reach-time per env after reset returns.
+        self.metrics["success_rate"][env_ids] = success_values
+        self.metrics["reach_time_mean"][env_ids] = reach_time_mean
+        self.metrics["reach_time_variance"][env_ids] = reach_time_variance
+
+        return extras
 
     def _resample_command(self, env_ids: Sequence[int]) -> None:
         if self.fk_robot is not None:

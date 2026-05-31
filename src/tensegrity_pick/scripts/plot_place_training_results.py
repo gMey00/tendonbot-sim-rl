@@ -54,7 +54,7 @@ VARIANT_LOG_DIRS: Final[dict[str, Path]] = {
     "kinova": Path("logs/skrl/cube_place/kinova"),
 }
 FIGURES_BASE: Final = Path(
-    "source/tensegrity_pick/tensegrity_pick/tasks/"
+    "src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/"
     "manager_based/cube_place/figures"
 )
 VARIANT_LABELS: Final[dict[str, str]] = {

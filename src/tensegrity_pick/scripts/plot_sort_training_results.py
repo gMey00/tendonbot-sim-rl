@@ -40,7 +40,7 @@ pcfg.apply_style()
 
 LOGS_ROOT: Final = Path("logs/skrl/cube_sort")
 FIGURES_DIR: Final = Path(
-    "source/tensegrity_pick/tensegrity_pick/tasks/"
+    "src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/"
     "manager_based/cube_sort/figures"
 )
 
