@@ -23,18 +23,27 @@ if [[ ! " ${valid_frameworks[*]} " =~ " ${LEARNING_FRAMEWORK} " ]]; then
 fi
 
 # ======== Install MiniConda =========== #
-# if [ ! -d "${CONDA_PATH}" ]; then
-#     mkdir -p ${CONDA_PATH}
-#     wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ${CONDA_PATH}/miniconda.sh
-#     bash ${CONDA_PATH}/miniconda.sh -b -u -p ${CONDA_PATH}
-#     rm ${CONDA_PATH}/miniconda.sh
-# fi
+if [ ! -d "${CONDA_PATH}" ]; then
+    mkdir -p ${CONDA_PATH}
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ${CONDA_PATH}/miniconda.sh
+    bash ${CONDA_PATH}/miniconda.sh -b -u -p ${CONDA_PATH}
+    rm ${CONDA_PATH}/miniconda.sh
+fi
 
 # Initialize conda if not already done
 if [ -f "${CONDA_PATH}/etc/profile.d/conda.sh" ]; then
     source "${CONDA_PATH}/etc/profile.d/conda.sh"
     echo "Conda initialization loaded successfully"
-    
+
+    # Register conda in the user's shell rc files (bash + zsh) so that
+    # 'conda activate' works in every new terminal without manual setup.
+    "${CONDA_PATH}/bin/conda" init bash 2>/dev/null || true
+    "${CONDA_PATH}/bin/conda" init zsh  2>/dev/null || true
+
+    # Accept Anaconda Terms of Service for default channels (required for non-interactive installs)
+    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main 2>/dev/null || true
+    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r 2>/dev/null || true
+
     # Fix conda entry point errors by installing pydantic-core in base environment
     conda install -n base pydantic-core -y 2>/dev/null || true
 else
@@ -59,10 +68,10 @@ if [ ! -d "${ISAACSIM_PATH}" ]; then
     ${ISAACSIM_PATH}/isaac-sim.sh --help
     # checks that python path is set correctly
     ${ISAACSIM_PYTHON_EXE} -c "print('Isaac Sim configuration is now complete.')"
+    rm "isaac-sim-standalone-5.1.0-linux-x86_64.zip"
 else
     echo "Isaac Sim is already installed at ${ISAACSIM_PATH}."
 fi
-
 
 # ======== Install Isaac Lab =========== #
 if [ ! -d "${ISAACLAB_PATH}" ]; then
@@ -97,6 +106,9 @@ if [ ! -d "${ISAACLAB_PATH}" ]; then
     # Source conda again after environment creation
     source "${CONDA_PATH}/etc/profile.d/conda.sh"
     conda activate env_isaaclab
+
+    # Ensure pip is available in the newly created environment
+    conda install -n "${ENV_NAME}" pip -y
     
     # Install dependencies for Learning Frameworks:
     # - needed by robomimic which is not available on Windows 

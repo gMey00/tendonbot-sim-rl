@@ -211,8 +211,18 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
 
     print(f"[INFO] Loading model checkpoint from: {resume_path}")
     runner.agent.load(resume_path)
+    # skrl 1.x saved the observation scaler as 'state_preprocessor'; skrl 2.x
+    # renamed it to 'observation_preprocessor'.  agent.load() iterates the
+    # checkpoint keys against agent.checkpoint_modules and silently skips the
+    # old 'state_preprocessor' key, leaving a fresh identity scaler so the
+    # policy sees raw un-normalized observations.  Manually migrate it.
+    _ckpt = torch.load(resume_path, map_location="cpu", weights_only=False)
+    _obs_pre = runner.agent.checkpoint_modules.get("observation_preprocessor", None)
+    if "state_preprocessor" in _ckpt and _obs_pre is not None and hasattr(_obs_pre, "load_state_dict"):
+        _obs_pre.load_state_dict(_ckpt["state_preprocessor"])
+        print("[INFO] Migrated 'state_preprocessor' -> 'observation_preprocessor' from checkpoint")
     # set agent to evaluation mode
-    runner.agent.set_running_mode("eval")
+    runner.agent.enable_training_mode(False, apply_to_models=True)
 
     # reset environment
     obs, _ = env.reset()
@@ -224,7 +234,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
         # run everything in inference mode
         with torch.inference_mode():
             # agent stepping
-            outputs = runner.agent.act(obs, timestep=0, timesteps=0)
+            outputs = runner.agent.act(obs, env.state(), timestep=0, timesteps=0)
             # - multi-agent (deterministic) actions
             if hasattr(env, "possible_agents"):
                 actions = {a: outputs[-1][a].get("mean_actions", outputs[0][a]) for a in env.possible_agents}

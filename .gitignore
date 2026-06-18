@@ -8,7 +8,9 @@ __pycache__/
 # Training artifacts
 logs/*
 src/tensegrity_pick/logs/*
-!src/tensegrity_pick/logs/theses_logs/
+!src/tensegrity_pick/logs/skrl/
+src/tensegrity_pick/logs/skrl/*
+!src/tensegrity_pick/logs/skrl/theses_logs/
 src/tensegrity_pick/outputs/*
 !src/tensegrity_pick/outputs/workspace_analysis/
 !src/tensegrity_pick/outputs/model_validation/
@@ -74,3 +76,8 @@ doc/Literatur/sources/**
 
 # local backups
 _backups/**
+
+.venv/**
+doc/reports/cube_sort_research/**
+doc/reports_deprecated/**
+**/Research/**
