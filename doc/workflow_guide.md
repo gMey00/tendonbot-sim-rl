@@ -85,9 +85,12 @@ flowchart TD
     Q -- "Yes (Isaac Lab built-in<br/>or Omniverse Explorer)" --> U["Use it directly"]
     Q -- "No" --> B{"URDF<br/>available?"}
     B -- "Yes" --> C["Convert with<br/>UrdfConverter"]
-    B -- "No" --> D["Build from scratch<br/>in Isaac Sim GUI<br/>(preferred)"]
+    B -- "No" --> B2{"CAD<br/>available?"}
+    B2 -- "Yes" --> D1["Convert manually<br/>through Blender<br/>and skript<br/>(preferred)"]
+    B2 -- "No" --> D2["Build from scratch<br/>in Isaac Sim GUI"]
     C --> V["Validate<br/>(Stage 1.3)"]
-    D --> V
+    D1 --> V
+    D2 --> V
     U --> V
 
     style Q fill:#FFF9C4,stroke:#F9A825
@@ -142,11 +145,121 @@ Remove `PhysXCollisionAPI` from the visual mesh after generating the collision c
 
 After setting mass properties, verify in the **Asset Validator** (`Window > Asset Validator`) that every link reports a positive-definite inertia tensor. A zero or negative eigenvalue guarantees a physics explosion. You can further visually check the inertia by enabling `View > Show by Purpose > Physics > Mass Properties > All`.
 
-**Approach B — Build from primitives (used for the prismatic base and virtual pivot links)**
+**Approach B — Build from primitives (used for the prismatic base)**
 
 Use this when there is no physical geometry to import, or when the link is a virtual kinematic node. In the Robot Wizard, choose a primitive shape (box, cylinder, sphere) directly for the link geometry. For primitives, the same prim serves as both visual and collision geometry — apply `PhysXCollisionAPI` directly and mark `purpose = default`. This avoids the visual/collision separation overhead entirely, and inertia can be set analytically from the primitive dimensions (e.g. I = ½mr² for the polar axis of a cylinder).
 
 Our base uses box primitives for the linear rail guides, and the wrist pivot link (`wrist_link`) is a 5 mm sphere with negligible mass (0.0001 kg). The virtual pivot carries no visual geometry — they exist solely to provide a joint-axis frame at the intersection of two orthogonal revolutes that share no physical rigid body.
+
+**Approach C — Complete CAD to USD Pipeline via Blender (Used for the tensegrity robot arm)**
+
+This guide is optimized for custom articulated robots designed in CAD (e.g., Fusion 360), allowing you to go from CAD to a simulation-ready robot model in Isaac Sim. As described in the project thesis, this pipeline prepares the meshes for physics simulation by cleaning the hierarchies, correcting origins to align with the physical mechanism, decimating visual meshes, and creating hand-built collision primitives to optimize GPU-accelerated PhysX performance. 
+
+The goal is a clean hierarchical structure avoiding CAD assembly hierarchy:
+```text
+Robot
+├── base_link
+├── upper_arm
+├── disk
+├── forearm
+└── wrist
+````
+
+with separate geometries such as:
+
+`upper_arm_visual` / `upper_arm_collision`
+
+`forearm_visual` / `forearm_collision`
+
+**Phase 1: Prepare CAD**
+
+1. **Clean Fusion 360 assembly**: Delete or suppress screws, washers, nuts, decorative parts, and labels. Keep only parts that contribute to mass, collisions, or visuals.
+2. **Use meters and kilograms**: In Fusion: Document Settings → Units → Meter. Isaac Sim expects Length in meters, Mass in kilograms, and Time in seconds. Never use grams.
+3. **Create one component per rigid link**: Desired structure: `base_link`, `upper_arm`, `disk`, `forearm`, `wrist`. Avoid CAD assembly hierarchy. Robot links ≠ CAD assemblies.
+4. **Export FBX**: Export the robot assembly as FBX.
+
+**Phase 2: Import into Blender**
+
+1. **Import FBX**: File → Import → FBX. Expect deep hierarchies, many empties, and many small parts.
+2. **Flatten hierarchy**: Mac: `⌥ Option + P` or Object → Parent → Clear Parent → Keep Transform.
+	_Important_: Choose `Clear Parent → Keep Transform`, otherwise objects move.
+3. **Delete empty objects**: Select → Select All by Type → Empty. Press `X`.
+4. **Delete unnecessary parts**: Search for DIN, ISO, M4, M5. Delete screws and hardware.
+
+**Phase 3: Create clean robot links**
+
+1. **Merge parts belonging to one link**: Example: Select all upper-arm parts. Join: `Ctrl + J`.
+    _Gotcha_: If Blender says "Active object is not a mesh", then an Empty is selected, or the active object is not a mesh. Fix: Select → Select All by Type → Mesh, then `Ctrl + J`.
+2. **Rename links**: Example: `upper_arm_visual`, `forearm_visual`, `disk_visual`, `wrist_visual`.
+
+**Phase 4: Set origins correctly**
+
+This is the most important step. The origin becomes the robot link frame. For each link, move the origin to the joint axis so that the simulated joint axes align with the physical mechanism.
+
+- **Procedure**: Select a vertex/face at the joint. Edit Mode: `Tab`. Select geometry. Move cursor: `Shift + S` → Cursor to Selected. Back to Object Mode. Set origin: `Object → Set Origin → Origin to 3D Cursor`.
+- **Verify**: Select object. Check: `N` → Item. Origin should match joint location.
+- _Gotcha_: Do NOT use `Origin to Geometry` for articulated links. Origins must be at joints.
+
+**Phase 5: Apply transforms**
+
+After origins are correct: `Ctrl + A` → All Transforms.
+Desired result: Location: preserved, Rotation: 0 0 0, Scale: 1 1 1.
+_Gotcha_: Never export with Scale = 0.001 or Rotation = 90°. These cause Isaac Sim problems. Apply transforms first.
+
+**Phase 6: Clean visual meshes**
+
+Optional but recommended.
+- **Remove duplicate vertices**: Edit Mode: `A`. `M` → By Distance.
+- **Reduce vertex count**: Add modifier: Modifier (Wrench) → Decimate. For CAD models, use Planar (Angle: 1–5°) or Collapse (Ratio: 0.1–0.3, depending on mesh complexity).
+    Monitor vertex count: Viewport Overlays → Statistics.
+
+**Phase 7: Create collision meshes**
+
+Never use visual meshes for collision. Automatic convex-hull or convex-decomposition tools should be avoided because they produce collision shells with unnecessarily high triangle counts that significantly slow down the GPU-accelerated PhysX broad- and narrow-phase.
+
+- **Recommended approach**: Create separate collision objects. Duplicate: `Shift + D`. Rename: `upper_arm_collision`. Replace with strongly simplified, hand-built convex primitive meshes.
+- **Critical rule**: Visual and collision objects must share the origin and orientation. Only geometry should differ. The same collision meshes are shared between the full-resolution and low-resolution visual variants.
+
+Suggested Blender structure:
+```
+Visual
+├── upper_arm_visual
+├── forearm_visual
+└── wrist_visual
+
+Collision
+├── upper_arm_collision
+├── forearm_collision
+└── wrist_collision
+```
+Collections are optional but helpful.
+
+**Phase 8: Export from Blender**
+
+Before export verify: Every object has Scale = 1, Rotation = 0, and Origin = correct joint.
+Export:
+- Preferred: USDC (as used in the thesis) or USD
+- Fallback: FBX
+
+**Phase 9: Isaac Sim**
+
+Import USD. For each link, assign: Visual Mesh, Collision Mesh, Mass, and Inertia.
+
+- **Inertia**: Do NOT rely on automatic inertia computation. Use known link mass and simple geometric approximations (Examples: cylinder, box, capsule). Compute inertias manually.
+- **Collision**: Do NOT use screws, CAD geometry, or high-poly collisions. Use simplified collision shapes.
+
+**Final sanity checklist**
+
+Before exporting to the final USD:
+
+- **Geometry**: One object per rigid link, screws removed, visual meshes cleaned.
+- **Origins**: Origin at joint axis, parent-child pivots verified.
+- **Transforms**: Scale = 1, Rotation = 0, transforms applied.
+- **Collision**: Separate collision meshes, simple primitives, same origin as visual mesh.
+- **Physics**: Masses in kg, dimensions in meters, and manual inertias planned.
+- **Export**: USDC/USD preferred, FBX only as fallback.
+
+If you follow this pipeline, you'll end up with a clean USD robot that is much easier to assemble into an articulation in Isaac Sim and later use in Isaac Lab without fighting scaling, origins, collision instability, or inertia issues.
 
 #### Step 2 — Combine sub-USDs with the Robot Assembler
 

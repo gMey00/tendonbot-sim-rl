@@ -85,9 +85,12 @@ flowchart TD
     Q -- "Ja (Isaac Lab built-in<br/>oder Omniverse Explorer)" --> U["Direkt verwenden"]
     Q -- "Nein" --> B{"URDF<br/>vorhanden?"}
     B -- "Ja" --> C["Konvertieren mit<br/>UrdfConverter"]
-    B -- "Nein" --> D["Von Grund auf bauen<br/>in Isaac Sim GUI<br/>(empfohlen)"]
+    B -- "Nein" --> B2{"CAD<br/>vorhanden?"} 
+    B2 -- "Ja" --> D1["Händisch konverieren<br/>mit Blender<br/>und Skript<br/>(empfohlen)"]
+    B2 -- "Nein" --> D2["Von Grund auf bauen<br/>in Isaac Sim GUI"]
     C --> V["Validieren<br/>(Stage 1.3)"]
-    D --> V
+    D1 --> V
+    D2 --> V
     U --> V
 
     style Q fill:#FFF9C4,stroke:#F9A825
@@ -142,11 +145,117 @@ Die `PhysXCollisionAPI` vom visuellen Mesh entfernen, nachdem das Kollisions-Chi
 
 Nach dem Setzen der Masseneigenschaften im **Asset Validator** prüfen (`Window > Asset Validator`), dass jeder Link einen positiv-definiten Trägheitstensor aufweist. Ein Null- oder negativer Eigenwert garantiert eine Physik-Explosion. Die Trägheit lässt sich auch visuell kontrollieren über `View > Show by Purpose > Physics > Mass Properties > All`.
 
-**Ansatz B — Aus Primitiven aufbauen (verwendet für die prismatische Basis und virtuelle Gelenk-Links)**
+**Ansatz B — Aus Primitiven aufbauen (verwendet für die prismatische Basis)**
 
 Dieser Ansatz eignet sich, wenn keine physische Geometrie importiert werden soll oder wenn der Link ein virtueller kinematischer Knoten ist. Im Robot Wizard eine primitive Form (Box, Zylinder, Kugel) direkt als Link-Geometrie wählen. Bei Primitiven dient dasselbe Prim als visuelles und Kollisions-Mesh — `PhysXCollisionAPI` direkt anwenden und `purpose = default` setzen. Dadurch entfällt der Overhead der Visual/Collision-Trennung vollständig, und die Trägheit kann analytisch aus den Primitivmaßen gesetzt werden (z. B. I = ½mr² für die polare Achse eines Zylinders).
 
 Unsere Basis verwendet Box-Primitive als Linearführungen, und der Handgelenk-Pivot-Link (`wrist_link`) ist eine 5-mm-Kugel mit vernachlässigbarer Masse (0,0001 kg). Der virtuelle Pivot trägt keine visuelle Geometrie — er existiert ausschließlich, um einen Gelenk-Achsen-Frame am Schnittpunkt zweier orthogonaler Drehgelenke bereitzustellen, die keinen gemeinsamen physischen Starrkörper teilen.
+
+**Ansatz C — Vollständige CAD-zu-USD-Pipeline über Blender (Verwendet für den Tensegrity-Roboterarm)**
+
+Diese Anleitung ist für in CAD (z. B. Fusion 360) konstruierte, benutzerdefinierte Roboter optimiert und ermöglicht den direkten Weg vom CAD-Modell zu einem simulationsbereiten Robotermodell in Isaac Sim. Wie in der Projektarbeit beschrieben, bereitet diese Pipeline die Meshes für die Physiksimulation vor, indem Hierarchien bereinigt, Ursprünge passend zur physischen Mechanik korrigiert, visuelle Meshes dezimiert und manuell erstellte Kollisionsprimitive erzeugt werden, um die GPU-beschleunigte PhysX-Leistung zu optimieren.
+
+Das Ziel ist eine saubere hierarchische Struktur unter Vermeidung der CAD-Baugruppenhierarchie:
+```text
+Robot
+├── base_link
+├── upper_arm
+├── disk
+├── forearm
+└── wrist
+````
+mit getrennten Geometrien wie:
+`upper_arm_visual` / `upper_arm_collision`
+`forearm_visual` / `forearm_collision`
+
+**Phase 1: CAD vorbereiten**
+
+1. **Fusion 360 Baugruppe bereinigen**: Schrauben, Unterlegscheiben, Muttern, dekorative Teile und Etiketten löschen oder unterdrücken. Nur Teile behalten, die zu Masse, Kollisionen oder Visualisierung beitragen.
+2. **Meter und Kilogramm verwenden**: In Fusion: Dokumenteinstellungen → Einheiten → Meter. Isaac Sim erwartet Länge in Metern, Masse in Kilogramm und Zeit in Sekunden. Niemals Gramm verwenden.
+3. **Eine Komponente pro starrem Link erstellen**: Gewünschte Struktur: `base_link`, `upper_arm`, `disk`, `forearm`, `wrist`. CAD-Baugruppenhierarchie vermeiden. Roboter-Links ≠ CAD-Baugruppen.
+4. **FBX exportieren**: Die Roboterbaugruppe als FBX exportieren.
+
+**Phase 2: In Blender importieren**
+
+1. **FBX importieren**: Datei → Importieren → FBX. Erwarte tiefe Hierarchien, viele Empties (Leere Objekte) und viele Kleinteile.
+2. **Hierarchie abflachen**: Mac: `⌥ Option + P` oder Objekt → Übergeordnetes Objekt (Parent) → Übergeordnetes Objekt löschen → Transformation beibehalten.
+    _Wichtig_: Wähle `Übergeordnetes Objekt löschen → Transformation beibehalten`, sonst verschieben sich die Objekte.
+3. **Leere Objekte löschen**: Auswählen → Alle nach Typ auswählen → Empty. `X` drücken.
+4. **Unnötige Teile löschen**: Nach DIN, ISO, M4, M5 suchen. Schrauben und Beschläge löschen.
+
+**Phase 3: Saubere Roboter-Links erstellen**
+
+1. **Teile zu einem Link zusammenfügen**: Beispiel: Alle Oberarm-Teile auswählen. Zusammenfügen: `Ctrl + J`.
+    _Achtung_: Wenn Blender "Aktives Objekt ist kein Mesh" (Active object is not a mesh) meldet, ist ein Empty ausgewählt oder das aktive Objekt ist kein Mesh. Lösung: Auswählen → Alle nach Typ auswählen → Mesh, dann `Ctrl + J`.
+2. **Links umbenennen**: Beispiel: `upper_arm_visual`, `forearm_visual`, `disk_visual`, `wrist_visual`.
+
+**Phase 4: Ursprünge korrekt setzen**
+
+Dies ist der wichtigste Schritt. Der Ursprung (Origin) wird zum Roboter-Link-Frame. Verschiebe den Ursprung für jeden Link auf die Gelenkachse, sodass die simulierten Gelenkachsen mit der physischen Mechanik übereinstimmen.
+
+- **Vorgehen**: Vertex/Face am Gelenk auswählen. Edit Mode (Bearbeitungsmodus): `Tab`. Geometrie auswählen. Cursor verschieben: `Shift + S` → Cursor to Selected (Cursor zur Auswahl). Zurück in den Object Mode (Objektmodus). Ursprung setzen: `Object → Set Origin → Origin to 3D Cursor` (Objekt → Ursprung festlegen → Ursprung zum 3D-Cursor).
+- **Überprüfen**: Objekt auswählen. Prüfen: `N` → Item (Artikel). Der Ursprung sollte mit der Gelenkposition übereinstimmen.
+- _Achtung_: Verwende NIEMALS `Origin to Geometry` (Ursprung zur Geometrie) für Gelenk-Links. Ursprünge müssen an den Gelenken liegen.
+
+**Phase 5: Transformationen anwenden**
+
+Nachdem die Ursprünge korrekt sind: `Ctrl + A` → All Transforms (Alle Transformationen).
+Gewünschtes Ergebnis: Position: beibehalten, Rotation: 0 0 0, Skalierung: 1 1 1.
+_Achtung_: Niemals mit Skalierung = 0.001 oder Rotation = 90° exportieren. Das führt zu Problemen in Isaac Sim. Transformationen zuerst anwenden.
+
+**Phase 6: Visuelle Meshes bereinigen**
+
+Optional, aber empfohlen.
+- **Doppelte Vertices entfernen**: Edit Mode: `A`. `M` → By Distance (Nach Abstand).
+- **Vertex-Anzahl reduzieren**: Modifier hinzufügen: Modifier (Schraubenschlüssel) → Decimate (Dezimieren). Für CAD-Modelle Planar (Winkel: 1–5°) oder Collapse (Verhältnis: 0.1–0.3 je nach Mesh-Komplexität) verwenden.
+    Vertex-Anzahl überwachen: Viewport Overlays (Ansichtsfenster-Overlays) → Statistics (Statistiken).
+
+**Phase 7: Kollisions-Meshes erstellen**
+
+Niemals visuelle Meshes für Kollisionen verwenden. Automatische Convex-Hull- oder Convex-Decomposition-Werkzeuge sollten vermieden werden, da sie Kollisionshüllen mit unnötig hoher Dreiecksanzahl erzeugen, welche die GPU-beschleunigte PhysX-Broad- und Narrow-Phase erheblich verlangsamen.
+
+- **Empfohlene Vorgehensweise**: Separate Kollisionsobjekte erstellen. Duplizieren: `Shift + D`. Umbenennen: `upper_arm_collision`. Durch stark vereinfachte, handgefertigte konvexe Primitiv-Meshes ersetzen.
+- **Bevorzugte Kollisionstypen**: Oberarm (Kapsel / Box), Unterarm (Kapsel / Box), Scheibe (Zylinder), Handgelenk (Box).
+- **Kritische Regel**: Visuelle und Kollisionsobjekte müssen Ursprung und Ausrichtung teilen. Nur die Geometrie sollte abweichen. Dieselben Kollisions-Meshes werden sowohl für die hochauflösenden als auch für die niedrigauflösenden visuellen Varianten verwendet.
+
+Vorgeschlagene Blender-Struktur:
+```
+Visual
+├── upper_arm_visual
+├── forearm_visual
+└── wrist_visual
+
+Collision
+├── upper_arm_collision
+├── forearm_collision
+└── wrist_collision
+```
+Collections (Sammlungen) sind optional, aber hilfreich.
+
+**Phase 8: Export aus Blender**
+
+Vor dem Export prüfen: Jedes Objekt hat Scale = 1, Rotation = 0 und Origin = korrektes Gelenk.
+Exportieren: 
+- Bevorzugt: USDC (wie in der Projektarbeit verwendet) oder USD
+- Fallback: FBX
+
+**Phase 9: Isaac Sim**
+
+USD importieren. Für jeden Link zuweisen: Visual Mesh, Collision Mesh, Mass und Inertia.
+- **Inertia (Trägheit)**: Verlasse dich NICHT auf automatische Trägheitsberechnung. Bekannte Link-Masse und einfache geometrische Näherungen (Beispiele: Zylinder, Box, Kapsel) verwenden. Trägheiten manuell berechnen.
+- **Kollision**: KEINE Schrauben, CAD-Geometrie oder High-Poly-Kollisionen verwenden. Vereinfachte Kollisionsformen verwenden.
+
+**Abschließende Sanity-Checkliste**
+
+Vor dem Export in die endgültige USD-Datei:
+- **Geometrie**: Ein Objekt pro starrem Link, Schrauben entfernt, visuelle Meshes bereinigt.
+- **Ursprünge**: Ursprung an der Gelenkachse, Parent-Child-Pivots überprüft.
+- **Transformationen**: Skalierung = 1, Rotation = 0, Transformationen angewendet.
+- **Kollision**: Separate Kollisions-Meshes, einfache Primitive, gleicher Ursprung wie visuelles Mesh.
+- **Physik**: Massen in kg, Abmessungen in Metern, manuelle Trägheiten geplant.
+- **Export**: USDC/USD bevorzugt, FBX nur als Fallback.
+
+Wenn diese Pipeline befolgt wird, entsteht ein sauberer USD-Roboter, der sich viel einfacher zu einer Artikulation in Isaac Sim zusammensetzen und später in Isaac Lab verwenden lässt, ohne mit Skalierung, Ursprüngen, Kollisionsinstabilität oder Trägheitsproblemen kämpfen zu müssen.
 
 #### Schritt 2 — Sub-USDs mit dem Robot Assembler kombinieren
 
