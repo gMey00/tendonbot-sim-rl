@@ -36,8 +36,10 @@ savefig.pad_inches : 0.04
 savefig.facecolor  : white
 savefig.edgecolor  : white
 
-# ── Colour cycle  (FAPS-anchored, colourblind-friendly) ─────
-axes.prop_cycle : cycler('color', ['296193', '97C139', 'CC8800', 'CC3333', '7755AA', '22AAAA', 'DD6622', '5F5F5F'])
+# ── Colour cycle  (official FAPS/FAU palette) ──────────────
+# 1 FAU-Blau hell  2 FAPS-Grün  3 Sonderfa.Orange  4 Sonderfa.Echtrot
+# 5 Türkis dunkel  6 Hausfarbe Türkis  7 Sonderfa.Gelb  8 FAPS Graudunkel
+axes.prop_cycle : cycler('color', ['6C8CC7', '97C139', 'F5821F', 'DC1E26', '004359', '34677D', 'FFCB00', '5F5F5F'])
 
 # ── Axes ─────────────────────────────────────────────────────
 axes.facecolor  : white
@@ -46,8 +48,9 @@ axes.linewidth  : 0.6
 axes.grid       : True
 axes.axisbelow  : True
 
-axes.spines.top   : False
-axes.spines.right : False
+# DIN 461 / FAPS rule: complete box frame around all diagrams
+axes.spines.top   : True
+axes.spines.right : True
 
 # ── Grid ─────────────────────────────────────────────────────
 grid.color     : 0.85

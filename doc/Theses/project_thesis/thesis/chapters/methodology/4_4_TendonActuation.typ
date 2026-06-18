@@ -16,7 +16,7 @@ The fundamental relationship between cable tensions and joint torques in a tendo
 $ bold(tau) = bold(J)^top (bold(q)) bold(T) $ <eq:jt_general>
 where $bold(tau) in bb(R)^n$ is the vector of joint torques, $bold(T) in bb(R)^m$ is the vector of cable tensions ($m = 5$, $n = 3$), and $bold(J)(bold(q)) in bb(R)^(m times n)$ is the tendon Jacobian that maps infinitesimal joint displacements to cable length changes. In general, $bold(J)$ is configuration-dependent since the geometric relationship between cables and joints changes with joint angles.
 
-For the constant-Jacobian actuation mode, $bold(J)^top$ is evaluated once at the zero configuration ($bold(q) = bold(0)$) and held fixed. The five tendons decompose into two subsystems:
+For the constant-$J^top$ actuation mode, $bold(J)^top$ is evaluated once at the zero configuration ($bold(q) = bold(0)$) and held fixed. The five tendons decompose into two subsystems:
 
 ==== Elbow subsystem (2 tendons, 1 joint)
 The two antagonistic elbow cables attach symmetrically at the midpoints of the antiparallelogram side links. At zero configuration, each cable has a perpendicular lever arm $r_e = 72.5 "mm"$ with respect to the effective elbow rotation axis. The net elbow torque is:
@@ -65,10 +65,10 @@ Each of the two elbow tendons is defined by an attachment point on the root link
 The wrist retains the constant $bold(J)^top$ mapping from @eq:wrist_torque because the cable-driven wrist's deviation from constant behavior over its $plus.minus 50 degree$ range is small. The principal effect is captured by the structure matrix~@Nemoto2022CableWrist.
 
 ==== Implementation
-The physical tendon model is implemented as a custom `ActionTerm` class in the IsaacLab extension. During each environment step, the term:
+The physical tendon model is implemented as a custom `ActionTerm` class in the Isaac~Lab extension. During each environment step, the term:
 + Reads the five cable-tension actions from the policy (clipped to $[0, T_"max"]$).
 + For tendons 1--2 (elbow): retrieves current link poses from the simulation, computes force vectors between attachment points, and applies body forces via the PhysX `apply_body_force` API.
-+ For tendons 3--5 (wrist): computes joint torques via @eq:wrist_torque and applies them as joint efforts using IsaacLab's `set_joint_effort_target` API.
++ For tendons 3--5 (wrist): computes joint torques via @eq:wrist_torque and applies them as joint efforts using Isaac~Lab's `set_joint_effort_target` API.
 + Applies #ac("PD") position control to the two prismatic base joints (which are not tendon-driven).
 
 === Actuation Mode Comparison <subsec:actuation_comparison>

@@ -38,11 +38,15 @@ src/tensegrity_pick/outputs/*
 *.log
 
 # Literature sources (PDFs/HTML kept locally only — not pushed due to size and copyright)
-doc/Literatur/_archive/**
+doc/Literatur/_**
 doc/Literatur/sources/**
 !doc/Literatur/sources/
 !doc/Literatur/sources/README.md
 !doc/Literatur/sources/missing_sources.html
+
+docs/**
+reports/**
+.github/**
 
 # LaTeX temporary / build files
 *.aux

@@ -468,3 +468,77 @@ def hatched_missing_bar(ax: plt.Axes, x_pos: float, height: float = 1.0,
     ax.bar(x_pos, height, width=width,
            color="#EEEEEE", edgecolor="#999999",
            hatch="//", linewidth=0.5)
+
+
+# ── Multi-seed reach evaluation (JSONs produced by evaluate.py) ─────────────
+REACH_EVAL_DIR: Final = (
+    _REPO_ROOT / "src" / "tensegrity_pick" / "logs" / "skrl"
+    / "theses_logs" / "reach" / "eval"
+)
+
+# Variant key used in this thesis ↔ variant key written in the eval JSONs.
+REACH_EVAL_VARIANT: Final[dict[str, str]] = {
+    "tensegrity_pd":       "tensegrity",
+    "tensegrity_tendon":   "tensegrity_tendon",
+    "tensegrity_physical": "tensegrity_physical_tendon",
+}
+
+# Display order and cosmetics for the four evaluation agents.
+AGENTS: Final[tuple[str, ...]] = ("zero", "random", "heuristic", "checkpoint")
+AGENT_LABEL: Final[dict[str, str]] = {
+    "zero":       "Zero",
+    "random":     "Random",
+    "heuristic":  "DLS-IK",
+    "checkpoint": "PPO",
+}
+AGENT_COLOR: Final[dict[str, str]] = {
+    "zero":       "#999999",
+    "random":     "#BBBBBB",
+    "heuristic":  pcfg.FAPS_DARK_GREY,
+    "checkpoint": pcfg.FAPS_BLUE,
+}
+
+# Reach-evaluation success threshold (matches command_term.cfg.success_threshold).
+REACH_SUCCESS_THRESHOLD_M: Final = 0.05
+
+
+@lru_cache(maxsize=None)
+def _load_reach_eval_json(path_str: str) -> dict:
+    return json.loads(Path(path_str).read_text())
+
+
+def load_reach_eval(agent: str, variant: str, seed: int) -> dict | None:
+    """Load one (agent, variant, seed) evaluation JSON.
+
+    Returns the parsed dict (with a ``metrics`` sub-dict containing
+    ``success_rate``, ``position_error``, ``orientation_error``, and
+    ``reach_time_mean`` — each a ``{mean, std, n}`` block), or ``None``
+    when the JSON does not exist.
+
+    Variant uses this thesis' canonical key (``tensegrity_pd`` /
+    ``tensegrity_tendon`` / ``tensegrity_physical``); it is translated
+    to the eval-JSON variant key via :data:`REACH_EVAL_VARIANT`.
+    """
+    eval_variant = REACH_EVAL_VARIANT[variant]
+    fname = f"{agent}_{eval_variant}_seed{seed}.json"
+    path = REACH_EVAL_DIR / fname
+    if not path.exists():
+        return None
+    return _load_reach_eval_json(str(path))
+
+
+def reach_eval_seeds(agent: str, variant: str, metric: str,
+                     *, max_seed: int = 5) -> np.ndarray:
+    """Return the per-seed mean values of *metric* for (agent, variant).
+
+    *metric* is one of the keys under the JSON ``metrics`` block. Missing
+    seed files are silently skipped. Returns an empty array when no JSONs
+    are found.
+    """
+    out: list[float] = []
+    for seed in range(max_seed):
+        d = load_reach_eval(agent, variant, seed)
+        if d is None or metric not in d.get("metrics", {}):
+            continue
+        out.append(float(d["metrics"][metric]["mean"]))
+    return np.array(out)

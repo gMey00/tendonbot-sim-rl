@@ -61,4 +61,4 @@
 // ──────────────────────────────────────────────────────
 // Bibliography
 // ──────────────────────────────────────────────────────
-#bibliography(("../../shared/bibliography/literature.bib", "../../shared/bibliography/sources.bib"), style: "ieee")
+#bibliography("bibliography.bib", style: "ieee")

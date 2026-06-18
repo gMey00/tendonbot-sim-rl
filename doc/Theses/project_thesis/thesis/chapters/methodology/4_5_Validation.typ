@@ -39,7 +39,7 @@ The PID gains used in Isaac Sim are scaled approximately $133 times$ from Klein'
   short-caption: [Step-response test matrix],
 ) <tab:step_test_matrix>
 
-The *physical-linkage variant* uses moderately increased elbow gains ($K_p = 75$, $K_i = 6$, $K_d = 3$) to account for the higher effective inertia of the four-bar linkage mechanism. Wrist gains remain identical to the disc-approximation variant.
+The *physical tendon variant* uses moderately increased elbow gains ($K_p = 75$, $K_i = 6$, $K_d = 3$) to account for the higher effective inertia of the four-bar linkage mechanism. Wrist gains remain identical to the disc-approximation variant.
 
 #pagebreak()
 
@@ -69,6 +69,8 @@ In addition to the explicit PID tendon controller, the arm joints are also teste
 ) <alg:pd_tuning>
 
 The analytical critical damping for the elbow is $D_"crit" approx 18.7 "N" dot "m" dot "s/rad"$. The damping sweep confirmed $D = 20$ as the optimal value ($zeta approx 1.07$, near-critically damped), providing the fastest settling without significant overshoot. The base prismatic joints use $K = 8000$, $D = 800$, tuned analogously via a damping sweep over ${1600, 1200, 800, 600, 400, 200}$.
+
+#pagebreak()
 
 === Monte Carlo Workspace Analysis <subsec:workspace_analysis>
 

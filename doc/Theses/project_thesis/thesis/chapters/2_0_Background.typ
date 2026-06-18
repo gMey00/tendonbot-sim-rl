@@ -24,7 +24,7 @@ This chapter provides an overview of the theoretical and technical background re
 // §2.4 — Rigid-body physics simulation in PhysX 5
 #include "background/2_4_PhysicsSimulation.typ"
 
-// §2.5 — Isaac Sim 5.1 and IsaacLab architecture
+// §2.5 — Isaac Sim 5.1 and Isaac~Lab architecture
 #include "background/2_5_IsaacSimLab.typ"
 
 #pagebreak()
