@@ -50,7 +50,7 @@ The tensegrity manipulator is a ceiling-mounted, 5-#ac("DoF") serial kinematic c
 ) <tab:joint_ranges>
 
 ==== Tendon-driven arm
-The tendon-driven arm is the central subsystem of the manipulator and the only part that exists as physical hardware at FAPS. It was designed and built by #highlight[CITATION NEEDED] and is the subject of the ongoing scientific development that this thesis supports. The remaining subsystems (prismatic base and gripper) are deliberately treated as interchangeable additions around this fixed core, as discussed below.
+The tendon-driven arm is the central subsystem of the manipulator and the only part that exists as physical hardware at FAPS. It was designed and built at FAPS and is the subject of the ongoing scientific development that this thesis supports. The remaining subsystems (prismatic base and gripper) are deliberately treated as interchangeable additions around this fixed core, as discussed below.
 
 The arm comprises a upper arm fixed to the base, a forearm, and a two-axis wrist, connected by three rotational #ac("DoF") (one elbow, two wrist axes). All three #ac("DoF") are actuated exclusively through proximal cable transmissions. The five Maxon EC60 motors are mounted on the ceiling frame and drive the joints through Bowden-routed Dyneema tendons, with no direct motor-to-joint coupling at any joint (see @sec:bg_tendon_actuation for the underlying actuation principle and @subsec:drive_system for the routing details). Structural elements are aluminium profiles and machined aluminium parts (grey/silver in @fig:robot_variants). Cable redirection pulleys, brackets, and several mounting parts are 3D-printed from #ac("PLA") (green/white)~@Klein2023.
 
@@ -86,9 +86,9 @@ The antiparallelogram is a planar four-bar mechanism in which the two side links
 ) <fig:antiparallelogram_schematic>
 
 ==== Kinematic closure condition
-The configuration of a four-bar linkage is fully determined by a single input angle. Following the analytical framework of McCarthy and Soh~@McCarthy2011, the loop-closure equation for the antiparallelogram relates the input crank angle $theta$ (measured at joint $A$) to the output angle $phi$ (measured at joint $B$) through a set of algebraic constraints derived from the polygon-closure condition:
+The configuration of a four-bar linkage is fully determined by a single input angle. Following the analytical framework of McCarthy and Soh, the loop-closure equation for the antiparallelogram relates the input crank angle $theta$ (measured at joint $A$) to the output angle $phi$ (measured at joint $B$) through a set of algebraic constraints derived from the polygon-closure condition:
 $ bold(Z)_1 e^(i theta) + bold(Z)_2 e^(i beta) = bold(Z)_3 e^(i phi) + bold(Z)_4 $ <eq:loop_closure>
-where $bold(Z)_i$ denote the complex link vectors and $beta$ is the coupler angle. For the specific case of the antiparallelogram ($|bold(Z)_1| = |bold(Z)_3| = l_e$, $|bold(Z)_2| = |bold(Z)_4| = k_e$), this reduces to a tangent-half-angle substitution yielding a closed-form expression for $phi(theta)$~@McCarthy2011.
+where $bold(Z)_i$ denote the complex link vectors and $beta$ is the coupler angle. For the specific case of the antiparallelogram ($|bold(Z)_1| = |bold(Z)_3| = l_e$, $|bold(Z)_2| = |bold(Z)_4| = k_e$), this reduces to a tangent-half-angle substitution yielding a closed-form expression for $phi(theta)$.~@McCarthy2011
 
 ==== Centrode geometry of the FAU elbow
 The general antiparallelogram result of Dijksman~@Dijksman1976MotionGeometry ( the fixed centrode is an ellipse with foci at the two grounded pivots and a focal-string length equal to the side-link length ) is summarised in @sec:tendon_linkage_mechanisms. Substituting the manufactured dimensions $l_e = 150 "mm"$ and $k_e = 60 "mm"$~@Klein2023 yields the specific values

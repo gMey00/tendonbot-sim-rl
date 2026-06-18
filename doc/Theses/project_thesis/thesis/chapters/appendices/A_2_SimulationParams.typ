@@ -8,7 +8,7 @@
 
 == Joint Drive Parameters <appendix:drive_params>
 
-@tab:drive_params lists the `ImplicitActuator` #ac("PD") drive parameters configured for the tensegrity manipulator's joints. In the PD-driven actuation mode, these parameters apply to all joints. In the tendon-driven and physical-tendon modes, the arm joints (elbow and wrist) are overridden by the tendon actuation model. Only the two prismatic base joints retain #ac("PD") drives in those modes (see @tab:actuation_modes).
+@tab:drive_params lists the `ImplicitActuator` #ac("PD") drive parameters configured for the tensegrity manipulator's joints. In the PD-driven actuation mode, these parameters apply to all joints. In the tendon-driven and physical tendon modes, the arm joints (elbow and wrist) are overridden by the tendon actuation model. Only the two prismatic base joints retain #ac("PD") drives in those modes (see @tab:actuation_modes).
 
 #faps-table(
   table(
@@ -37,7 +37,7 @@
     [`wrist_y_joint`], [10], [1.5], [0.6], [180], [5],
     [`wrist_x_joint`], [10], [1.5], [0.6], [180], [5],
     table.hline(stroke: 0.4pt),
-    table.cell(colspan: 6, align: left)[_Physical antiparallelogram variant (elbow only differs)_],
+    table.cell(colspan: 6, align: left)[_Physical tendon variant (elbow only differs)_],
     [`elbow_joint`], [75], [6], [3], [480], [6],
     [`wrist_y_joint`], [10], [1.5], [0.6], [180], [5],
     [`wrist_x_joint`], [10], [1.5], [0.6], [180], [5],

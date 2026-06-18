@@ -6,7 +6,7 @@
 
 == Reinforcement Learning Task Formulation <sec:rl_tasks>
 
-Two progressive #ac("RL") tasks are defined on the validated robot model. The _reach_ task tests fundamental motion control across actuation modes. The _cube place_ task extends reach to a full manipulation sequence including grasping, transport, and release. Both tasks share a common simulation environment and use the manager-based #ac("MDP") workflow provided by IsaacLab~@isaaclab_task_design_workflows.
+Two progressive #ac("RL") tasks are defined on the validated robot model. The _reach_ task tests fundamental motion control across actuation modes. The _cube place_ task extends reach to a full manipulation sequence including grasping, transport, and release. Both tasks share a common simulation environment and use the manager-based #ac("MDP") workflow provided by Isaac~Lab~@isaaclab_task_design_workflows.
 
 Both tasks are formulated robot agnostic. The robot variants enter the task definitions only through modular robot configuration. Observations, actions, and rewards are written so that robot subsystems or entire robots can be replaced by an alternative construction without rewriting the task itself, which is important for re-using these tasks on future iterations of the platform and adapting the tasks to future iterations of the task.
 
@@ -73,13 +73,31 @@ The action parameterization differs by actuation mode:
 ) <tab:reach_rewards>
 
 ==== Terminations
-Episodes terminate at the 12.0~s timeout (360 steps at 30~Hz control frequency) or upon joint velocity divergence ($> 100$~rad/s, indicating simulation instability).
+Episodes terminate at the 6.0~s timeout (180 steps at 30~Hz control frequency) or upon joint velocity divergence ($> 100$~rad/s, indicating simulation instability).
 
 ==== Curriculum
 The regularization weights for `action_rate` and `joint_vel` ramp linearly from their initial (low) values to their final (higher) values over 4,500 environment steps. This permits aggressive early exploration before penalizing high-frequency motion.
 
 ==== Variants
 Three actuation configurations are trained under identical #ac("PPO") hyperparameters: Tensegrity PD-driven, Tensegrity Tendon-driven (constant $J^top$), Tensegrity Physical tendon (body-force).
+
+==== Multi-Seed Training Protocol <subsec:reach_multi_seed>
+Each of the three actuation variants is trained with $N = 5$ independent random seeds (seeds 0--4) under otherwise identical hyperparameters, scene configuration, and reward terms. The seeds are propagated consistently to `random`, `numpy`, `torch`, and the CUDA generator at environment construction. Aggregating over several seeds rather than reporting a single run follows the reproducibility guidance of Henderson _et al._, who use five trials per evaluation in their own study and show that a single learning curve is an unreliable summary of deep #ac("RL") performance.
+// Henderson2018DeepRLMatters — p.2 §"Experimental Analysis" ("To ensure fairness we run five experiment trials for each evaluation, each with a different preset random seed") and p.5 §"Random Seeds and Trials" + Fig.5 (two 5-seed splits of one 10-seed run differ significantly; "there can be no specific number of trials specified as a recommendation"). Uploaded arXiv PDF.
+The chosen budget of $N = 5$ is the smallest sample that still supports a seed-aggregated mean and a dispersion estimate; it matches the trial count used by Henderson _et al._, but lies below the $N gt.eq 20$ samples that Colas _et al._ recommend for confirmatory bootstrap-based inference, so the cross-variant comparison is treated accordingly (cf.~@subsec:reach_significance)~@Henderson2018DeepRLMatters~@Colas2018HowManySeeds.
+// Colas2018HowManySeeds — p.18--19 §6 "Final recommendations" ("A bootstrap test should not be used with less than 20 samples") and p.16 §5.1 + Fig.6 (small-N false-positive inflation). Uploaded PDF.
+The limitation imposed by this sample size and a planned rerun on the high-variance physical tendon variant are discussed in @ch:discussion.
+
+==== Evaluation Harness <subsec:reach_eval_harness>
+After training, each of the $3 times 5 = 15$ #ac("PPO") policies is evaluated by a unified harness (`evaluate.py`) that constructs the play-mode environment, loads the final agent checkpoint, runs $50$ parallel envs $times$ $10$ episodes ($= 500$ episodes per (variant, seed) cell), and writes a per-cell JSON file. The same harness also evaluates three reference agents on the same target stream:
+
+- *Zero:* Emits a zero action every step (the #ac("PD") setpoint coincides with the current pose, the cable variants apply no length change).
+- *Random:* Uniform $cal(U)(-1, 1)$ over the wrapped action space.
+- *Heuristic (DLS-IK):* A damped-least-squares differential inverse-kinematics controller with position priority, mapped through the inverse of the `JointPositionToLimitsAction` term to the $[-1, 1]$ action range. This baseline is defined only for the #ac("PD") variant. The two tendon variants act in cable-tension space and a torque-to-tension controller for them is itself a separate research problem outside the scope of this thesis.
+
+The metrics recorded per cell are the episode-level mean and standard deviation of the position-reach success rate (any-step indicator of $bold(p) - bold(p)^* lt.eq 0.05 "m"$), the final-step position error, the final-step orientation error, and the time-to-first-reach over successful episodes. The threshold is read from the command term configuration to keep harness and environment definitions in sync. To prevent the auto-reset that Isaac~Lab applies inside `env.step()` from corrupting the recorded final-step values, the position and orientation error tensors are snapshotted _before_ each step and the snapshot is recorded for environments that terminate in the corresponding step.
+
+#pagebreak()
 
 === Cube Place Task <subsec:cube_place_task>
 
@@ -158,6 +176,9 @@ Episodes run the full 5.0~s (250 steps at 50~Hz). Truncation occurs on joint vel
 
 ==== Curriculum
 Four curriculum events are scheduled (all triggered on global environment-step counts): (1)~the cube spawn band widens linearly from $plus.minus 0.10$~m to $plus.minus 0.30$~m between 25,000 and 100,000 steps (`widen_spawn`), exposing the agent to progressively harder reach geometries. (2)~the red distractor cube is activated at 125,000 steps (`activate_red`), introducing colour-selective grasping once the agent reliably handles the green cube alone. (3)~the action-rate regularisation weight is ramped from $-10^(-4)$ to $-2 times 10^(-3)$ at 150,000 steps and (4)~the joint-velocity regularisation weight is ramped likewise at 150,000 steps, encouraging smoother motions once the basic task is learned.
+
+==== Evaluation Scope
+In contrast to the reach task (@subsec:reach_multi_seed), the cube-place task is trained and reported on a single random seed per variant. Each place run spans the full $300"k"$-step budget on a markedly heavier, contact-rich scene (graspable cube, distractor, and drum), so a seed-aggregated sweep across all three variants exceeded the time and compute budget available for the project thesis. The multi-seed evaluation harness is therefore reserved for the master-thesis follow-up, and the cube-place metrics in @sec:place_results are reported as single-seed point estimates rather than seed-aggregated results (cf.~@sec:discussion_limitations).
 
 === Cube Sort Task (Outlook) <subsec:cube_sort>
 

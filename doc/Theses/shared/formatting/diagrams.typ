@@ -25,7 +25,7 @@
 // so all diagrams share the same vocabulary.
 #let faps-annotation(body) = box(
   inset: 4pt,
-  radius: 2pt,
+  radius: 0pt,
   stroke: none,
   fill: faps-node-lightgreen.lighten(40%),
   text(size: 7pt)[#body],
@@ -46,7 +46,7 @@
 #let rl-agent-env-loop() = diagram(
   spacing: (56mm, 18mm),
   node-stroke: 0.6pt + faps-stroke,
-  node-corner-radius: 3pt,
+  node-corner-radius: 0pt,
   edge-stroke: 0.9pt + faps-stroke,
   label-sep: 3pt,
 
@@ -83,7 +83,7 @@
 
   edge(<env.south>, <delay.east>, "->",
     bend: 22.5deg,
-    label: text(size: 8.5pt)[$o_(t+1), r_(t+1)$ \  #text(size: 7pt)[discount $gamma$]],
+    label: text(size: 8.5pt)[$o_(t+1), r_(t+1)$],
     label-pos: 0.45, label-side: left),
   edge(<delay.west>, <agent.south>, "->",
     bend: 22.5deg,
@@ -125,7 +125,7 @@
 #let isaac-stack() = diagram(
   spacing: (40mm, 18mm),
   node-stroke: 0.6pt + faps-stroke,
-  node-corner-radius: 3pt,
+  node-corner-radius: 0pt,
   edge-stroke: 0.8pt + faps-stroke,
 
   // IsaacLab layer
@@ -177,7 +177,7 @@
 #let physx-pipeline() = diagram(
   spacing: (25mm, 12mm),
   node-stroke: 0.6pt + faps-stroke,
-  node-corner-radius: 3pt,
+  node-corner-radius: 0pt,
   edge-stroke: 0.8pt + faps-stroke,
 
   // Scene authoring
@@ -217,7 +217,7 @@
 #let mdp-managers() = diagram(
   spacing: (22mm, 10mm),
   node-stroke: 0.6pt + faps-stroke,
-  node-corner-radius: 3pt,
+  node-corner-radius: 0pt,
   edge-stroke: 0.8pt + faps-stroke,
 
   // Entry
@@ -274,7 +274,7 @@
 #let tendon-mapping() = diagram(
   spacing: (32mm, 12mm),
   node-stroke: 0.6pt + faps-stroke,
-  node-corner-radius: 3pt,
+  node-corner-radius: 0pt,
   edge-stroke: 0.8pt + faps-stroke,
 
   // Main chain
@@ -311,7 +311,7 @@
 #let methodology-overview() = diagram(
   spacing: (18mm, 5mm),
   node-stroke: 0.6pt + faps-stroke,
-  node-corner-radius: 3pt,
+  node-corner-radius: 0pt,
   edge-stroke: 0.8pt + faps-stroke,
 
   // Stage 1: Construction & Validation
@@ -561,7 +561,7 @@
 #let reward-pipeline() = diagram(
   spacing: (10mm, 8mm),
   node-stroke: 0.6pt + faps-stroke,
-  node-corner-radius: 3pt,
+  node-corner-radius: 0pt,
   edge-stroke: 0.8pt + faps-stroke,
 
   // Phase 1: Approach & Grasp
@@ -640,7 +640,7 @@
 #let mesh-processing-pipeline() = diagram(
   spacing: (11mm, 8mm),
   node-stroke: 0.6pt + faps-stroke,
-  node-corner-radius: 3pt,
+  node-corner-radius: 0pt,
   edge-stroke: 0.8pt + faps-stroke,
 
   // Source
@@ -734,7 +734,7 @@
 #let kinematic-chain-diagram() = diagram(
   spacing: (26mm, 8mm),
   node-stroke: 0.6pt + faps-stroke,
-  node-corner-radius: 3pt,
+  node-corner-radius: 0pt,
   edge-stroke: 0.8pt + faps-stroke,
 
   // Ceiling mount (world)
@@ -784,7 +784,7 @@
 #let tendon-actuation-dataflow() = diagram(
   spacing: (10mm, 10mm),
   node-stroke: 0.6pt + faps-stroke,
-  node-corner-radius: 3pt,
+  node-corner-radius: 0pt,
   edge-stroke: 0.8pt + faps-stroke,
 
   // RL policy output
@@ -832,7 +832,7 @@
 #let tendon-antagonistic() = diagram(
   spacing: (28mm, 12mm),
   node-stroke: 0.6pt + faps-stroke,
-  node-corner-radius: 3pt,
+  node-corner-radius: 0pt,
   edge-stroke: 0.8pt + faps-stroke,
 
   // Proximal motors
@@ -874,7 +874,7 @@
 #let tensegrity-concept() = diagram(
   spacing: (30mm, 10mm),
   node-stroke: 0.6pt + faps-stroke,
-  node-corner-radius: 3pt,
+  node-corner-radius: 0pt,
   edge-stroke: 0.8pt + faps-stroke,
 
   // Core principle boxes
@@ -1199,7 +1199,7 @@
 #let training-infrastructure-stack() = diagram(
   spacing: (10mm, 16mm),
   node-stroke: 0.6pt + faps-stroke,
-  node-corner-radius: 3pt,
+  node-corner-radius: 0pt,
   edge-stroke: 0.8pt + faps-stroke,
 
   // Algorithm layer (top): PPO + skrl

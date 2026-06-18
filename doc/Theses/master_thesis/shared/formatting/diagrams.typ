@@ -20,7 +20,7 @@
 #let rl-agent-env-loop() = diagram(
   spacing: (30mm, 0mm),
   node-stroke: 0.6pt + faps-stroke,
-  node-corner-radius: 3pt,
+  node-corner-radius: 0pt,
   edge-stroke: 0.8pt + faps-stroke,
 
   node((0, 0), align(center)[*Agent*\ $pi(a | o)$],
@@ -42,7 +42,7 @@
 #let isaac-stack() = diagram(
   spacing: (8mm, 8mm),
   node-stroke: 0.6pt + faps-stroke,
-  node-corner-radius: 3pt,
+  node-corner-radius: 0pt,
   edge-stroke: 0.8pt + faps-stroke,
 
   // IsaacLab layer
@@ -94,7 +94,7 @@
 #let physx-pipeline() = diagram(
   spacing: (10mm, 10mm),
   node-stroke: 0.6pt + faps-stroke,
-  node-corner-radius: 3pt,
+  node-corner-radius: 0pt,
   edge-stroke: 0.8pt + faps-stroke,
 
   // Scene authoring
@@ -134,7 +134,7 @@
 #let mdp-managers() = diagram(
   spacing: (8mm, 10mm),
   node-stroke: 0.6pt + faps-stroke,
-  node-corner-radius: 3pt,
+  node-corner-radius: 0pt,
   edge-stroke: 0.8pt + faps-stroke,
 
   // Entry
@@ -191,7 +191,7 @@
 #let format-conversion-pipeline() = diagram(
   spacing: (16mm, 0mm),
   node-stroke: 0.6pt + faps-stroke,
-  node-corner-radius: 3pt,
+  node-corner-radius: 0pt,
   edge-stroke: 0.8pt + faps-stroke,
 
   // Sources
@@ -227,7 +227,7 @@
 #let tendon-mapping() = diagram(
   spacing: (20mm, 12mm),
   node-stroke: 0.6pt + faps-stroke,
-  node-corner-radius: 3pt,
+  node-corner-radius: 0pt,
   edge-stroke: 0.8pt + faps-stroke,
 
   // Main chain
@@ -264,7 +264,7 @@
 #let methodology-overview() = diagram(
   spacing: (6mm, 10mm),
   node-stroke: 0.6pt + faps-stroke,
-  node-corner-radius: 3pt,
+  node-corner-radius: 0pt,
   edge-stroke: 0.8pt + faps-stroke,
 
   // Stage 1: Construction & Validation
@@ -316,7 +316,7 @@
 #let reward-pipeline() = diagram(
   spacing: (12mm, 8mm),
   node-stroke: 0.6pt + faps-stroke,
-  node-corner-radius: 3pt,
+  node-corner-radius: 0pt,
   edge-stroke: 0.8pt + faps-stroke,
 
   // Phase 1: Approach & Grasp

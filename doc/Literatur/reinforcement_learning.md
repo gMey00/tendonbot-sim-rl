@@ -42,6 +42,18 @@
 
 ---
 
+## Reproducibility & Statistical Evaluation
+
+### Conference Papers & Preprints
+
+| Ref | Authors | Title | Year | Impl. | Thesis | Cred. | Summary |
+|-----|---------|-------|------|-------|--------|-------|---------|
+| [Henderson2018DeepRLMatters](sources/reinforcement_learning/Papers/Henderson2018DeepRLMatters.pdf) | Henderson, P. et al. | "Deep Reinforcement Learning that Matters" | 2018 | 🟢 | 🟢 | 🟢 | AAAI 2018. Seminal reproducibility study for deep RL: documents large run-to-run variance across seeds (two 5-seed splits of one 10-seed run differ significantly) and hyperparameter sensitivity; uses five trials itself and recommends averaging over multiple seeds with significance tests, bootstrap confidence bounds, and power analysis (stops short of prescribing a fixed seed count). Cited in Background §2.1.5 (multi-seed motivation) and Methodology/Results (5-seed protocol). [arXiv](https://arxiv.org/abs/1709.06560) |
+| [Colas2018HowManySeeds](sources/reinforcement_learning/Papers/Colas2018HowManySeeds.pdf) | Colas, C., Sigaud, O. & Oudeyer, P.-Y. | "How Many Random Seeds? Statistical Power Analysis in Deep RL Experiments" | 2018 | 🟢 | 🟢 | 🟢 | Power-analysis paper. Recommends Welch's *t*-test over bootstrap CIs for small N (β=0.51 at N=5 vs 0.19 at N=10 in their example), shows the bootstrap CI test is unreliable below N≈20, and gives explicit guidance for α<0.05 and Bonferroni correction across multiple comparisons. Cited in Background §2.1.5 (statistical methodology) and Results §5.2 (significance tests). [arXiv](https://arxiv.org/abs/1806.08295) |
+| [Agarwal2021Precipice](sources/reinforcement_learning/Papers/Agarwal2021Precipice.pdf) | Agarwal, R. et al. | "Deep Reinforcement Learning at the Edge of the Statistical Precipice" | 2021 | 🟡 | 🟢 | 🟢 | NeurIPS 2021 (Outstanding Paper). Argues point estimates of aggregate performance ignore the uncertainty of finite runs; advocates interval estimates via stratified bootstrap CIs, the robust interquartile mean (IQM), performance profiles, and probability of improvement — reliable for as few as ~10 runs. The `rliable` library. Cited in Background §2.1.5 (robust aggregate reporting). [arXiv](https://arxiv.org/abs/2108.13264) |
+
+---
+
 ## Model-Based RL
 
 ### Preprints
