@@ -324,7 +324,17 @@ def _build_checkpoint_agent(env, task: str, experiment_cfg: dict, checkpoint_pat
         resume_path = str(ckpts[-1])
     print(f"[evaluate][checkpoint] loading: {resume_path}")
     runner.agent.load(resume_path)
-    runner.agent.set_running_mode("eval")
+    # skrl 1.x saved the observation scaler as 'state_preprocessor'; skrl 2.x
+    # renamed it to 'observation_preprocessor'.  agent.load() iterates the
+    # checkpoint keys against agent.checkpoint_modules and silently skips the
+    # old 'state_preprocessor' key, leaving a fresh identity scaler so the
+    # policy sees raw un-normalized observations.  Manually migrate it.
+    _ckpt = torch.load(resume_path, map_location="cpu", weights_only=False)
+    _obs_pre = runner.agent.checkpoint_modules.get("observation_preprocessor", None)
+    if "state_preprocessor" in _ckpt and _obs_pre is not None and hasattr(_obs_pre, "load_state_dict"):
+        _obs_pre.load_state_dict(_ckpt["state_preprocessor"])
+        print("[evaluate] Migrated 'state_preprocessor' -> 'observation_preprocessor' from checkpoint")
+    runner.agent.enable_training_mode(False, apply_to_models=True)
     return runner
 
 
@@ -611,7 +621,7 @@ def _main_checkpoint() -> None:
 
             def _factory(_env):
                 def _act(obs):
-                    outputs = runner.agent.act(obs, timestep=0, timesteps=0)
+                    outputs = runner.agent.act(obs, _env.state(), timestep=0, timesteps=0)
                     return outputs[-1].get("mean_actions", outputs[0])
 
                 return _act

@@ -141,7 +141,13 @@ class CubeSetPolicy(GaussianMixin, Model):
         initial_log_std: float = 0.0,
         **_: Any,
     ) -> None:
-        Model.__init__(self, observation_space, action_space, device)
+        Model.__init__(
+            self,
+            observation_space=observation_space,
+            state_space=observation_space,
+            action_space=action_space,
+            device=device,
+        )
         GaussianMixin.__init__(
             self,
             clip_actions=clip_actions,
@@ -160,12 +166,14 @@ class CubeSetPolicy(GaussianMixin, Model):
         self.mean = nn.Linear(last, self.num_actions)
         self.log_std = nn.Parameter(initial_log_std * torch.ones(self.num_actions))
 
-    def compute(self, inputs: Mapping[str, torch.Tensor], role: str = "") -> tuple[torch.Tensor, torch.Tensor, dict]:
-        x = inputs["states"]
+    def compute(self, inputs: Mapping[str, torch.Tensor], role: str = "") -> tuple[torch.Tensor, dict]:
+        x = inputs.get("states")
+        if x is None:
+            x = inputs["observations"]
         non_set, set_3d, mask, _priv = self.layout.split(x)
         pooled = self.encoder(set_3d, mask)
         h = self.torso(torch.cat([non_set, pooled], dim=-1))
-        return self.mean(h), self.log_std, {}
+        return self.mean(h), {"log_std": self.log_std}
 
 
 class CubeSetValue(DeterministicMixin, Model):
@@ -187,7 +195,13 @@ class CubeSetValue(DeterministicMixin, Model):
         clip_actions: bool = False,
         **_: Any,
     ) -> None:
-        Model.__init__(self, observation_space, action_space, device)
+        Model.__init__(
+            self,
+            observation_space=observation_space,
+            state_space=observation_space,
+            action_space=action_space,
+            device=device,
+        )
         DeterministicMixin.__init__(self, clip_actions=clip_actions, role="value")
         if layout is None:
             raise ValueError("CubeSetValue requires an explicit `layout` (CubeSetLayout).")
@@ -199,7 +213,9 @@ class CubeSetValue(DeterministicMixin, Model):
         self.head = nn.Linear(last, 1)
 
     def compute(self, inputs: Mapping[str, torch.Tensor], role: str = "") -> tuple[torch.Tensor, dict]:
-        x = inputs["states"]
+        x = inputs.get("states")
+        if x is None:
+            x = inputs["observations"]
         non_set, set_3d, mask, priv = self.layout.split(x)
         pooled = self.encoder(set_3d, mask)
         h = self.torso(torch.cat([non_set, pooled, priv], dim=-1))
