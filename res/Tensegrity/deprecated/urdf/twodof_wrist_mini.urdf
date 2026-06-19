@@ -29,7 +29,7 @@
     <parent link="root_link"/>
     <child link="wrist_intermediate_link"/>
     <axis xyz="1 0 0"/>
-    <origin rpy="0 0 3.14" xyz="0 0 -0.042"/>
+    <origin rpy="0 0 3.14" xyz="0 0 -0.046"/>
     <limit effort="10.0" lower="-0.8" upper="0.8" velocity="0.5"/>
     <dynamics damping="0.01" friction="0.04"/>
     <!-- damping="0.0036" friction="0.002"-->

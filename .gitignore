@@ -30,6 +30,7 @@ src/tensegrity_pick/outputs/*
 .vscode/
 .idea/
 .github/
+.obsidian/
 
 # OS
 .DS_Store
