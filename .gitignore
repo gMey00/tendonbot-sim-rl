@@ -48,6 +48,7 @@ docs/**
 reports/**
 .github/**
 
+**/.DS_Store
 # LaTeX temporary / build files
 *.aux
 *.lof
