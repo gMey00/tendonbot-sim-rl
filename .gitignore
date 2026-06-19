@@ -29,6 +29,7 @@ src/tensegrity_pick/outputs/*
 # IDE
 .vscode/
 .idea/
+.github/
 
 # OS
 .DS_Store
@@ -46,9 +47,8 @@ doc/Literatur/sources/**
 
 docs/**
 reports/**
-.github/**
+*/.DS_Store
 
-**/.DS_Store
 # LaTeX temporary / build files
 *.aux
 *.lof
