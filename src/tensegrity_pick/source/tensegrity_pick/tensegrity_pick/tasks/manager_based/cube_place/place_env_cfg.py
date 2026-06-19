@@ -387,18 +387,7 @@ class RewardsCfg:
         },
     )
 
-    # ── 7. Negative: red cube in drum ────────────────────────────────
-    red_in_target = RewTerm(
-        func=task_rew.red_cube_in_target,
-        weight=-12.0,
-        params={
-            "red_name": "red_cube",
-            "drum_name": "drum_target",
-            "bin_geom": _BIN_GEOM,
-        },
-    )
-
-    # ── 7b. Red clearance: reward for red cube being far from drum ───
+    # ── 7a. Red clearance: reward for red cube being far from drum ───
     # Active only before green cube is grasped — encourages the agent
     # to push red aside first, then focus on green.
     red_clearance = RewTerm(
@@ -411,7 +400,7 @@ class RewardsCfg:
         },
     )
 
-    # ── 7c. Red-green separation: push red away from green ─────────
+    # ── 7b. Red-green separation: push red away from green ─────────
     # Drives a push-aside phase before grasping, especially when red
     # is on top of green.  Only active before grasping (!was_grasped).
     red_green_separation = RewTerm(
@@ -430,10 +419,10 @@ class RewardsCfg:
     # prevent collisions with the drum rim.
     return_to_neutral = RewTerm(
         func=task_rew.return_to_neutral,
-        weight=25.0,
+        weight=100.0,
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=MISSING),
-            "std": 1.0,
+            "std": 0.25,
         },
     )
 

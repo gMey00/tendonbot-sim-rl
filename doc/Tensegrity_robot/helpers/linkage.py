@@ -3,9 +3,9 @@
 References
 ----------
 Klein (2023), §3.2.1 — mechanism dimensions and joint limits.
-McCarthy & Soh (2010), §1.3 — closure condition.
-Uicker et al. (2011), §3.4 — Kennedy's Theorem / ICR.
-Dijksman (1977) — rolling centrode ellipses.
+McCarthy & Soh (2011), §1.3 — closure condition.
+Uicker et al. (2017), §3.4 — Kennedy's Theorem / ICR.
+Dijksman (1976) — rolling centrode ellipses.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from scipy.optimize import brentq
 def antiparallel_phi(theta: float, k_e: float, l_e: float) -> float:
     """Output rod angle for the antiparallelogram branch.
 
-    McCarthy & Soh (2010), §1.3:
+    McCarthy & Soh (2011), §1.3:
         t = tan((φ−θ)/2) = −k_e cos θ / (l_e − k_e sin θ)
     """
     t = -k_e * np.cos(theta) / (l_e - k_e * np.sin(theta))
@@ -54,7 +54,7 @@ def instantaneous_center(
     l_e: float,
     theta_0: float,
 ) -> np.ndarray | None:
-    """ICR via Kennedy's Theorem (Uicker et al. 2011, §3.4)."""
+    """ICR via Kennedy's Theorem (Uicker et al. 2017, §3.4)."""
     theta = theta_0 + delta
     phi = antiparallel_phi(theta, k_e, l_e)
     denom = np.sin(theta - phi)
@@ -97,7 +97,7 @@ def delta_for_elbow(
 
 
 # ═══════════════════════════════════════════════════════════════════
-# Centrode Ellipses  (Dijksman 1977)
+# Centrode Ellipses  (Dijksman 1976)
 # ═══════════════════════════════════════════════════════════════════
 
 def centrode_params(l_e: float, k_e: float) -> tuple[float, float, float]:

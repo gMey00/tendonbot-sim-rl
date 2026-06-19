@@ -25,7 +25,7 @@ import numpy as np
 
 
 # ── Output paths ──────────────────────────────────────────────────────────────
-_PROJ_ROOT = Path("/home/robot/studentische-arbeiten/src/tensegrity_pick")
+_PROJ_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_ROOT = _PROJ_ROOT / "outputs" / "model_validation"
 PD_DATA_DIR = DEFAULT_OUTPUT_ROOT / "pd" / "data"
 TENDON_DATA_DIR = DEFAULT_OUTPUT_ROOT / "tendon" / "data"

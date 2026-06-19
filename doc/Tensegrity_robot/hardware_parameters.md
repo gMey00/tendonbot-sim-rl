@@ -6,7 +6,7 @@ This document consolidates all physical hardware data from the Klein (2023)
 master thesis that impact the simulation model.  Each value includes a
 page reference to the thesis.
 
-> **Source:** Klein, R. (2023). *Arbeitsraumanalyse, Simulation und
+> **Source:** Klein, M. (2023). *Arbeitsraumanalyse, Simulation und
 > Bewegungsplanung eines seilgetriebenen robotischen Manipulators.*
 > Master's thesis, Friedrich-Alexander-Universität Erlangen-Nürnberg (FAPS).
 

@@ -28,6 +28,7 @@ always (N, 3) for positions.
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import torch
@@ -337,15 +338,44 @@ def return_to_neutral(
 ) -> torch.Tensor:
     """Reward for returning joints to their default positions after task completion.
 
-    Returns ``1 - tanh(joint_distance / std)`` where joint_distance is the
-    L2 norm between current and default joint positions.  Gated on
-    ``was_placed`` — only active once the cube has been placed in the drum
-    (not on failed drops, so the agent can retry reaching).
+    Uses per-joint normalized distance so prismatic (metres) and revolute
+    (radians) joints are commensurate:
+
+    - Each joint deviation ``(current - default)`` is divided by the joint's
+      soft position range ``(upper - lower)``, taken from
+      ``robot.data.soft_joint_pos_limits`` (shape ``(N, J, 2)``).
+      Where the range is not finite or smaller than 1e-6, a fallback scale
+      of 1.0 is used.
+    - The scalar distance is the RMS of the normalized per-joint deviations
+      (``‖dev‖₂ / sqrt(num_joints)``), so the value lives in roughly [0, 1]
+      regardless of DOF count or joint type.
+    - ``result = 1.0 - tanh(distance / std)``
+    - Gated on ``was_placed``: only active once the cube has been placed in
+      the drum (not on failed drops, so the agent can retry reaching).
+
+    Args:
+        env:       The RL environment.
+        asset_cfg: Scene entity config selecting the robot and its joints.
+        std:       Width parameter for the tanh shaping.  With normalized
+                   input in [0, 1], a value of 0.25 gives a steep pull toward
+                   exact home.
     """
     robot: Articulation = env.scene[asset_cfg.name]
-    current = robot.data.joint_pos[:, asset_cfg.joint_ids]
-    default = robot.data.default_joint_pos[:, asset_cfg.joint_ids]
-    distance = torch.norm(current - default, dim=-1)
+    current = robot.data.joint_pos[:, asset_cfg.joint_ids]          # (N, J)
+    default = robot.data.default_joint_pos[:, asset_cfg.joint_ids]  # (N, J)
+
+    # Per-joint normalization: scale by the soft joint position range.
+    limits = robot.data.soft_joint_pos_limits[:, asset_cfg.joint_ids, :]  # (N, J, 2)
+    scale = limits[..., 1] - limits[..., 0]                               # (N, J)
+    # Guard against non-finite or near-zero ranges (e.g. fixed joints).
+    valid = scale.isfinite() & (scale > 1e-6)
+    scale = torch.where(valid, scale, torch.ones_like(scale))
+
+    # RMS of normalized deviations → consistent ~[0, 1] range.
+    dev = (current - default) / scale                                      # (N, J)
+    num_joints = dev.shape[-1]
+    distance = torch.norm(dev, dim=-1) / math.sqrt(num_joints)             # (N,)
+
     result = 1.0 - torch.tanh(distance / std)
     if hasattr(env, "was_placed"):
         result = result * env.was_placed.float()
@@ -500,26 +530,6 @@ def green_cube_in_target(
     if hasattr(env, "was_grasped"):
         return inside * env.was_grasped.to(torch.float32)
     return inside
-
-
-def red_cube_in_target(
-    env: ManagerBasedRLEnv,
-    red_name: str,
-    drum_name: str,
-    bin_geom: BinCylinder,
-) -> torch.Tensor:
-    """Penalty: 1.0 when the red cube is inside the drum.
-
-    Gated on ``_is_red_active()`` so it returns 0 before the
-    curriculum enables the red cube.
-    """
-    if not _is_red_active(env):
-        return torch.zeros(env.num_envs, device=env.device)
-    red: RigidObject = env.scene[red_name]
-    pos_r = red.data.root_pos_w
-    pos_d = _get_world_pos(env.scene[drum_name], env=env)
-    return _in_upright_cylinder(pos_r, pos_d, bin_geom).to(torch.float32)
-
 
 def red_clearance_from_drum(
     env: ManagerBasedRLEnv,

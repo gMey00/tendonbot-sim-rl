@@ -98,7 +98,7 @@ Extends `ProjBaseSceneCfg` with two rigid-body cubes.
 |---|---|
 | Robot | `TENS_5DOF_GRIPPER_CFG` at (0.15, 0.0, 2.30) m |
 | Green cube | 0.05 m side, 0.05 kg, spawned in spawn box |
-| Red cube | 0.05 m side, 0.05 kg, parked until curriculum activates it |
+| Red cube | 0.05 m side, 0.05 kg, spawned on the belt; distractor rewards gated by curriculum |
 | Target drum | Plastic drum at (0.15, 0.85, 0.0) m (0.547 m diameter, 0.88 m tall) |
 | Conveyor | Dual belt (4 m total), surface at 0.80 m, **inactive** (no motion) |
 | Env spacing | 5.0 m |
@@ -111,10 +111,12 @@ Extends `ProjBaseSceneCfg` with two rigid-body cubes.
 | Y | −0.10 … +0.10 m |
 | Z | belt + 0.03 … belt + 0.05 m (= 0.83 … 0.85 m) |
 
-Only the green cube is placed in the spawn box initially.  The red cube is
-parked at (100, 100, 1) and activated through curriculum after 125 000 steps.
-In play mode the curriculum threshold is set to 0 so both cubes are always
-visible.
+Both cubes are spawned on the conveyor at every reset so that the observation
+vector stays continuous — parking a cube and teleporting it back in later
+creates a discontinuity that destabilises training.  The red cube only takes
+on its distractor role once the `activate_red` curriculum term fires after
+125 000 steps; until then its related rewards are gated off.  In play mode the
+threshold is set to 0, so the red cube acts as a distractor from the first step.
 
 ### Drum Success Geometry
 
@@ -162,7 +164,7 @@ visible.
 | `ee_pos_w` | 3 | Grasp-centre world position |
 | `ee_vel_w` | 3 | Grasp-centre linear velocity |
 | `green_rel` | 3 | Green cube position relative to grasp centre |
-| `red_rel` | 3 | Red cube position relative to grasp centre (zeros when parked) |
+| `red_rel` | 3 | Red cube position relative to grasp centre (zeros if cube inactive) |
 | `fingertip_green_rel` | 3 | Dynamic fingertip → green cube (closure-dependent) |
 | `fingertip_red_rel` | 3 | Dynamic fingertip → red cube (closure-dependent) |
 | `gripper_closure` | 1 | Normalised finger closure [0=open, 1=closed] |
@@ -251,7 +253,8 @@ No early success termination — episodes always run the full 5 s.
 
 | Step Threshold | Change |
 |---|---|
-| 125 000 | Red cube activated (moved from parking to spawn box) |
+| 25 000 → 100 000 | Spawn band widens linearly from ±0.10 m to ±0.30 m in Y |
+| 125 000 | Red-cube distractor rewards activated (cube stays on the belt throughout) |
 | 150 000 | `action_rate` weight: −1×10⁻⁴ → −2×10⁻³ |
 | 150 000 | `joint_vel` weight: −1×10⁻⁴ → −2×10⁻³ |
 
@@ -262,7 +265,7 @@ No early success termination — episodes always run the full 5 s.
 | `reset_all` | Full scene reset to defaults |
 | `reset_arm` | Base + arm joints offset by ±0.10 rad; velocities zeroed |
 | `reset_gripper` | `finger_joint` reset to 0.0 (fully open) |
-| `reset_cubes` | Green cube randomised in spawn box; red parked or in spawn box (after curriculum) |
+| `reset_cubes` | Both cubes randomised in the spawn box every reset (red stays on the belt; its distractor rewards are gated by curriculum) |
 
 ## Simulation Parameters
 
