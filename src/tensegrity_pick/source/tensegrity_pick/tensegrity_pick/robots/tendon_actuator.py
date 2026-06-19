@@ -191,11 +191,11 @@ class TendonEffortActionCfg(ActionTermCfg):
 
     Raw RL actions in [-1, 1] are mapped to [0, max_tension].
 
-    .. note:: TODO(motor-params) — This value is derived from Maxon EC60
-       motor torque (0.401 Nm continuous) × cable-wrapping gearing ÷ spool
-       radius.  The elbow cables wrap 3× around rollers (3:1 mechanical
-       advantage).  Confirm spool radius from Klein (2023) hardware section.
-       See ``doc/open_questions.md`` for details.
+    .. note:: This value is derived from Maxon EC60 motor torque
+       (0.401 Nm continuous) × cable-wrapping gearing ÷ spool radius.
+       The elbow cables wrap 3× around rollers (3:1 mechanical advantage).
+       The exact spool radius and motor-gearing chain remain open hardware
+       parameters; see ``doc/open_questions.md``.
     """
 
     jacobian_transpose: list[list[float]] = MISSING
@@ -456,7 +456,7 @@ class PhysicalTendonEffortActionCfg(ActionTermCfg):
     max_tension: float = 500.0
     """Maximum per-tendon tension in Newtons.
 
-    .. note:: TODO(motor-params) — See :class:`TendonEffortActionCfg` and
+    .. note:: See :class:`TendonEffortActionCfg` and
        ``doc/open_questions.md`` for the motor-gearing derivation.
     """
 

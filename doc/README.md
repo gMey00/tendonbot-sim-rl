@@ -16,16 +16,16 @@ Project documentation for the tensegrity robot simulation and reinforcement lear
 | [robot_gripper_comparison.md](robot_gripper_comparison.md) | Robot and gripper comparison datasheet (UR10e, UR10, Kinova Gen3, tensegrity) |
 | [open_questions.md](open_questions.md) | Open questions and research gaps |
 | [TODO.md](TODO.md) | Project TODO list |
-| [project_thesis.md](project_thesis.md) | Project thesis proposal, research question, goals, and literature |
-| [master_thesis.md](master_thesis.md) | Master thesis proposal, research question, goals, and literature |
+| [project_thesis.md](Theses/project_thesis.md) | Project thesis proposal, research question, goals, and literature |
+| [master_thesis.md](Theses/master_thesis.md) | Master thesis proposal, research question, goals, and literature |
 | [workflow_guide.md](workflow_guide.md) | Development workflow for Manipulator RL Tasks from scratch |
-| [workflow_guide_de.md](workflow_guide_de.md) | Entwicklungs-Workflow für Manipulator RL-Aufgaben von Grunddauf |
-| [antiparallelogram_kinematics.ipynb](antiparallelogram_kinematics.ipynb) | Interactive antiparallelogram linkage kinematics notebook |
-| [wrist_kinematics.ipynb](wrist_kinematics.ipynb) | Interactive wrist kinematics notebook |
+| [workflow_guide_de.md](workflow_guide_de.md) | Entwicklungs-Workflow für Manipulator-RL-Aufgaben von Grund auf |
+| [antiparallelogram_kinematics.ipynb](Tensegrity_robot/antiparallelogram_kinematics.ipynb) | Interactive antiparallelogram linkage kinematics notebook |
+| [wrist_kinematics.ipynb](Tensegrity_robot/wrist_kinematics.ipynb) | Interactive wrist kinematics notebook |
 
 ### Literature
 
-Annotated bibliographies organized by topic, located in [`literatur/`](literatur/):
+Annotated bibliographies organized by topic, located in [`Literatur/`](Literatur/):
 
 | File | Topic |
 |------|-------|

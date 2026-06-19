@@ -20,13 +20,19 @@ References:
 - louislelay/kinova_isaaclab_sim2real: sim2real validated pipeline
 """
 
+import os
+
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets.articulation import ArticulationCfg
 
 from .robotiq_2f140_gripper_cfg import get_gripper_actuators
 
-PROJ_ASSETS_PATH = "/home/robot/studentische-arbeiten/res"
+# Repository asset root. Resolved from PROJECT_PATH (exported by
+# .config/env_vars.sh), falling back to the default checkout location.
+PROJ_ASSETS_PATH = os.path.join(
+    os.environ.get("PROJECT_PATH", "/home/robot/studentische-arbeiten"), "res"
+)
 
 TARGET_LINK_NAME = "end_effector_link"
 CONTROLLED_JOINT_NAMES = [

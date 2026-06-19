@@ -13,10 +13,9 @@ from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdF
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, check_file_path
 
-from tensegrity_pick.robots.tensegrity_robot_cfg import TENS_5DOF_GRIPPER_CFG
+from tensegrity_pick.robots.tensegrity_robot_cfg import PROJ_ASSETS_PATH, TENS_5DOF_GRIPPER_CFG
 
 ENV_NS = "{ENV_REGEX_NS}"
-PROJ_ASSETS_PATH = "/home/robot/studentische-arbeiten/res"
 
 # --------------------------------------------------------------------------------------
 # Metric constants from project specifications (CAD + USD analysis)

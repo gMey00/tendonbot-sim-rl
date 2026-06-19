@@ -79,8 +79,7 @@ studentische-arbeiten/
 ├── src/
 │   └── tensegrity_pick/    Main Isaac Lab extension (tasks, robot configs, scripts)
 ├── test/                   Test suite (pytest — actuator math, config validation, env smoke tests)
-├── tools/                  Installation and setup scripts
-└── workspace_analysis_output/  Pre-computed workspace analysis data
+└── tools/                  Installation and setup scripts
 ```
 
 > See each folder's `README.md` for details.

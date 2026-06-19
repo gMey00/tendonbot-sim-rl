@@ -573,9 +573,9 @@ def four_bar_comparison_figure(
 
     References
     ----------
-    - Uicker et al. (2011) — four-bar classification
-    - McCarthy & Soh (2010) — closure equation
-    - Dijksman (1977) — antiparallelogram centrode ellipses
+    - Uicker et al. (2017) — four-bar classification
+    - McCarthy & Soh (2011) — closure equation
+    - Dijksman (1976) — antiparallelogram centrode ellipses
     """
     fig = go.Figure()
     theta_0 = np.arcsin(k / l)

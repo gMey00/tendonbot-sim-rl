@@ -11,7 +11,7 @@ across the task-relevant volume.
 > **Note — Disc approximation only.**  All workspace analysis results
 > presented in this work use the **disc-approximated elbow** model
 > exclusively.  Computing reliable FK samples for the physical
-> antiparallelogram variant requires enforcing the McCarthy & Soh (2010)
+> antiparallelogram variant requires enforcing the McCarthy & Soh (2011)
 > four-bar closure equation, resetting the PhysX loop-closure constraint
 > before each batch, and rejecting samples where the constraint breaks.
 > Despite these measures, the PhysX `excludeFromArticulation` loop-closure
@@ -178,7 +178,7 @@ instantaneous center of rotation (ICR) with a fixed pivot.  As detailed
 in [`antiparallelogram_kinematics.ipynb`](antiparallelogram_kinematics.ipynb),
 this produces a **shorter** forearm-tip arc at identical elbow angles,
 because the physical ICR migrates outward along the fixed centrode
-ellipse (Dijksman, 1977), effectively lengthening the lever.  The
+ellipse (Dijksman, 1976), effectively lengthening the lever.  The
 [comparison plot](../Theses_typst/shared/figures/elbow_comparison_static.svg)
 shows the positional deviation growing to several millimetres at ±75°,
 with the disc arc always falling **inside** the antiparallelogram arc.

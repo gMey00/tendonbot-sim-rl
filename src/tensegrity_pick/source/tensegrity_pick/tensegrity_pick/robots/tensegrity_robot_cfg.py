@@ -1,4 +1,4 @@
-"""Tensegrity robot configurations with approximated elbow (PD-controlled) .
+"""Tensegrity robot configurations with approximated elbow (PD-controlled).
 
 Provides ready-to-use :class:`ArticulationCfg` instances for the 3-DOF
 manipulator and 5-DOF manipulator-with-gripper.  All joints use
@@ -10,6 +10,8 @@ Configs
 * ``TENS_5DOF_GRIPPER_CFG`` — 2-DOF linear base + 3-DOF arm + Robotiq gripper
 """
 
+import os
+
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets.articulation import ArticulationCfg
@@ -17,7 +19,11 @@ from isaaclab.assets.articulation import ArticulationCfg
 from .robotiq_2f140_gripper_cfg import get_gripper_actuators
 
 
-PROJ_ASSETS_PATH = "/home/robot/studentische-arbeiten/res"
+# Repository asset root. Resolved from PROJECT_PATH (exported by
+# .config/env_vars.sh), falling back to the default checkout location.
+PROJ_ASSETS_PATH = os.path.join(
+    os.environ.get("PROJECT_PATH", "/home/robot/studentische-arbeiten"), "res"
+)
 
 TARGET_LINK_NAME_3DOF = "tool_link"
 CONTROLLED_JOINT_NAMES_3DOF = ["elbow_joint", "wrist_x_joint", "wrist_y_joint"]
@@ -25,8 +31,7 @@ TARGET_LINK_NAME_5DOF = "tool_link_0"
 CONTROLLED_JOINT_NAMES_5DOF = ["base_y_joint", "base_z_joint", "elbow_joint", "wrist_x_joint", "wrist_y_joint"]
 
 
-""" 3DOF arm with PD-controlled elbow and wrist joints"""
-
+# 3-DOF arm: PD-controlled elbow and wrist.
 TENS_3DOF_CFG = ArticulationCfg(
 
     spawn=sim_utils.UsdFileCfg(
@@ -80,16 +85,14 @@ TENS_3DOF_CFG = ArticulationCfg(
     },
 )
 
-"3DOF arm with PD-controlled elbow and wrist joints (low resolution visualization)"
-
+# 3-DOF arm, low-resolution visualization mesh.
 TENS_3DOF_LO_CFG = TENS_3DOF_CFG.replace(
     spawn=TENS_3DOF_CFG.spawn.replace(
         usd_path=f"{PROJ_ASSETS_PATH}/Tensegrity/threedof_arm/tensegrity_threedof_arm_elbow_approx_lo.usd"
     )
 )
 
-""" 5DOF arm + gripper with PD-controlled base and arm joints, plus Robotiq gripper"""
-
+# 5-DOF manipulator: PD-controlled base + arm, plus Robotiq 2F-140 gripper.
 TENS_5DOF_GRIPPER_CFG = ArticulationCfg(
 
     spawn=sim_utils.UsdFileCfg(
@@ -177,8 +180,7 @@ TENS_5DOF_GRIPPER_CFG = ArticulationCfg(
     },
 )
 
-"5DOF arm + gripper with PD-controlled base and arm joints, plus Robotiq gripper (low resolution visualization)"
-
+# 5-DOF manipulator, low-resolution visualization mesh.
 TENS_5DOF_GRIPPER_LO_CFG = TENS_5DOF_GRIPPER_CFG.replace(
     spawn=TENS_5DOF_GRIPPER_CFG.spawn.replace(
         usd_path=f"{PROJ_ASSETS_PATH}/Tensegrity/fivedof_manipulator/fivedof_linear_base_elbow_approx_robotiq2f140_lo.usd"

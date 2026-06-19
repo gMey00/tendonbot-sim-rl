@@ -22,8 +22,8 @@ Usage
 -----
 .. code-block:: bash
 
-    cd /home/robot/Isaac/IsaacLab
-    ./isaaclab.sh -p /home/robot/studentische-arbeiten/src/tensegrity_pick/scripts/step_response_test.py \\
+    cd "$ISAACLAB_PATH"
+    ./isaaclab.sh -p "$PROJECT_PATH"/src/tensegrity_pick/scripts/step_response_test.py \\
         [--headless] [--num-envs 1] [--output-dir ./step_response_results]
 
 References
@@ -66,7 +66,7 @@ from isaaclab.utils import configclass
 
 # ── Robot config ──────────────────────────────────────────────────────────
 
-PROJ_ASSETS_PATH = "/home/robot/studentische-arbeiten/res"
+PROJ_ASSETS_PATH = str(_Path(__file__).resolve().parents[3] / "res")
 
 ARM_JOINT_NAMES = ["elbow_joint", "wrist_y_joint", "wrist_x_joint"]
 
@@ -640,7 +640,7 @@ def main() -> None:
     parser.add_argument("--num-envs", type=int, default=1, help="Number of parallel environments")
     parser.add_argument(
         "--output-dir", type=str,
-        default="/home/robot/studentische-arbeiten/src/tensegrity_pick/scripts/step_response_results",
+        default=str(Path(__file__).resolve().parent / "step_response_results"),
         help="Directory for output plots and CSV",
     )
     parser.add_argument("--step-hold", type=float, default=2.5, help="Hold time per step [s]")
