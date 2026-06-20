@@ -18,7 +18,7 @@ echo "Refresh every ${INTERVAL}s  (Ctrl-C to stop)"
 echo ""
 
 while true; do
-    conda run -n env_isaaclab python3 -u -c "
+    python3 -u -c "
 import os, sys
 from tbparse import SummaryReader
 
@@ -45,7 +45,7 @@ tags = [
 
 total = df[df['tag']=='Reward / Total reward (mean)'].sort_values('step')
 steps = int(total.iloc[-1]['step'])
-pct = steps / 5_000_000 * 100
+pct = steps / 300_000 * 100
 ckpts = len([f for f in os.listdir(os.path.join(run_dir, 'checkpoints'))
              if f.startswith('agent_')])
 
