@@ -1,0 +1,63 @@
+{
+  "robot": "kinova_frankenstein",
+  "mount_height_m": 0.75,
+  "mount_position_m": [
+    0.75,
+    1.0,
+    0.75
+  ],
+  "mount_direction": "up",
+  "total_samples": 5000000,
+  "samples_inside_desired_ws": 141854,
+  "desired_ws_coverage_fraction": 0.4261,
+  "desired_ws_voxels_reached": 14487,
+  "desired_ws_voxels_total": 34000,
+  "yoshikawa_global": {
+    "n": 5000000,
+    "mean": 4.890221,
+    "median": 4.957098,
+    "std": 0.260967,
+    "min": 1.195087,
+    "max": 5.19615,
+    "p5": 4.251693,
+    "p25": 4.833749,
+    "p75": 5.049632,
+    "p95": 5.1504
+  },
+  "yoshikawa_inside_ws": {
+    "n": 141854,
+    "mean": 5.000165,
+    "median": 5.010971,
+    "std": 0.125971,
+    "min": 3.826597,
+    "max": 5.196124,
+    "p5": 4.777696,
+    "p25": 4.932359,
+    "p75": 5.094149,
+    "p95": 5.168756
+  },
+  "condition_global": {
+    "n": 5000000,
+    "mean": 0.732477,
+    "median": 0.737123,
+    "std": 0.092968,
+    "min": 0.121155,
+    "max": 0.999997,
+    "p5": 0.535881,
+    "p25": 0.685374,
+    "p75": 0.790918,
+    "p95": 0.87797
+  },
+  "condition_inside_ws": {
+    "n": 141854,
+    "mean": 0.774767,
+    "median": 0.767729,
+    "std": 0.072094,
+    "min": 0.457227,
+    "max": 0.997001,
+    "p5": 0.666843,
+    "p25": 0.723989,
+    "p75": 0.822524,
+    "p95": 0.904264
+  }
+}

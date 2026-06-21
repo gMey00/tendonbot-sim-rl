@@ -1,0 +1,63 @@
+{
+  "robot": "ur10_f140",
+  "mount_height_m": 0.75,
+  "mount_position_m": [
+    0.75,
+    1.0,
+    0.75
+  ],
+  "mount_direction": "up",
+  "total_samples": 5000000,
+  "samples_inside_desired_ws": 72596,
+  "desired_ws_coverage_fraction": 0.7408,
+  "desired_ws_voxels_reached": 25186,
+  "desired_ws_voxels_total": 34000,
+  "yoshikawa_global": {
+    "n": 5000000,
+    "mean": 1.929873,
+    "median": 2.061173,
+    "std": 0.506302,
+    "min": 0.0,
+    "max": 2.44949,
+    "p5": 0.841837,
+    "p25": 1.695758,
+    "p75": 2.33735,
+    "p95": 2.445327
+  },
+  "yoshikawa_inside_ws": {
+    "n": 72596,
+    "mean": 1.925469,
+    "median": 2.055867,
+    "std": 0.508511,
+    "min": 0.0,
+    "max": 2.449489,
+    "p5": 0.831597,
+    "p25": 1.69034,
+    "p75": 2.333694,
+    "p95": 2.445207
+  },
+  "condition_global": {
+    "n": 5000000,
+    "mean": 0.422222,
+    "median": 0.458798,
+    "std": 0.134662,
+    "min": 0.0,
+    "max": 0.577351,
+    "p5": 0.152318,
+    "p25": 0.336572,
+    "p75": 0.534515,
+    "p95": 0.575409
+  },
+  "condition_inside_ws": {
+    "n": 72596,
+    "mean": 0.421004,
+    "median": 0.456956,
+    "std": 0.135031,
+    "min": 0.0,
+    "max": 0.577351,
+    "p5": 0.150363,
+    "p25": 0.335203,
+    "p75": 0.533427,
+    "p95": 0.575357
+  }
+}

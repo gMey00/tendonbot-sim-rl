@@ -12,8 +12,18 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-import plotly.graph_objects as go
-from IPython.display import HTML, display
+
+# plotly / IPython are only needed by the interactive notebook helpers below.
+# Guard them so the CLI matplotlib tools (e.g. workspace_visualize.py) can run
+# in a plain Python without these notebook-only dependencies installed.
+try:
+    import plotly.graph_objects as go
+except ModuleNotFoundError:  # pragma: no cover - notebook-only dependency
+    go = None
+try:
+    from IPython.display import HTML, display
+except ModuleNotFoundError:  # pragma: no cover - notebook-only dependency
+    HTML = display = None
 
 import sys as _sys
 _sys.path.insert(0, str(Path(__file__).resolve().parents[4] / ".config"))

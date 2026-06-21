@@ -4,7 +4,7 @@ Provides a Kinova Gen3 7-DOF arm with Robotiq 2F-140 gripper for
 baseline comparison against the tensegrity manipulator and UR10e.
 
 The combined USD is pre-assembled and lives at
-``res/KinovaGen3/KinovaFranksenstein_Robotiq2F140.usd``.
+``res/KinovaGen3/KinovaFrankenstein_Robotiq2F140.usd``.
 
 Actuator gains for the Kinova Gen3 are based on community-validated configs from Isaac Lab
 Discussion #4226 (Isaac Sim 5.1.0) and the louislelay/kinova_isaaclab_sim2real
@@ -51,7 +51,7 @@ CONTROLLED_JOINT_NAMES = [
 
 KINOVA_FRANKENSTEIN_GRIPPER_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
-        usd_path=f"{PROJ_ASSETS_PATH}/KinovaGen3/KinovaFranksenstein_Robotiq2F140.usd",
+        usd_path=f"{PROJ_ASSETS_PATH}/KinovaGen3/KinovaFrankenstein_Robotiq2F140.usd",
         activate_contact_sensors=False,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             rigid_body_enabled=True,

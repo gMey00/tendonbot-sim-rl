@@ -105,6 +105,10 @@ parser.add_argument(
     help="Mount orientation: 'down' = ceiling-mounted, 'up' = floor-mounted (default: per-robot)",
 )
 parser.add_argument(
+    "--mount_position", type=float, nargs=3, default=None, metavar=("X", "Y", "Z"),
+    help="Override robot mount position (env-local X Y Z, metres). Default: per-robot config.",
+)
+parser.add_argument(
     "--output_dir", type=str, default=None,
     help="Directory for output files (default: outputs/workspace_analysis[_ur10e])",
 )
@@ -140,8 +144,6 @@ from tensegrity_pick.tasks.manager_based.shared.proj_base_scene_cfg import (  # 
 
 
 from workspace_analysis_helper import compute_desired_workspace_coverage  # noqa: E402
-
-GRIPPER_TIP_LOCAL_OFFSET = torch.tensor(GRIPPER_TIP_OFFSET)
 
 
 # ── Logging ───────────────────────────────────────────────────────────────
@@ -340,6 +342,11 @@ def sample_workspace(
     scene: InteractiveScene,
     device: str,
     mount_height: float = 2.30,
+    mount_position: tuple[float, float, float] | None = None,
+    gripper_tip_offset: tuple[float, float, float] | None = None,
+    max_reach: float = 1.95,
+    reject_above_mount: bool = True,
+    max_abs_y: float | None = 1.7,
     filter_self_collisions: bool = True,
     collision_min_distance: float = 0.05,
     collision_adjacency_skip: int = 1,
@@ -393,6 +400,14 @@ def sample_workspace(
     yoshikawa  : ``(N,)`` Yoshikawa manipulability values.
     condition  : ``(N,)`` inverse condition numbers.
     """
+    # Resolve mount position (env-local) and gripper tip offset (EE-local).
+    if mount_position is None:
+        mount_position = (0.15, 0.0, mount_height)
+    mount_local = np.array(mount_position, dtype=np.float32)
+    tip_local = torch.tensor(
+        gripper_tip_offset if gripper_tip_offset is not None else GRIPPER_TIP_OFFSET
+    )
+
     joint_limits = robot.data.soft_joint_pos_limits[0, joint_ids]
     lower = joint_limits[:, 0]
     upper = joint_limits[:, 1]
@@ -497,37 +512,34 @@ def sample_workspace(
         ee_world = robot.data.body_pos_w[:, ee_body_index, :3]
         ee_quat = robot.data.body_quat_w[:, ee_body_index, :]
         tip_offset_world = quat_apply(
-            ee_quat, GRIPPER_TIP_LOCAL_OFFSET.to(device).expand(num_envs, -1),
+            ee_quat, tip_local.to(device).expand(num_envs, -1),
         )
         tip_world = ee_world + tip_offset_world
         batch_positions = (tip_world - env_origins).cpu().numpy()
 
         # Reject physics-divergent samples using physically motivated bounds.
         #
-        # Three independent constraints, each derived from the kinematic chain:
+        # The bounds are derived from the kinematic chain and configured per
+        # robot (see ``RobotConfig`` in workspace_config.py):
         #
-        #  1. dist_from_mount < 1.95 m
-        #     Triangle-inequality bound: arm_root_travel(≤0.707) + arm_length(1.197)
-        #     = 1.904 m max reach from mount; 1.95 m provides ~2.5% margin.
+        #  1. dist_from_mount < max_reach   (always)
+        #     Sphere of reachability around the actual mount point.  Catches
+        #     PhysX solver blow-ups (samples that fly off to infinity).
         #
-        #  2. Z < mount_height − 0.15
-        #     Arm always hangs BELOW the ceiling mount.  Even at its shortest
-        #     configuration (elbow at 0°) the EE is ~0.2 m below the mount.
+        #  2. Z < mount_z − 0.15            (reject_above_mount, ceiling mounts)
+        #     For overhead/ceiling mounts the arm always hangs BELOW the mount.
+        #     Disabled for floor-standing, upward-mounted arms.
         #
-        #  3. |Y| < base_y_max + arm_length = 0.5 + 1.197 = 1.70 m
-        #     The base Y axis is the only source of lateral motion; the arm can
-        #     add at most arm_length further in Y.  This catches artefacts that
-        #     sit close to mount height in Z (making dist_from_mount plausible)
-        #     but at impossible Y displacements (e.g. Y=2 m with arm only 1.2 m).
-        #
-        # mount_pos in env-local frame = (0.15, 0.0, mount_height)
-        mount_local = np.array([0.15, 0.0, mount_height], dtype=np.float32)
+        #  3. |Y| < max_abs_y               (optional, env-local)
+        #     Extra lateral artefact bound for the tensegrity geometry; the
+        #     generic max_reach sphere already covers floor-mounted arms, so
+        #     this is None (disabled) for them.
         dist_from_mount = np.linalg.norm(batch_positions - mount_local, axis=1)
-        physics_valid = (
-            (dist_from_mount < 1.95)
-            & (batch_positions[:, 2] < mount_height - 0.15)
-            & (np.abs(batch_positions[:, 1]) < 1.7)
-        )
+        physics_valid = dist_from_mount < max_reach
+        if reject_above_mount:
+            physics_valid &= batch_positions[:, 2] < mount_local[2] - 0.15
+        if max_abs_y is not None:
+            physics_valid &= np.abs(batch_positions[:, 1]) < max_abs_y
         collision_free_np &= physics_valid
 
         # ── Elbow-angle post-filter (physical model) ──────────────
@@ -630,6 +642,7 @@ def print_statistics(
     yoshikawa: np.ndarray,
     condition: np.ndarray,
     mount_height: float,
+    mount_position: tuple[float, float, float] = (0.15, 0.0, 2.30),
 ) -> None:
     """Print workspace and manipulability statistics to stderr."""
     _log(f"\n{'=' * 70}")
@@ -678,7 +691,7 @@ def print_statistics(
     _log(f"    Z : [{DESIRED_WS_MIN[2]:.2f}, {DESIRED_WS_MAX[2]:.2f}] m")
 
     _log(f"\n  Scene reference points (env-local):")
-    _log(f"    Robot mount     : (0.15, 0.00, {mount_height:.2f})")
+    _log(f"    Robot mount     : ({mount_position[0]:.2f}, {mount_position[1]:.2f}, {mount_position[2]:.2f})")
     _log(f"    Belt surface    : z = {CONVEYOR_SURFACE_HEIGHT_M:.2f}")
     drum_y = CONVEYOR_WIDTH_M * 0.5 + DRUM_CENTER_TO_CONVEYOR_EDGE_M
     _log(f"    Drum centre     : (0.15, {drum_y:.2f}, 0.00)")
@@ -694,6 +707,7 @@ def save_statistics_json(
     mount_direction: str,
     robot_name: str,
     output_dir: Path,
+    mount_position: tuple[float, float, float] = (0.15, 0.0, 2.30),
 ) -> None:
     """Save machine-readable statistics as JSON for documentation tooling."""
     inside = np.all(
@@ -721,6 +735,7 @@ def save_statistics_json(
     stats = {
         "robot": robot_name,
         "mount_height_m": round(mount_height, 3),
+        "mount_position_m": [round(float(v), 3) for v in mount_position],
         "mount_direction": mount_direction,
         "total_samples": len(positions),
         "samples_inside_desired_ws": int(inside.sum()),
@@ -756,14 +771,29 @@ def main() -> None:
 
     sim = SimulationContext(SimulationCfg(dt=1.0 / 60.0, device=device))
 
-    mount_height = args_cli.mount_height or robot_cfg.mount_height
     mount_direction = args_cli.mount_direction or robot_cfg.default_mount_direction
     mount_rotation = robot_cfg.mount_rotations[mount_direction]
+
+    # Resolve the full mount position (env-local X, Y, Z).  Priority:
+    #   1. --mount_position CLI override
+    #   2. RobotConfig.mount_position
+    #   3. legacy (0.15, 0.0, mount_height) fallback
+    if args_cli.mount_position is not None:
+        mount_position = tuple(args_cli.mount_position)
+    elif robot_cfg.mount_position is not None:
+        mount_position = robot_cfg.mount_position
+    else:
+        _mh = args_cli.mount_height or robot_cfg.mount_height
+        mount_position = (0.15, 0.0, _mh)
+    # mount_height (Z) override still respected when given explicitly.
+    if args_cli.mount_height is not None:
+        mount_position = (mount_position[0], mount_position[1], args_cli.mount_height)
+    mount_height = mount_position[2]
 
     scene_cfg = ProjBaseSceneCfg(num_envs=num_envs, env_spacing=5.0)
 
     init_state = ArticulationCfg.InitialStateCfg(
-        pos=(0.15, 0.0, mount_height),
+        pos=mount_position,
         rot=mount_rotation,
     )
     if robot_choice == "tensegrity":
@@ -784,17 +814,45 @@ def main() -> None:
             prim_path="{ENV_REGEX_NS}/Robot",
             init_state=init_state,
         )
-    elif robot_choice == "ur10e":
-        from tensegrity_pick.robots import UR10E_GRIPPER_CFG
+    elif robot_choice == "ur10_f140":
+        from tensegrity_pick.robots import UR10_GRIPPER_CFG
 
-        scene_cfg.robot = UR10E_GRIPPER_CFG.replace(
+        scene_cfg.robot = UR10_GRIPPER_CFG.replace(
             prim_path="{ENV_REGEX_NS}/Robot",
             init_state=init_state,
         )
-    elif robot_choice == "kinova":
+    elif robot_choice == "ur10_frankenstein":
+        from tensegrity_pick.robots import UR10_FRANKENSTEIN_GRIPPER_CFG
+
+        scene_cfg.robot = UR10_FRANKENSTEIN_GRIPPER_CFG.replace(
+            prim_path="{ENV_REGEX_NS}/Robot",
+            init_state=init_state,
+        )
+    elif robot_choice == "ur5e_f140":
+        from tensegrity_pick.robots import UR5E_GRIPPER_CFG
+
+        scene_cfg.robot = UR5E_GRIPPER_CFG.replace(
+            prim_path="{ENV_REGEX_NS}/Robot",
+            init_state=init_state,
+        )
+    elif robot_choice == "ur5e_frankenstein":
+        from tensegrity_pick.robots import UR5E_FRANKENSTEIN_GRIPPER_CFG
+
+        scene_cfg.robot = UR5E_FRANKENSTEIN_GRIPPER_CFG.replace(
+            prim_path="{ENV_REGEX_NS}/Robot",
+            init_state=init_state,
+        )
+    elif robot_choice == "kinova_f140":
         from tensegrity_pick.robots import KINOVA_GEN3_GRIPPER_CFG
 
         scene_cfg.robot = KINOVA_GEN3_GRIPPER_CFG.replace(
+            prim_path="{ENV_REGEX_NS}/Robot",
+            init_state=init_state,
+        )
+    elif robot_choice == "kinova_frankenstein":
+        from tensegrity_pick.robots import KINOVA_FRANKENSTEIN_GRIPPER_CFG
+
+        scene_cfg.robot = KINOVA_FRANKENSTEIN_GRIPPER_CFG.replace(
             prim_path="{ENV_REGEX_NS}/Robot",
             init_state=init_state,
         )
@@ -867,6 +925,11 @@ def main() -> None:
         robot, ee_body_index, joint_ids, env_origins,
         num_samples, num_envs, sim, scene, device,
         mount_height=mount_height,
+        mount_position=mount_position,
+        gripper_tip_offset=robot_cfg.gripper_tip_offset,
+        max_reach=robot_cfg.max_reach,
+        reject_above_mount=robot_cfg.reject_above_mount,
+        max_abs_y=robot_cfg.max_abs_y,
         collision_min_distance=COLLISION_MIN_DISTANCE,
         collision_adjacency_skip=COLLISION_ADJACENCY_SKIP,
         linked_joint_indices=linked_joint_indices,
@@ -897,10 +960,10 @@ def main() -> None:
     np.save(output_dir / "condition_number.npy", condition)
     _log(f"Raw data saved to {output_dir}/")
 
-    print_statistics(positions, yoshikawa, condition, mount_height)
+    print_statistics(positions, yoshikawa, condition, mount_height, mount_position)
     save_statistics_json(
         positions, yoshikawa, condition, mount_height, mount_direction,
-        robot_choice, output_dir,
+        robot_choice, output_dir, mount_position=mount_position,
     )
 
     _log("Done.")
