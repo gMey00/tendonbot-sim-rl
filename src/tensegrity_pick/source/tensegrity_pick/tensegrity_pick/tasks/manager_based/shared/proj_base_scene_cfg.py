@@ -11,7 +11,7 @@ from isaaclab.assets import RigidObjectCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdFileCfg
 from isaaclab.utils import configclass
-from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, check_file_path
+from isaaclab.utils.assets import check_file_path
 
 from tensegrity_pick.robots.tensegrity_robot_cfg import PROJ_ASSETS_PATH, TENS_5DOF_GRIPPER_CFG
 
@@ -83,7 +83,7 @@ class ProjBaseSceneCfg(InteractiveSceneCfg):
     conveyor = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Conveyor",
         spawn=sim_utils.UsdFileCfg(
-            usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Conveyors/ConveyorBelt_A06.usd",
+            usd_path=f"{PROJ_ASSETS_PATH}/Props/Conveyors/ConveyorBelt_A06.usd",
             scale=(1.0, 1.0, 1.0),
         ),
         init_state=AssetBaseCfg.InitialStateCfg(
@@ -96,7 +96,7 @@ class ProjBaseSceneCfg(InteractiveSceneCfg):
     conveyor_upstream = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/ConveyorUpstream",
         spawn=sim_utils.UsdFileCfg(
-            usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Conveyors/ConveyorBelt_A06.usd",
+            usd_path=f"{PROJ_ASSETS_PATH}/Props/Conveyors/ConveyorBelt_A06.usd",
             scale=(1.0, 1.0, 1.0),
         ),
         init_state=AssetBaseCfg.InitialStateCfg(
