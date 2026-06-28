@@ -36,5 +36,9 @@ from .tensegrity_robot_cfg import (  # noqa: F401
     TENS_3DOF_CFG,
     TENS_5DOF_GRIPPER_CFG,
 )
-from .ur10e_robot_cfg import UR10E_GRIPPER_CFG  # noqa: F401
+from .ur10_robot_cfg import UR10_GRIPPER_CFG  # noqa: F401
+from .ur10_frankenstein_robot_cfg import UR10_FRANKENSTEIN_GRIPPER_CFG  # noqa: F401
+from .ur5e_robot_cfg import UR5E_GRIPPER_CFG  # noqa: F401
+from .ur5e_frankenstein_robot_cfg import UR5E_FRANKENSTEIN_GRIPPER_CFG  # noqa: F401
 from .kinova_gen3_robot_cfg import KINOVA_GEN3_GRIPPER_CFG  # noqa: F401
+from .kinova_frankenstein_robot_cfg import KINOVA_FRANKENSTEIN_GRIPPER_CFG  # noqa: F401
