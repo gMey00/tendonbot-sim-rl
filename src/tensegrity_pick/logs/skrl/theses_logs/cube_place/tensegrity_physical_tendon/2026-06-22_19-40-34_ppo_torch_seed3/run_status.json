@@ -1,0 +1,8 @@
+{
+  "status": "completed",
+  "task": "Template-Tensegrity-Cube-Place-Physical-Tendon-v0",
+  "target_timesteps": 300000,
+  "run_dir": "/home/hpc/iwfa/iwfa131h/studentische-arbeiten/src/tensegrity_pick/logs/skrl/cube_place/tensegrity_physical_tendon/2026-06-22_19-40-34_ppo_torch_seed3",
+  "algorithm": "ppo",
+  "framework": "torch"
+}

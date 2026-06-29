@@ -1,0 +1,70 @@
+seed: 3
+models:
+  separate: false
+  policy:
+    class: GaussianMixin
+    clip_actions: false
+    clip_log_std: true
+    min_log_std: -2.5
+    max_log_std: 2.0
+    initial_log_std: 0.5
+    network:
+    - name: net
+      input: OBSERVATIONS
+      layers:
+      - 256
+      - 128
+      - 64
+      activations: elu
+    output: ACTIONS
+  value:
+    class: DeterministicMixin
+    clip_actions: false
+    network:
+    - name: net
+      input: OBSERVATIONS
+      layers:
+      - 256
+      - 128
+      - 64
+      activations: elu
+    output: ONE
+memory:
+  class: RandomMemory
+  memory_size: -1
+agent:
+  class: PPO
+  rollouts: 128
+  learning_epochs: 5
+  mini_batches: 4
+  discount_factor: 0.99
+  lambda: 0.95
+  learning_rate: 0.0001
+  learning_rate_scheduler: KLAdaptiveLR
+  learning_rate_scheduler_kwargs:
+    kl_threshold: 0.004
+  state_preprocessor: RunningStandardScaler
+  state_preprocessor_kwargs: null
+  value_preprocessor: RunningStandardScaler
+  value_preprocessor_kwargs: null
+  random_timesteps: 0
+  learning_starts: 0
+  grad_norm_clip: 1.0
+  ratio_clip: 0.2
+  value_clip: 0.2
+  clip_predicted_values: true
+  entropy_loss_scale: 0.01
+  value_loss_scale: 2.0
+  kl_threshold: 0.0
+  rewards_shaper_scale: 0.5
+  time_limit_bootstrap: false
+  experiment:
+    directory: /home/hpc/iwfa/iwfa131h/studentische-arbeiten/src/tensegrity_pick/logs/skrl/cube_place/tensegrity
+    experiment_name: 2026-06-22_18-14-43_ppo_torch_seed3
+    write_interval: 250
+    checkpoint_interval: 5000
+trainer:
+  class: SequentialTrainer
+  timesteps: 300000
+  environment_info: log
+  close_environment_at_exit: false

@@ -346,6 +346,7 @@ class RewardsCfg:
             "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
             "std": 1.0,
             "lift_threshold": 0.02,
+            "drum_radius": 0.2735,
         },
     )
 
@@ -359,19 +360,20 @@ class RewardsCfg:
             "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
             "std": 0.20,
             "lift_threshold": 0.02,
+            "drum_radius": 0.2735,
         },
     )
 
     # ── 5. Release: reward opening gripper above the drum ────────────
     release = RewTerm(
         func=task_rew.release_above_target,
-        weight=25.0,
+        weight=40.0,
         params={
             "green_name": "green_cube",
             "drum_name": "drum_target",
             "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
             "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
-            "rim_clearance": 0.10,
+            "cylinder_top_z": _BIN_GEOM.height,
             "drum_radius": 0.2735,
         },
     )

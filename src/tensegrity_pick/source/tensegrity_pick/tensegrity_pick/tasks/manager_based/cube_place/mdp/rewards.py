@@ -487,6 +487,7 @@ def approach_target_tanh(
     belt_height: float,
     std: float = 0.20,
     lift_threshold: float = 0.04,
+    drum_radius: float = 0.2735,
 ) -> torch.Tensor:
     """Bounded tanh reward for XY proximity of a lifted cube to the drum.
 
@@ -506,7 +507,12 @@ def approach_target_tanh(
     )
     proximity = 1.0 - torch.tanh(d_xy / std)
 
-    gate = is_lifted
+    # Stay active while the cube is descending into the drum (over the opening
+    # in XY), not only while it is lifted above the belt. This prevents the
+    # transport reward from cliff-ing to zero during the drop, which previously
+    # created a dead zone between release and green_in_target.
+    over_drum = d_xy < drum_radius
+    gate = is_lifted | over_drum
     if hasattr(env, "was_grasped"):
         gate = gate & env.was_grasped
     # Disable goal tracking after placement — arm should return to neutral
@@ -636,14 +642,14 @@ def release_above_target(
     drum_name: str,
     finger_cfg: SceneEntityCfg,
     belt_height: float,
-    rim_clearance: float = 0.10,
+    cylinder_top_z: float = 0.30,
     drum_radius: float = 0.2735,
 ) -> torch.Tensor:
     """Reward for opening the gripper when the cube is above the drum.
 
     Returns ``(1 - closure) * gate`` where gate requires the cube to
-    be within the drum radius in XY and above the rim height.  Gated
-    on ``was_grasped`` to prevent reward from random gripper opening
+    be within the drum radius in XY and above the success cylinder top.
+    Gated on ``was_grasped`` to prevent reward from random gripper opening
     without ever having grasped.
     """
     green: RigidObject = env.scene[green_name]
@@ -656,14 +662,17 @@ def release_above_target(
     in_xy = d_xy < drum_radius
 
     local_z = pos_g[:, 2] - env.scene.env_origins[:, 2]
-    above_rim = local_z > (belt_height + rim_clearance)
+    # Reward the open gripper for the entire drop: from the success-cylinder top
+    # up through the rim region. Previously this vanished the instant the cube
+    # fell below the rim, leaving the descent unrewarded.
+    above_cylinder = local_z > cylinder_top_z
 
     robot: Articulation = env.scene[finger_cfg.name]
     finger_pos = robot.data.joint_pos[:, finger_cfg.joint_ids[0]]
     closure = torch.clamp(finger_pos / FINGER_JOINT_CLOSE_POS, 0.0, 1.0)
     openness = 1.0 - closure
 
-    gate = in_xy & above_rim
+    gate = in_xy & above_cylinder
     if hasattr(env, "was_grasped"):
         gate = gate & env.was_grasped
     # Disable release reward after placement — arm should return to neutral
