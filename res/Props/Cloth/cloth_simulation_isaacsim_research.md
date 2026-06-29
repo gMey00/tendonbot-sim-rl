@@ -194,6 +194,23 @@ Cloth-cloth collision uses `particleGroup` assignments — particles in differen
 
 ### New surface deformable setup (beta alternative)
 
+> **Correction (verified against Isaac Sim 5.1 `omni.physx` 107.3.26).** The old
+> `PhysxSchema.PhysxDeformableSurfaceAPI` FEM path is **removed from the solver**
+> — authoring it and pressing Play crashes the `omni.physx` plugin natively, so
+> the OmniPhysics beta below is the *only* working surface-deformable path. Two
+> API details in the snippet below were also wrong and are fixed in
+> `Scripts/make_xpbd_cloth.py`:
+> 1. The surface material must use `deformableUtils.add_surface_deformable_material`
+>    (applies `OmniPhysicsSurfaceDeformableMaterialAPI`, with thickness +
+>    surface stiffnesses), **not** `add_deformable_material` (volume only).
+> 2. Neither material function accepts an `elasticity_damping` kwarg — passing it
+>    raises `TypeError`. The new surface material has no elasticity-damping
+>    attribute at all.
+>
+> Also note the new `OmniPhysicsDeformableBodyAPI` exposes **no** solver-iteration
+> / self-collision / velocity-damping controls (those are global/scene concerns
+> in the beta), so the body config in the snippet does not transfer.
+
 ```python
 from omni.physx.scripts import deformableUtils
 
@@ -203,15 +220,15 @@ deformableUtils.set_physics_surface_deformable_body(
     prim_path=cloth_mesh_path,
 )
 
-# Material with cloth-appropriate values
-deformableUtils.add_deformable_material(
+# Material with cloth-appropriate values (surface, not volume; no elasticity_damping)
+deformableUtils.add_surface_deformable_material(
     stage=stage,
     path=material_path,
     youngs_modulus=5000.0,       # Much lower than default 50 MPa
     poissons_ratio=0.3,
-    elasticity_damping=0.01,
     dynamic_friction=0.8,
     density=350.0,              # Cotton ~300–400 kg/m³
+    thickness=0.001,
 )
 ```
 

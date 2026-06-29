@@ -1,0 +1,19 @@
+#usda 1.0
+(
+    defaultPrim = "Material"
+    doc = "Stub material resolving ConveyorBelt_A06.usd's missing Plastic_Orange_A reference."
+)
+
+def Material "Material"
+{
+    token outputs:surface.connect = </Material/Shader.outputs:surface>
+
+    def Shader "Shader"
+    {
+        uniform token info:id = "UsdPreviewSurface"
+        color3f inputs:diffuseColor = (0.85, 0.40, 0.06)
+        float inputs:metallic = 0.0
+        float inputs:roughness = 0.5
+        token outputs:surface
+    }
+}

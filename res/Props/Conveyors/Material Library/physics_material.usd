@@ -1,0 +1,11 @@
+#usda 1.0
+(
+    doc = """Stub physics-material layer for ConveyorBelt_A06.usd.
+
+    The conveyor sublayers this file, but it was missing from the repository,
+    which produced "Could not load sublayer ... physics_material.usd" warnings.
+    The shirt-place task disables the conveyor's own colliders and rests the
+    cloth on a dedicated box collider, so no concrete physics material is needed
+    here; this valid (empty) layer resolves the sublayer and silences the warning.
+    """
+)

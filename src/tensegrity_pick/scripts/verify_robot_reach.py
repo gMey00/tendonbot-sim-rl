@@ -25,7 +25,11 @@ from isaaclab.app import AppLauncher
 parser = argparse.ArgumentParser(description="Verify robot reach configuration")
 parser.add_argument(
     "--variant",
-    choices=["tensegrity", "tensegrity_tendon", "ur10e", "kinova", "all"],
+    choices=[
+        "tensegrity", "tensegrity_tendon",
+        "ur10_f140", "ur10_frankenstein", "ur5e_f140", "ur5e_frankenstein",
+        "kinova_f140", "kinova_frankenstein", "all",
+    ],
     default="all",
     help="Which robot variant to test",
 )
@@ -46,6 +50,12 @@ from isaaclab.utils import configclass
 
 def get_robot_config(variant: str):
     """Return (ArticulationCfg, controlled_joint_names, target_link_name, init_pos, init_rot)."""
+    # Floor-standing F140 comparison arms: mounted upright at the
+    # workspace-analysis pose (0.75, 1.0, 0.75); EE = robotiq_base_link.
+    _F140_POS = (0.75, 1.0, 0.75)
+    _F140_ROT = (1.0, 0.0, 0.0, 0.0)
+    _F140_EE = "robotiq_base_link"
+
     if variant == "tensegrity":
         from tensegrity_pick.robots.tensegrity_robot_cfg import (
             TENS_5DOF_GRIPPER_CFG,
@@ -55,23 +65,35 @@ def get_robot_config(variant: str):
         cfg = TENS_5DOF_GRIPPER_CFG.copy()
         return cfg, CONTROLLED_JOINT_NAMES_5DOF, TARGET_LINK_NAME_5DOF, (0.15, 0.0, 2.30), (1.0, 0.0, 0.0, 0.0)
 
-    elif variant == "ur10e":
-        from tensegrity_pick.robots.ur10e_robot_cfg import (
-            UR10E_GRIPPER_CFG,
-            TARGET_LINK_NAME,
-            CONTROLLED_JOINT_NAMES,
-        )
-        cfg = UR10E_GRIPPER_CFG.copy()
-        return cfg, CONTROLLED_JOINT_NAMES, TARGET_LINK_NAME, (0.15, 0.0, 1.40), (1.0, 0.0, 0.0, 0.0)
+    elif variant == "ur10_f140":
+        from tensegrity_pick.robots.ur10_robot_cfg import UR10_GRIPPER_CFG, CONTROLLED_JOINT_NAMES
+        return UR10_GRIPPER_CFG.copy(), CONTROLLED_JOINT_NAMES, _F140_EE, _F140_POS, _F140_ROT
 
-    elif variant == "kinova":
-        from tensegrity_pick.robots.kinova_gen3_robot_cfg import (
-            KINOVA_GEN3_GRIPPER_CFG,
-            TARGET_LINK_NAME,
-            CONTROLLED_JOINT_NAMES,
+    elif variant == "ur10_frankenstein":
+        from tensegrity_pick.robots.ur10_frankenstein_robot_cfg import (
+            UR10_FRANKENSTEIN_GRIPPER_CFG, CONTROLLED_JOINT_NAMES,
         )
-        cfg = KINOVA_GEN3_GRIPPER_CFG.copy()
-        return cfg, CONTROLLED_JOINT_NAMES, TARGET_LINK_NAME, (0.15, 0.0, 1.40), (1.0, 0.0, 0.0, 0.0)
+        return UR10_FRANKENSTEIN_GRIPPER_CFG.copy(), CONTROLLED_JOINT_NAMES, _F140_EE, _F140_POS, _F140_ROT
+
+    elif variant == "ur5e_f140":
+        from tensegrity_pick.robots.ur5e_robot_cfg import UR5E_GRIPPER_CFG, CONTROLLED_JOINT_NAMES
+        return UR5E_GRIPPER_CFG.copy(), CONTROLLED_JOINT_NAMES, _F140_EE, _F140_POS, _F140_ROT
+
+    elif variant == "ur5e_frankenstein":
+        from tensegrity_pick.robots.ur5e_frankenstein_robot_cfg import (
+            UR5E_FRANKENSTEIN_GRIPPER_CFG, CONTROLLED_JOINT_NAMES,
+        )
+        return UR5E_FRANKENSTEIN_GRIPPER_CFG.copy(), CONTROLLED_JOINT_NAMES, _F140_EE, _F140_POS, _F140_ROT
+
+    elif variant == "kinova_f140":
+        from tensegrity_pick.robots.kinova_gen3_robot_cfg import KINOVA_GEN3_GRIPPER_CFG, CONTROLLED_JOINT_NAMES
+        return KINOVA_GEN3_GRIPPER_CFG.copy(), CONTROLLED_JOINT_NAMES, _F140_EE, _F140_POS, _F140_ROT
+
+    elif variant == "kinova_frankenstein":
+        from tensegrity_pick.robots.kinova_frankenstein_robot_cfg import (
+            KINOVA_FRANKENSTEIN_GRIPPER_CFG, CONTROLLED_JOINT_NAMES,
+        )
+        return KINOVA_FRANKENSTEIN_GRIPPER_CFG.copy(), CONTROLLED_JOINT_NAMES, _F140_EE, _F140_POS, _F140_ROT
 
     else:
         raise ValueError(f"Unknown variant: {variant}")
@@ -286,7 +308,15 @@ def run_verification(variant: str) -> dict:
 
 
 def main():
-    variants = ["tensegrity", "ur10e", "kinova"] if args.variant == "all" else [args.variant]
+    variants = (
+        [
+            "tensegrity",
+            "ur10_f140", "ur10_frankenstein", "ur5e_f140", "ur5e_frankenstein",
+            "kinova_f140", "kinova_frankenstein",
+        ]
+        if args.variant == "all"
+        else [args.variant]
+    )
 
     all_results = []
     for variant in variants:

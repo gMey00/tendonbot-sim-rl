@@ -24,6 +24,7 @@ from dataclasses import MISSING
 
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import ActionTermCfg as ActionTerm
+from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
@@ -35,7 +36,7 @@ from isaaclab.utils import configclass
 from . import mdp
 from .shirt_place_scene_cfg import ShirtPlaceSceneCfg, CONVEYOR_SURFACE_HEIGHT_M, SHIRT_CLOTH_CFG
 from .mdp import rewards as task_rew
-from ..shared.cloth_object import apply_cloth_startup_event
+from ..shared.cloth_object import apply_cloth_startup_event, disable_complex_colliders_event
 
 # ── Scene-level constants ─────────────────────────────────────────────
 
@@ -45,7 +46,11 @@ _SPAWN_BOX = task_rew.SpawnBox(
     z_range=(CONVEYOR_SURFACE_HEIGHT_M + 0.03, CONVEYOR_SURFACE_HEIGHT_M + 0.05),
 )
 
-_BIN_GEOM = task_rew.BinCylinder(radius=0.547 * 0.5, height=0.30)
+# Success cylinder spans the drum *interior depth* (rim ≈ 0.88 m), not just the
+# bottom 0.30 m used for the rigid cube: a released cloth drapes throughout the
+# drum and rarely reaches the very bottom, so a shallow cylinder reports 0 even
+# when the shirt is clearly inside.
+_BIN_GEOM = task_rew.BinCylinder(radius=0.547 * 0.5, height=0.85)
 
 _CONVEYOR_BOUNDS = task_rew.ConveyorBounds(y_min=-0.4, y_max=0.4, z_min=0.70)
 
@@ -150,6 +155,9 @@ class ObservationsCfg:
         # Last actions
         actions = ObsTerm(func=mdp.last_action)
 
+        # Task completion flag — lets the policy switch to return-to-neutral.
+        was_placed = ObsTerm(func=task_rew.was_placed_obs)
+
         def __post_init__(self) -> None:
             self.enable_corruption = False
             self.concatenate_terms = True
@@ -160,6 +168,15 @@ class ObservationsCfg:
 @configclass
 class EventsCfg:
     """Startup + reset events."""
+
+    # ── Prestartup: replace the conveyor's complex colliders with a box ─
+    # PBD particle cloth tunnels through triangle-mesh / convex-hull colliders.
+    # Disable them so the cloth rests on the simple ``conveyor_collider`` box.
+    disable_conveyor_colliders = EventTerm(
+        func=disable_complex_colliders_event,
+        mode="prestartup",
+        params={"asset_keys": ("Conveyor", "ConveyorUpstream")},
+    )
 
     # ── Prestartup: spawn cloth mesh and apply PBD physics ────────────
     # Must be "prestartup" so it runs BEFORE sim.reset() — PhysX needs
@@ -193,14 +210,10 @@ class EventsCfg:
         },
     )
 
-    reset_shirt = EventTerm(
-        func=task_rew.reset_shirt,
-        mode="reset",
-        params={
-            "shirt_name": "shirt_proxy",
-            "spawn_box": _SPAWN_BOX,
-        },
-    )
+    # The shirt itself (PBD cloth) is laid flat at a randomized pose by
+    # ``TensegrityShirtPlaceEnv._reset_cloth`` after ``super()._reset_idx`` — it
+    # cannot be a reset EventTerm because the cloth view is owned by the env and
+    # the kinematic proxy is synced to the cloth centroid afterwards.
 
 
 @configclass
@@ -267,14 +280,16 @@ class RewardsCfg:
     )
 
     # ── 3b. Height bonus ────────────────────────────────────────────
+    # max_height raised so lifting high enough to suspend the *whole* shirt above
+    # the drum rim (grasp point ~1.3 m) is rewarded, not capped at 1.10 m.
     height_bonus = RewTerm(
         func=task_rew.shirt_height_bonus,
-        weight=5.0,
+        weight=8.0,
         params={
             "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
             "shirt_name": "shirt_proxy",
             "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
-            "max_height": 0.30,
+            "max_height": 0.50,
             "max_distance": 0.15,
             "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
             "max_velocity": 1.0,
@@ -282,28 +297,52 @@ class RewardsCfg:
     )
 
     # ── 4. Goal tracking coarse (std=1.0) ───────────────────────────
+    # Weights cut hard (was 40/10): these are per-step *state* rewards paid while
+    # the shirt simply hovers over the drum.  At 40+10 they exceeded the drop
+    # reward (100×fraction at fraction≈0.05–0.3), so the optimal policy was to
+    # hold the shirt over the drum forever and never release.  Now positioning
+    # only guides; the drop (shirt_in_target) dominates.
+    # ``lift_threshold`` raised 0.02 → 0.25 m: transport (XY-to-drum) only pays
+    # once the grasp point is at a genuine *carry height* (≈1.05 m).  At 0.02 m
+    # the policy unlocked the full XY reward after a 2 cm lift and simply dragged
+    # the shirt across the belt to the drum; now it must lift the shirt clear
+    # first, enforcing the pick → lift → carry → drop sequence the task wants.
     goal_tracking = RewTerm(
         func=task_rew.shirt_approach_target,
-        weight=40.0,
+        weight=15.0,
         params={
             "shirt_name": "shirt_proxy",
             "drum_name": "drum_target",
             "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
             "std": 1.0,
-            "lift_threshold": 0.02,
+            "lift_threshold": 0.25,
         },
     )
 
     # ── 4b. Goal tracking fine (std=0.20) ───────────────────────────
     goal_tracking_fine = RewTerm(
         func=task_rew.shirt_approach_target,
-        weight=10.0,
+        weight=6.0,
         params={
             "shirt_name": "shirt_proxy",
             "drum_name": "drum_target",
             "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
             "std": 0.20,
-            "lift_threshold": 0.02,
+            "lift_threshold": 0.25,
+        },
+    )
+
+    # ── 4c. Suspend the whole shirt above the drum opening ──────────
+    clearance_over_drum = RewTerm(
+        func=task_rew.shirt_clearance_over_drum,
+        weight=12.0,
+        params={
+            "shirt_name": "shirt_proxy",
+            "drum_name": "drum_target",
+            "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
+            "rim_clearance": 0.08,
+            "clear_margin": 0.08,
+            "drum_radius": 0.32,
         },
     )
 
@@ -321,10 +360,10 @@ class RewardsCfg:
         },
     )
 
-    # ── 6. Success: shirt in drum ───────────────────────────────────
+    # ── 6. Success: shirt in drum (dominant terminal reward) ────────
     shirt_in_target = RewTerm(
         func=task_rew.shirt_in_target,
-        weight=100.0,
+        weight=120.0,
         params={
             "shirt_name": "shirt_proxy",
             "drum_name": "drum_target",
@@ -332,14 +371,28 @@ class RewardsCfg:
         },
     )
 
+    # ── 7. Return to neutral after placement ────────────────────────
+    # Gated on was_placed — drives the arm back to its default pose once the
+    # shirt is in the drum (prevents lingering over the rim).  Mirrors cube_place.
+    return_to_neutral = RewTerm(
+        func=task_rew.return_to_neutral,
+        weight=100.0,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=MISSING),
+            "std": 0.25,
+        },
+    )
+
     # ── Regularisation ──────────────────────────────────────────────
+    # Raised (was -1e-4) so the gripper carries the shirt smoothly and slowly —
+    # fast jerky moves whip the welded cloth and exaggerate stretching.
     action_rate = RewTerm(
         func=task_rew.action_rate_l2,
-        weight=-1e-4,
+        weight=-3e-4,
     )
     joint_vel = RewTerm(
         func=task_rew.joint_vel_l2_controlled,
-        weight=-1e-4,
+        weight=-3e-4,
         params={
             "max_velocity": 10.0,
             "asset_cfg": SceneEntityCfg("robot", joint_names=MISSING),
@@ -347,9 +400,11 @@ class RewardsCfg:
     )
 
     # ── Arm utilization ─────────────────────────────────────────────
+    # Cut (was 0.25): it rewarded raw arm velocity, encouraging the fast motion
+    # that whips the cloth.  Kept small only to discourage a frozen arm.
     arm_utilization = RewTerm(
         func=task_rew.arm_velocity_bonus,
-        weight=0.5,
+        weight=0.10,
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=MISSING),
             "max_velocity": 5.0,
@@ -371,7 +426,7 @@ class RewardsCfg:
     # ── Joint torque penalty ────────────────────────────────────────
     joint_torque = RewTerm(
         func=task_rew.joint_torque_penalty,
-        weight=-0.05,
+        weight=-0.025,
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=MISSING),
         },
@@ -415,6 +470,24 @@ class RewardsCfg:
             "shirt_name": "shirt_proxy",
             "bounds": _CONVEYOR_BOUNDS,
         },
+    )
+
+
+@configclass
+class CurriculumCfg:
+    """Curriculum: ramp regularisation penalties once behaviour stabilises.
+
+    Mirrors cube_place — small action-rate / joint-velocity penalties grow over
+    training so early exploration is unconstrained and late policies are smooth.
+    """
+
+    action_rate = CurrTerm(
+        func=mdp.modify_reward_weight,
+        params={"term_name": "action_rate", "weight": -2e-3, "num_steps": 150000},
+    )
+    joint_vel = CurrTerm(
+        func=mdp.modify_reward_weight,
+        params={"term_name": "joint_vel", "weight": -2e-3, "num_steps": 150000},
     )
 
 
@@ -468,12 +541,31 @@ class ShirtPlaceEnvCfg(ManagerBasedRLEnvCfg):
     terminations: TerminationsCfg = TerminationsCfg()
     rewards: RewardsCfg = RewardsCfg()
     events: EventsCfg = EventsCfg()
+    curriculum: CurriculumCfg = CurriculumCfg()
 
     def __post_init__(self) -> None:
-        self.decimation = 2
+        # 60 Hz physics, decimation 1 → 60 Hz control.  Halves the per-step cloth
+        # cost vs the 120 Hz / decimation-2 profile (the 11 k-particle PBD cloth
+        # is the sim bottleneck); PBD is position-based and unconditionally
+        # stable, and the softened solver + gentle deterministic grasp tolerate
+        # the larger step.  (Use 120 Hz for final high-fidelity rendering.)
+        self.decimation = 1
         self.episode_length_s = 5.0
         self.viewer.eye = (3.5, 3.5, 3.5)
-        self.sim.dt = 0.01
+
+        # ── Cloth solver profile ─────────────────────────────────────────
+        # Full-fidelity stretch resistance: 16 position iterations enforce the
+        # stiff (1e5) stretch constraints so the cloth stays inextensible when
+        # the welded grasp is dragged, and self-collision keeps it from
+        # collapsing into a filament.  (Earlier 6-iter / no-self-collision profile
+        # was faster but let the cloth over-stretch into a strand.)  CCD stays off
+        # (expensive; the gentle, low-speed motion does not tunnel).
+        cp = SHIRT_CLOTH_CFG.pbd_params
+        cp.solver_position_iterations = 16
+        cp.enable_ccd = False
+        cp.global_self_collision = True
+        # 60 Hz physics (see decimation note above) — halves cloth sim cost.
+        self.sim.dt = 1.0 / 60.0
         self.sim.render_interval = self.decimation
 
         self.sim.physx.solver_type = 1
@@ -483,9 +575,13 @@ class ShirtPlaceEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.physx.gpu_max_rigid_patch_count = 2**19
         self.sim.physx.gpu_found_lost_aggregate_pairs_capacity = 1024 * 1024 * 4
         self.sim.physx.gpu_total_aggregate_pairs_capacity = 64 * 1024
+        self.sim.physx.gpu_max_particle_contacts = 2**22
         self.sim.physx.friction_correlation_distance = 0.00625
-        # PBD particle cloth requires a large collision stack
-        self.sim.physx.gpu_collision_stack_size = 2**31
+        # PBD particle cloth requires a large collision stack.  Capped at the
+        # signed-32-bit maximum: 2**31 overflows to a negative value, which
+        # PhysX reads as a tiny stack and reports as "collisionStackSize buffer
+        # overflow ... contacts dropped", silently degrading the cloth physics.
+        self.sim.physx.gpu_collision_stack_size = 2**31 - 1
 
     # ------------------------------------------------------------------
     # Robot-parameter helper
@@ -523,6 +619,7 @@ class ShirtPlaceEnvCfg(ManagerBasedRLEnvCfg):
         rew.joint_vel.params["asset_cfg"].joint_names = controlled_joints
         rew.arm_utilization.params["asset_cfg"].joint_names = arm_joints
         rew.joint_torque.params["asset_cfg"].joint_names = arm_joints
+        rew.return_to_neutral.params["asset_cfg"].joint_names = arm_joints
 
         # -- Events --
         self.events.reset_arm.params["asset_cfg"].joint_names = arm_joints

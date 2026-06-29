@@ -37,8 +37,12 @@ VARIANT_NAMES: Final[list[str]] = [
     "tensegrity",
     "tensegrity_tendon",
     "tensegrity_physical_tendon",
-    "ur10e",
-    "kinova",
+    # Floor-standing F140 comparison arms (mounted upright at (0.75, 1.0, 0.75)).
+    "ur10_f140",
+    "ur10_frankenstein",
+    "ur5e_f140",
+    "ur5e_frankenstein",
+    "kinova_f140",
     "kinova_frankenstein",
 ]
 
@@ -53,9 +57,12 @@ VARIANT_LABELS: Final[dict[str, str]] = {
     "tensegrity": "Tensegrity 5-DOF (PD)",
     "tensegrity_tendon": "Tensegrity 5-DOF (Tendon)",
     "tensegrity_physical_tendon": "Tensegrity 5-DOF (Physical Tendon)",
-    "ur10e": "UR10e 6-DOF (PD)",
-    "kinova": "Kinova Gen3 7-DOF (PD)",
-    "kinova_frankenstein": "Kinova Frankenstein 9-DOF (PD)",
+    "ur10_f140": "UR10 6-DOF + F140",
+    "ur10_frankenstein": "UR10 + Tensegrity Wrist (8-DOF)",
+    "ur5e_f140": "UR5e 6-DOF + F140",
+    "ur5e_frankenstein": "UR5e + Tensegrity Wrist (8-DOF)",
+    "kinova_f140": "Kinova Gen3 7-DOF + F140",
+    "kinova_frankenstein": "Kinova + Tensegrity Wrist (9-DOF)",
 }
 
 # Semantic colour aliases for this task

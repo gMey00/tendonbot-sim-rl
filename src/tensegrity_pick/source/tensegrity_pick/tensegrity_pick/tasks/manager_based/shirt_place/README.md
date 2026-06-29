@@ -6,12 +6,25 @@ Shirt pick-and-place with the 5-DOF tensegrity manipulator and Robotiq 2F
 gripper.  The robot must grasp a cloth-simulated T-shirt from the conveyor
 belt, transport it to a target drum, and release it inside.
 
-> **Status: PBD Cloth Active** — the T-shirt is simulated as a PBD
-> particle cloth (`~6 700` particles).  A kinematic rigid-body proxy
-> (`shirt_proxy`) tracks the cloth centroid each step so all reward /
-> observation functions work unchanged.  The cloth is spawned by a
-> `prestartup` event (`apply_cloth_startup_event`) and accessed via
-> `ClothObject` (GPU `ParticleClothView` tensor API).
+> **Status: PBD Cloth + deterministic attachment grasp (first trainable
+> iteration).** The T-shirt is a PBD particle cloth (`~11 k` particles, welded
+> ClothesNet `Ts1_0`), spawned by a `prestartup` event
+> (`apply_cloth_startup_event`) and accessed via `ClothObject` (GPU
+> `ParticleClothView`). A kinematic proxy (`shirt_proxy`) still tracks the cloth
+> **centroid** for transport/place observations.
+>
+> **Grasp.** Friction between the Robotiq pads and PBD cloth does *not* lift this
+> shirt (validated). Instead the gripper grasps at the cloth's **highest point**
+> via a *deterministic attachment* (GarmentLab / DexGarmentLab `AttachmentBlock`
+> logic, now batched on `ClothObject.attach/hold/detach`): when the fingers close
+> with the grasp centre at the highest point, the nearby particles are welded to
+> the gripper tip and tracked through the lift; opening releases them.
+>
+> **First-iteration simplifications:** the shirt is laid **flat and fixed**
+> directly under the gripper each reset (no fold, no crumble, no XY/yaw
+> randomization). Reach/grasp/lift rewards key to the **grasp point** (the
+> centroid barely rises for a central pinch); success rewards the **fraction of
+> cloth particles in the drum**.
 
 ## Table of Contents
 
@@ -58,7 +71,7 @@ Extends `ProjBaseSceneCfg` with PBD particle cloth T-shirt and kinematic proxy.
 | Element | Details |
 |---|---|
 | Robot | `TENS_5DOF_GRIPPER_CFG` at (0.15, 0.0, 2.30) m |
-| T-shirt (cloth) | PBD particle cloth (~6 705 vertices, ~0.2 kg) |
+| T-shirt (cloth) | PBD particle cloth (~6 705 vertices, ~1.0 kg) |
 | Shirt proxy | Kinematic cube (0.01 m, invisible, collision-free) — synced to cloth centroid |
 | Cloth config | `ClothObjectCfg` (PBD backend, cotton T-shirt defaults) |
 | Target drum | Plastic drum at (0.15, 0.85, 0.0) m |
@@ -135,12 +148,53 @@ Sequential 6-phase structure adapted from cube_place:
 
 | Parameter | Value |
 |---|---|
-| Physics dt | 0.01 s (100 Hz) |
-| Decimation | 2 (control at 50 Hz) |
+| Physics dt | 1/120 s (120 Hz) |
+| Decimation | 2 (control at 60 Hz) |
 | Episode length | 5.0 s |
 | Default num_envs | 512 |
 | `replicate_physics` | `False` (required for PBD cloth) |
-| `gpu_collision_stack_size` | 2^31 (~2 GB, required for PBD cloth) |
+| `gpu_collision_stack_size` | 2^31−1 (int32 max ≈ 2 GB; 2^31 overflows negative) |
+| `solver_type` | TGS (`1`) — far more stable than PGS for stiff cloth |
+
+### Cloth model — two switchable backends
+
+The garment is a **flat-laid ClothesNet shirt** (`res/Props/Cloth/tshirt_clothesnet.usd`,
+built from `TNSC_Tshirt_Ts1_0`, welded to a manifold mesh, ~11 k verts, mean edge
+≈ 0.0098 m).  The old inflated `tshirt_mod` / short-sleeve shells and the geometric
+"flatten" hack are gone.  `ClothObject` supports two backends, selected by one line
+(`SHIRT_CLOTH_BACKEND` in `shirt_place_scene_cfg.py`):
+
+**PBD — PhysX particle cloth (default).**  The decisive fix (per the cloth research,
+`doc/reports/cloth_sim_research/RESEARCH_isaaclab_cloth.md`) is that the **collision
+offsets must track the mesh particle spacing**: `particle_contact_offset = mean edge
+length`, `solid_rest_offset = ½ edge`.  Our old reference-copied offsets
+(0.02 / 0.0075) were larger than ½ edge, so spring neighbours started inside each
+other's contact radius and the solver pumped energy → divergence / self-collision
+explosions.  With offsets matched to spacing, high stretch stiffness is stable
+(PBD *projects* inextensible constraints), self-collision stays **on**, and a
+**realistic 0.15 kg** mass settles without sinking — no 1 kg hack.  Settles into a
+soft, self-colliding, draped t-shirt (~0.1 m thick).
+
+| Parameter | Value |
+|---|---|
+| stretch / bend / shear stiffness | 1e5 / 100 / 100 (PBD projects stiff constraints stably) |
+| spring / material damping | 0.2 / 0.2 |
+| mass | 0.15 kg (per-particle = mass / n) |
+| particle_contact_offset | = mean edge length (~0.0098 m); solid_rest = ½ edge |
+| solver iterations / self-collision / CCD | 16 / on / on |
+| physics dt | 1/120 s (120 Hz) |
+
+**XPBD — PhysX surface deformable (FEM, the sanctioned 5.1 path).**  Authored
+offline into `tshirt_clothesnet_xpbd.usd` (surface-deformable schema + material,
+no physics scene) and referenced per env.  The flat `restShapePoints` are
+first-class, so it settles to a genuinely **flat ~1.4 cm lay**.  Needs
+`/physics/enableDeformableBeta` (set automatically by the startup event).
+Young's modulus 5000 (5e4 diverges), Poisson 0.3, thickness 1 mm, density 350.
+
+Regime adapted from the Isaac Sim cloth references
+[GarmentLab](../../../../../../../../repos/GarmentLab) and
+[DexGarmentLab](../../../../../../../../repos/DexGarmentLab) (the
+`isaacsim.core` `ParticleSystem`/`ClothPrim` loading pattern, validated standalone).
 
 ## Training
 

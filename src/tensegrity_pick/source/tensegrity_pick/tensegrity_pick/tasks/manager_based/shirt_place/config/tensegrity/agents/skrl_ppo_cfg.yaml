@@ -68,13 +68,17 @@ agent:
   experiment:
     directory: "shirt_place"
     experiment_name: ""
-    write_interval: 250
-    checkpoint_interval: 5000
+    write_interval: 200
+    checkpoint_interval: 2000
 
 
 # Sequential trainer
 # https://skrl.readthedocs.io/en/latest/api/trainers/sequential.html
+# Bounded budget for the first trainable iteration of the (simplified, fixed-pose,
+# deterministic-grasp) cloth task — the 11 k-particle PBD cloth caps throughput at
+# ~1 s/it, so a full 300 k-step run is infeasible.  Resume from a checkpoint to
+# extend if the policy is still improving at the cap.
 trainer:
   class: SequentialTrainer
-  timesteps: 300000
+  timesteps: 20000
   environment_info: log

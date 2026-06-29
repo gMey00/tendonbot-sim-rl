@@ -22,6 +22,7 @@ rewards will read from the actual cloth state tensors instead.
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING, Tuple
 
 import torch
@@ -63,16 +64,44 @@ from tensegrity_pick.tasks.manager_based.shared.gripper_cfg import (
 
 
 # ---------------------------------------------------------------------------
+# Cloth-state accessors
+# ---------------------------------------------------------------------------
+
+def _shirt_grasp_point(env: ManagerBasedRLEnv, shirt_name: str) -> torch.Tensor:
+    """Deterministic grasp target — the cloth's highest region (N, 3).
+
+    Reads ``env.shirt_grasp_point_w`` (the cloth's highest-point tensor) when the
+    cloth env exposes it; falls back to the centroid proxy otherwise (e.g. the
+    rigid-cube task, so those rewards stay valid).
+    """
+    if hasattr(env, "shirt_grasp_point_w"):
+        return env.shirt_grasp_point_w
+    return env.scene[shirt_name].data.root_pos_w
+
+
+def _shirt_fraction_in_drum(
+    env: ManagerBasedRLEnv, shirt_name: str, drum_name: str, bin_geom: "BinCylinder",
+) -> torch.Tensor:
+    """Fraction of cloth particles inside the drum (N,).
+
+    Uses the env's cloth-aware metric when available; otherwise falls back to a
+    binary centroid-in-cylinder test.
+    """
+    if hasattr(env, "_shirt_particle_fraction_in_drum"):
+        return env._shirt_particle_fraction_in_drum()
+    return shirt_in_drum(env, shirt_name, drum_name, bin_geom).float()
+
+
+# ---------------------------------------------------------------------------
 # Observations (shirt-specific)
 # ---------------------------------------------------------------------------
 
 def shirt_rel_pos(
     env: ManagerBasedRLEnv, ee_cfg: SceneEntityCfg, shirt_name: str
 ) -> torch.Tensor:
-    """Relative position of shirt proxy w.r.t. the grasp centre (N, 3)."""
+    """Relative position of the shirt grasp point w.r.t. the grasp centre (N, 3)."""
     ee = _grasp_center_w(env.scene[ee_cfg.name], ee_cfg)
-    shirt: RigidObject = env.scene[shirt_name]
-    return shirt.data.root_pos_w - ee
+    return _shirt_grasp_point(env, shirt_name) - ee
 
 
 def fingertip_rel_shirt(
@@ -81,11 +110,10 @@ def fingertip_rel_shirt(
     finger_cfg: SceneEntityCfg,
     shirt_name: str,
 ) -> torch.Tensor:
-    """Relative position of shirt proxy w.r.t. dynamic fingertip (N, 3)."""
+    """Relative position of the shirt grasp point w.r.t. the dynamic fingertip (N, 3)."""
     robot: Articulation = env.scene[ee_cfg.name]
     tip = _dynamic_finger_tip_w(robot, ee_cfg, finger_cfg)
-    shirt: RigidObject = env.scene[shirt_name]
-    return shirt.data.root_pos_w - tip
+    return _shirt_grasp_point(env, shirt_name) - tip
 
 
 def shirt_velocity(env: ManagerBasedRLEnv, shirt_name: str) -> torch.Tensor:
@@ -147,8 +175,8 @@ def shirt_ee_distance(
     """
     robot: Articulation = env.scene[ee_cfg.name]
     tip = _dynamic_finger_tip_w(robot, ee_cfg, finger_cfg)
-    shirt: RigidObject = env.scene[shirt_name]
-    distance = torch.norm(shirt.data.root_pos_w - tip, dim=-1)
+    target = _shirt_grasp_point(env, shirt_name)
+    distance = torch.norm(target - tip, dim=-1)
     result = 1.0 - torch.tanh(distance / std)
 
     if hasattr(env, "grasp_active"):
@@ -163,20 +191,24 @@ def shirt_grasp_reward(
     shirt_name: str,
     std: float = 0.08,
 ) -> torch.Tensor:
-    """Reward for closing the gripper near the shirt proxy.
+    """Reward for closing the gripper at the shirt's highest point.
 
-    Returns ``closure_fraction * (1 - tanh(dist / std))``.
+    ``closure * (1 - tanh(dist / std))`` for shaping, plus a unit bonus once the
+    deterministic grasp has actually latched (``grasp_active``).
     """
     robot: Articulation = env.scene[ee_cfg.name]
     tip = _dynamic_finger_tip_w(robot, ee_cfg, finger_cfg)
-    shirt: RigidObject = env.scene[shirt_name]
-    distance = torch.norm(shirt.data.root_pos_w - tip, dim=-1)
+    target = _shirt_grasp_point(env, shirt_name)
+    distance = torch.norm(target - tip, dim=-1)
     proximity = 1.0 - torch.tanh(distance / std)
 
     finger_pos = robot.data.joint_pos[:, finger_cfg.joint_ids[0]]
     closure = torch.clamp(finger_pos / FINGER_JOINT_CLOSE_POS, 0.0, 1.0)
 
-    return closure * proximity
+    reward = closure * proximity
+    if hasattr(env, "grasp_active"):
+        reward = reward + env.grasp_active.float()
+    return reward
 
 
 def shirt_is_lifted(
@@ -190,26 +222,19 @@ def shirt_is_lifted(
     min_closure: float = 0.20,
     max_velocity: float | None = None,
 ) -> torch.Tensor:
-    """Binary reward: 1.0 when the shirt is above threshold AND near gripper."""
-    robot: Articulation = env.scene[ee_cfg.name]
-    ee = _grasp_center_w(robot, ee_cfg)
-    shirt: RigidObject = env.scene[shirt_name]
-    shirt_pos = shirt.data.root_pos_w
+    """Binary reward: 1.0 when the grasped shirt is lifted above the belt.
 
-    local_z = shirt_pos[:, 2] - env.scene.env_origins[:, 2]
+    Keyed to the grasp point (the welded patch, which rises with the gripper);
+    the centroid barely moves for a central pinch on a wide flat shirt.  Gated on
+    an active deterministic grasp.
+    """
+    target = _shirt_grasp_point(env, shirt_name)
+    local_z = target[:, 2] - env.scene.env_origins[:, 2]
     is_above = local_z > belt_height + minimal_height
 
-    distance = torch.norm(shirt_pos - ee, dim=-1)
-    is_near = distance < max_distance
-
-    gate = is_above & is_near
-    if finger_cfg is not None:
-        finger_pos = robot.data.joint_pos[:, finger_cfg.joint_ids[0]]
-        gate = gate & (finger_pos > min_closure)
-    if max_velocity is not None:
-        shirt_speed = torch.norm(shirt.data.root_lin_vel_w, dim=-1)
-        gate = gate & (shirt_speed < max_velocity)
-
+    gate = is_above
+    if hasattr(env, "grasp_active"):
+        gate = gate & env.grasp_active
     return torch.where(gate, 1.0, 0.0)
 
 
@@ -224,26 +249,20 @@ def shirt_height_bonus(
     min_closure: float = 0.20,
     max_velocity: float | None = None,
 ) -> torch.Tensor:
-    """Continuous reward proportional to shirt height above belt."""
-    robot: Articulation = env.scene[ee_cfg.name]
-    ee = _grasp_center_w(robot, ee_cfg)
-    shirt: RigidObject = env.scene[shirt_name]
-    shirt_pos = shirt.data.root_pos_w
+    """Continuous reward proportional to grasp-point height above the belt.
 
-    local_z = shirt_pos[:, 2] - env.scene.env_origins[:, 2]
+    Keyed to the grasp point and gated on an active deterministic grasp (the
+    centroid barely rises for a central pinch on a wide flat shirt).
+    """
+    target = _shirt_grasp_point(env, shirt_name)
+    local_z = target[:, 2] - env.scene.env_origins[:, 2]
     height_above = torch.clamp(local_z - belt_height, min=0.0, max=max_height)
     normalized = height_above / max_height
 
-    distance = torch.norm(shirt_pos - ee, dim=-1)
-    gate = distance < max_distance
-    if finger_cfg is not None:
-        finger_pos = robot.data.joint_pos[:, finger_cfg.joint_ids[0]]
-        gate = gate & (finger_pos > min_closure)
-    if max_velocity is not None:
-        shirt_speed = torch.norm(shirt.data.root_lin_vel_w, dim=-1)
-        gate = gate & (shirt_speed < max_velocity)
-
-    return torch.where(gate, normalized, torch.zeros_like(normalized))
+    if hasattr(env, "grasp_active"):
+        gate = env.grasp_active
+        return torch.where(gate, normalized, torch.zeros_like(normalized))
+    return normalized
 
 
 def shirt_approach_target(
@@ -258,15 +277,19 @@ def shirt_approach_target(
 
     Gated on ``was_grasped`` to prevent reward hacking.
     """
-    shirt: RigidObject = env.scene[shirt_name]
-    pos_s = shirt.data.root_pos_w
     pos_d = _get_world_pos(env.scene[drum_name], env=env)
 
-    local_z = pos_s[:, 2] - env.scene.env_origins[:, 2]
+    # Track the *grasp point* (the gripper-held part) to the drum, not the
+    # centroid: the grasped shirt hangs from the gripper as a cone, so centring
+    # the gripper over the drum opening is what drops the cone in.  The trailing
+    # centroid lags behind, which previously made the gripper stop at the near
+    # rim and drape the shirt over the edge.
+    gp = _shirt_grasp_point(env, shirt_name)
+    local_z = gp[:, 2] - env.scene.env_origins[:, 2]
     is_lifted = local_z > (belt_height + lift_threshold)
 
     d_xy = torch.sqrt(
-        (pos_s[:, 0] - pos_d[:, 0]) ** 2 + (pos_s[:, 1] - pos_d[:, 1]) ** 2
+        (gp[:, 0] - pos_d[:, 0]) ** 2 + (gp[:, 1] - pos_d[:, 1]) ** 2
     )
     proximity = 1.0 - torch.tanh(d_xy / std)
 
@@ -275,6 +298,44 @@ def shirt_approach_target(
         gate = gate & env.was_grasped
 
     return torch.where(gate, proximity, torch.zeros_like(proximity))
+
+
+def shirt_clearance_over_drum(
+    env: ManagerBasedRLEnv,
+    shirt_name: str,
+    drum_name: str,
+    belt_height: float,
+    rim_clearance: float = 0.08,
+    clear_margin: float = 0.08,
+    drum_radius: float = 0.32,
+) -> torch.Tensor:
+    """Dense reward for suspending the *whole* shirt above the drum opening.
+
+    The arm should not reach into the drum; it should lift the shirt high enough
+    that the entire hanging garment clears the rim, centre it over the opening,
+    and then drop it straight in (regardless of pick orientation).  Reward the
+    grasp point being over the drum footprint AND the *lowest* cloth particle
+    being above the rim — i.e. the shirt fully hangs above the drum, ready to
+    fall in.  Gated on ``was_grasped``.
+    """
+    pos_d = _get_world_pos(env.scene[drum_name], env=env)
+    gp = _shirt_grasp_point(env, shirt_name)
+    d_xy = torch.sqrt((gp[:, 0] - pos_d[:, 0]) ** 2 + (gp[:, 1] - pos_d[:, 1]) ** 2)
+    in_xy = d_xy < drum_radius
+
+    rim = belt_height + rim_clearance                  # ≈ 0.88 m
+    if hasattr(env, "shirt_min_z_w"):
+        bottom_z = env.shirt_min_z_w - env.scene.env_origins[:, 2]
+    else:  # fallback: assume the shirt hangs ~0.4 m below the grasp point
+        bottom_z = (gp[:, 2] - env.scene.env_origins[:, 2]) - 0.40
+    # 0 when the shirt's lowest point is at/below the rim, →1 once the whole shirt
+    # has been lifted ``clear_margin`` above the rim.
+    clearance = torch.clamp((bottom_z - rim) / clear_margin, min=0.0, max=1.0)
+
+    gate = in_xy
+    if hasattr(env, "was_grasped"):
+        gate = gate & env.was_grasped
+    return torch.where(gate, clearance, torch.zeros_like(clearance))
 
 
 def shirt_in_drum(
@@ -295,11 +356,16 @@ def shirt_in_target(
     drum_name: str,
     bin_geom: BinCylinder,
 ) -> torch.Tensor:
-    """Returns 1.0 when shirt is in drum, gated on was_grasped."""
-    inside = shirt_in_drum(env, shirt_name, drum_name, bin_geom).to(torch.float32)
+    """Per-step success reward = fraction of cloth particles in the drum.
+
+    Uses the cloth-aware particle fraction rather than centroid-in-cylinder, so a
+    partly-draped shirt is scored honestly and getting *more* cloth in is
+    rewarded.  Gated on ``was_grasped`` to prevent reward hacking.
+    """
+    frac = _shirt_fraction_in_drum(env, shirt_name, drum_name, bin_geom)
     if hasattr(env, "was_grasped"):
-        return inside * env.was_grasped.to(torch.float32)
-    return inside
+        return frac * env.was_grasped.to(torch.float32)
+    return frac
 
 
 def shirt_release_above_target(
@@ -311,10 +377,10 @@ def shirt_release_above_target(
     rim_clearance: float = 0.10,
     drum_radius: float = 0.2735,
 ) -> torch.Tensor:
-    """Reward for opening gripper when shirt is above the drum."""
-    shirt: RigidObject = env.scene[shirt_name]
-    pos_s = shirt.data.root_pos_w
+    """Reward for opening the gripper when the carried shirt is above the drum."""
     pos_d = _get_world_pos(env.scene[drum_name], env=env)
+    # Use the grasp point (the gripper-held part of the shirt) for "above drum".
+    pos_s = _shirt_grasp_point(env, shirt_name)
 
     d_xy = torch.sqrt(
         (pos_s[:, 0] - pos_d[:, 0]) ** 2 + (pos_s[:, 1] - pos_d[:, 1]) ** 2
@@ -334,6 +400,47 @@ def shirt_release_above_target(
         gate = gate & env.was_grasped
 
     return torch.where(gate, openness, torch.zeros_like(openness))
+
+
+# ---------------------------------------------------------------------------
+# Return-to-neutral after placement (mirrors cube_place)
+# ---------------------------------------------------------------------------
+
+def return_to_neutral(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    std: float = 0.25,
+) -> torch.Tensor:
+    """Reward for returning joints to their defaults once the shirt is placed.
+
+    Uses per-joint normalized deviation (scaled by each joint's soft position
+    range) so prismatic (metres) and revolute (radians) joints are
+    commensurate, then ``1 - tanh(rms_dev / std)``.  Gated on ``was_placed`` so
+    it only activates after a successful placement.  Identical in spirit to the
+    cube_place reward of the same name.
+    """
+    robot: Articulation = env.scene[asset_cfg.name]
+    current = robot.data.joint_pos[:, asset_cfg.joint_ids]
+    default = robot.data.default_joint_pos[:, asset_cfg.joint_ids]
+
+    limits = robot.data.soft_joint_pos_limits[:, asset_cfg.joint_ids, :]
+    scale = limits[..., 1] - limits[..., 0]
+    valid = scale.isfinite() & (scale > 1e-6)
+    scale = torch.where(valid, scale, torch.ones_like(scale))
+
+    dev = (current - default) / scale
+    distance = torch.norm(dev, dim=-1) / math.sqrt(dev.shape[-1])
+    result = 1.0 - torch.tanh(distance / std)
+    if hasattr(env, "was_placed"):
+        result = result * env.was_placed.float()
+    return result
+
+
+def was_placed_obs(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Binary observation (N, 1): 1.0 once the shirt has been placed in the drum."""
+    if hasattr(env, "was_placed"):
+        return env.was_placed.float().unsqueeze(-1)
+    return torch.zeros(env.num_envs, 1, device=env.device)
 
 
 # ---------------------------------------------------------------------------
@@ -357,16 +464,16 @@ def shirt_grasp_metric(
     lift_threshold: float = 0.06,
     proximity_threshold: float = 0.10,
 ) -> torch.Tensor:
-    """Binary 1.0 when the shirt is grasped and lifted."""
-    shirt: RigidObject = env.scene[shirt_name]
-    local_z = shirt.data.root_pos_w[:, 2] - env.scene.env_origins[:, 2]
+    """Binary 1.0 when the shirt is grasped and lifted off the belt."""
+    target = _shirt_grasp_point(env, shirt_name)
+    local_z = target[:, 2] - env.scene.env_origins[:, 2]
     is_lifted = local_z > (belt_height + lift_threshold)
 
     if hasattr(env, "grasp_active"):
         return (is_lifted & env.grasp_active).to(torch.float32)
 
     ee = _grasp_center_w(env.scene[ee_cfg.name], ee_cfg)
-    is_close = torch.norm(shirt.data.root_pos_w - ee, dim=-1) < proximity_threshold
+    is_close = torch.norm(target - ee, dim=-1) < proximity_threshold
     return (is_lifted & is_close).to(torch.float32)
 
 
@@ -375,9 +482,9 @@ def ee_to_shirt_distance_metric(
     ee_cfg: SceneEntityCfg,
     shirt_name: str,
 ) -> torch.Tensor:
-    """Raw distance from grasp centre to shirt proxy (for TensorBoard)."""
+    """Raw distance from grasp centre to the shirt's grasp point (TensorBoard)."""
     ee = _grasp_center_w(env.scene[ee_cfg.name], ee_cfg)
-    return torch.norm(env.scene[shirt_name].data.root_pos_w - ee, dim=-1)
+    return torch.norm(_shirt_grasp_point(env, shirt_name) - ee, dim=-1)
 
 
 def shirt_off_conveyor_penalty(
