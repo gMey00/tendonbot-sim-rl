@@ -1,4 +1,4 @@
-# Cube Place Task — Comprehensive Evaluation Report (2026-06-29)
+# Cube Place Task — Comprehensive Evaluation Report (22-06-2026)
 
 This report covers the seed-aggregated training and evaluation of the
 PPO policy on the three cube-place task variants of the tensegrity arm,
@@ -54,7 +54,7 @@ The success criterion is identical to the one used internally by the env
 (`TensegrityPlaceEnv._was_placed`) and to the thesis definition
 (Section 4.6.3.2). Because there is no early success termination, a
 successful policy keeps the cube in the drum for as many steps as
-possible; the per-step `green_in_target` reward (weight 100) is the
+possible. The per-step `green_in_target` reward (weight 100) is the
 dominant terminal objective.
 
 ### 1.2 Agents
@@ -104,7 +104,7 @@ during the cube's fall into the drum:
   (from the success-cylinder top up through the rim), instead of only
   above the rim.
 
-`green_in_target` stays the dominant terminal goal at weight 100;
+`green_in_target` stays the dominant terminal goal at weight 100.
 `release` stays at weight 25. See
 [mdp/rewards.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/mdp/rewards.py)
 and
@@ -188,7 +188,7 @@ is selected on best reward rather than the final-step value.
 
 Per-seed held-out success for the trained policy (5 dots per variant,
 black bar = seed mean). PD and sim-tendon show the split between
-solved seeds (top) and collapsed seeds (bottom); physical tendon is a
+solved seeds (top) and collapsed seeds (bottom). Physical tendon is a
 tight cluster near 1.0.
 
 ### 3.2 Baseline success-rate comparison
@@ -203,17 +203,17 @@ baselines are at 0 % success for every variant — the place task admits no
 
 The grasp counterpart of §3.1. In contrast to the placement scatter, all
 five seeds of all three variants sit in a tight cluster at ≈ 1.0
-(grasp rate 0.994–1.000). Grasping is solved everywhere; none of the
+(grasp rate 0.994–1.000). Grasping is solved everywhere. None of the
 per-seed dispersion that dominates the placement figure is present here.
 This is the visual statement of the central diagnostic: the bimodal
-collapse on PD and sim tendon is **entirely a release/placement failure,
+collapse on PD and sim tendon is **entirely a release/placement failure by means of not releasing,
 not a grasping failure** (§5).
 
 ### 3.4 Baseline grasp-rate comparison
 ![Baseline grasp success](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/figures/aggregate/place_baseline_comparison_grasp.png)
 
 The grasp counterpart of §3.2. The PPO bars are at ≈ 1.0 for every
-variant, while the baselines are at ≈ 0 (zero never closes the gripper;
+variant, while the baselines are at ≈ 0 (zero never closes the gripper,
 random establishes a stable grasp in only 0–2.5 % of episodes). The gap
 between a learned grasp (~100 %) and the baselines (~0 %) is the same on
 all three variants — unlike placement, grasping shows no variant-dependent
@@ -238,7 +238,7 @@ weaker but still successful solution (91 %, with a longer 1.78 s mean
 placement time). Seeds 0 and 1 collapse to 0 % placement **despite a
 99.8 % grasp rate** — they pick the cube up and then never release it
 (see §5). The 0.475 m XY error for the collapsed seeds is the hovering
-distance of a held cube; the solved seeds end at 0.16–0.19 m, comfortably
+distance of a held cube. The solved seeds end at 0.16–0.19 m, comfortably
 inside the 0.2735 m success radius.
 
 ### 4.2 Simulated tendon (`tensegrity_tendon`) — bimodal: 3/5 solved
@@ -251,7 +251,7 @@ inside the 0.2735 m success radius.
 | 3 | 1.000 | 1.000 | 1.000 | 0.918 | 0.156 | 1.11 |
 | 4 | 0.992 | 0.992 | 1.000 | 0.936 | 0.143 | 1.22 |
 
-The same bimodal pattern. Seeds 3 and 4 are essentially perfect; seed 1
+The same bimodal pattern. Seeds 3 and 4 are essentially perfect. Seed 1
 solves it at 92 %. Seeds 0 and 2 collapse (0.0 % and 0.4 %) with 100 %
 grasp — again, grasp-and-hover. The single confirmation run trained
 earlier on this variant (seed 42) achieved 99 % success, which — read
@@ -272,7 +272,9 @@ Every seed solves the task at ≥ 98.6 % with the tightest placement (XY
 This is a striking inversion of the reach result, where the same variant
 recorded 0.2 % grasp / 0.0 % place for the thesis single seed and
 31 % ± 14 % success in the reach multi-seed study. Here the physical
-actuator model is the *most* reliable of the three (see §5 and §7).
+variant is the *most* reliable of the three — but, as §5 shows, because
+its policy sidesteps the hard physical-linkage elbow rather than
+mastering it (see §5 and §7).
 
 ---
 
@@ -308,14 +310,34 @@ expect more exploration to cure the stall. The configs rule this out:
 the fragile variants (PD, sim tendon) already train with the *higher*
 exploration schedule (`initial_log_std = 0.5`, `entropy_loss_scale =
 0.01`), while the robust physical-tendon variant uses the *lower* one
-(`0.0`, `0.005`). More action noise did not prevent the collapse. The
-robustness of the physical-tendon variant must instead come from its
-**actuator dynamics**: the body-force elbow model produces slower, more
-compliant motion in which the "open and let the cube drop in" behaviour
-is reached and reinforced more readily, whereas the stiff PD/constant-
-tension interfaces make the holding optimum a sharper trap. This is the
-mirror image of the reach finding, where the same compliant dynamics made
-precise *pose tracking* harder.
+(`0.0`, `0.005`). More action noise did not prevent the collapse, so the
+robustness of the physical-tendon variant is not a hyperparameter effect.
+
+**Why the physical tendon escapes the bimodality: it avoids the elbow.**
+A visual inspection of the learned policies reveals the actual mechanism.
+The PD and simulated-tendon policies use the antiparallelogram elbow as
+their primary lifting and carrying joint — the same elbow-driven carry
+that makes "hold the cube aloft" a high-value, self-reinforcing state and
+therefore a deep local optimum. The physical-tendon policy does **not**.
+Faced with the harder, more constrained control of the physical linkage
+elbow, it learns to sidestep that joint almost entirely: it keeps the
+elbow nearly fixed — at most a slight swing/hold along the elbow axis —
+and instead positions the cube using the prismatic base for gross
+placement and the wrist for fine adjustment. Because this elbow-light
+strategy never enters the elbow-driven carry regime, it never encounters
+the grasp-and-hover optimum that traps the other two variants. That is
+why all five physical-tendon seeds converge to the *same* placement
+behaviour (std 0.4 %) instead of splitting: the trap is simply not on the
+path their policy explores.
+
+This reframes the physical-tendon result as a **workaround rather than a
+mastery**. The variant is robust not because it solves the hard elbow
+control, but because it learns to avoid relying on it — trading full use
+of the elbow workspace for a base-and-wrist placement strategy that
+happens to dodge the local optimum. It is the mirror image of the reach
+finding, where the same hard-to-control physical elbow made precise *pose
+tracking* the worst of the three variants: there the policy could not
+avoid the elbow and paid for it. Here it can, and benefits.
 
 ---
 
@@ -356,7 +378,7 @@ The thesis (Table 16) reported single-seed, last-10 %-of-training values:
 Two corrections to the thesis narrative emerge:
 
 1. **The PD / sim-tendon single-seed numbers were optimistic.** The
-   thesis seed happened to land in the "solved" mode; the 5-seed study
+   thesis seed happened to land in the "solved" mode. The 5-seed study
    reveals a ~40 % chance of collapse to the hover optimum. The *capable*
    behaviour the thesis reported is real (our best seeds match or exceed
    90–92 %), but the *expected* behaviour across seeds is far lower and
@@ -366,11 +388,11 @@ Two corrections to the thesis narrative emerge:
 2. **Physical tendon went from unsolved to the most robust variant.** In
    the thesis the physical-tendon arm could not even close on the cube
    (0.2 % grasp). Here it grasps at 99.7 % and places at 99.3 % across all
-   five seeds. The combination of the release reward fix and whatever
-   grasping/actuator changes have since landed on this variant has turned
-   the thesis's worst place result into its best. This is the single most
-   important delta from the thesis and warrants a dedicated write-up of
-   what changed in the physical-tendon configuration.
+   five seeds. The combination of the release reward fix has turned
+   the thesis's worst place result into its best. Note, however, that
+   this robustness is achieved by an **elbow-avoiding** placement strategy
+   (§5) — base-and-wrist positioning with the antiparallelogram elbow held
+   nearly fixed — not by superior elbow control.
 
 ---
 
@@ -391,20 +413,26 @@ Two corrections to the thesis narrative emerge:
    detaches the cube, or a small hold penalty that grows over the
    episode) is the next candidate if the weight bump is insufficient.
 
-3. **Physical tendon is the surprise success and should be understood,
-   not just celebrated.** Its robustness contradicts both the thesis and
-   the reach study. The actuator-dynamics hypothesis (compliant motion
-   makes release easy to discover) is consistent with the data but should
-   be confirmed — e.g. by training PD/sim-tendon with the physical-tendon
-   exploration schedule, or by inspecting whether the physical variant's
-   grasp/lift timing differs. If the mechanism is understood it may
-   transfer to fixing the other two variants.
+3. **Physical tendon is robust because it avoids the elbow, not because
+   it masters it.** Its robustness contradicts both the thesis and the
+   reach study, but the mechanism is now identified from a visual
+   inspection of the learned policies (§5): the physical-tendon policy
+   barely actuates the antiparallelogram elbow, positioning the cube with
+   the prismatic base and the wrist instead. By never entering the
+   elbow-driven carry regime it never reaches the grasp-and-hover optimum
+   that splits the other two variants — its robustness is a *workaround*
+   for the harder physical-linkage elbow control, bought by giving up full
+   use of the elbow workspace. This should be quantified (per-variant
+   elbow range-of-motion / joint-actuation statistics) rather than merely
+   celebrated, and it tempers the headline: the variant places reliably,
+   but it does so by largely not using the joint that is the thesis's
+   central mechanical contribution.
 
 4. **5 seeds is the right minimum and the thesis under-reported because
    it used one.** With a per-seed success spread of [0.00, 1.00] on PD and
    sim tendon, a single-seed number is not just imprecise — it can report
    90 % for a setting whose expected success is ~58 %. Following Henderson
-   et al. (2018), 5 seeds is a defensible minimum; 10 would tighten the
+   et al. (2018), 5 seeds is a defensible minimum. 10 would tighten the
    stall-probability estimate (currently 2/5).
 
 ---
@@ -446,7 +474,7 @@ but it enables per-episode pairing for future paired tests.
 
 ### 9.4 Sample size and statistical claims
 
-Each cell aggregates 5 seeds × 500 episodes = 2500 episodes; reported std
+Each cell aggregates 5 seeds × 500 episodes = 2500 episodes. Reported std
 is across the 5 seeds. The PPO-vs-baseline gap on every variant
 (≥ 0.578 vs 0.000) is unambiguous. The PD/sim-tendon vs physical-tendon
 gap (0.58 vs 0.99, with non-overlapping ±0.47 vs ±0.004 bands) is driven
@@ -461,7 +489,7 @@ distance to drum axis), `place_time_mean` (time-to-first-placement over
 successful episodes), and `action_rate_mean` (mean per-step
 ‖a_t − a_{t-1}‖₁, an action-smoothness proxy). Not measured:
 out-of-distribution robustness (cube spawns outside the training
-distribution; in-flight perturbations); drop accuracy as a function of
+distribution, in-flight perturbations). Drop accuracy as a function of
 release height.
 
 ---
@@ -472,7 +500,7 @@ release height.
 |---|----------|----------|---------------------------|
 | 1 | High | Re-train PD + sim tendon, 5 seeds each, `release` 25 → 40 (~25 GPU-h) | Test whether widening the open-vs-hold reward margin removes the grasp-and-hover collapse. Insight: distinguishes "the fix needs a bigger margin" from "the fix needs a structural anti-hover mechanism (curriculum / hold penalty)". |
 | 2 | High | Document the physical-tendon configuration delta | Identify exactly what changed on the physical-tendon variant between the thesis (0.2 % grasp) and now (99.7 % grasp). This is the largest result delta and is currently unexplained in writing. |
-| 3 | Medium | Re-train PD/sim tendon with the physical-tendon exploration schedule (`log_std 0.0`, `entropy 0.005`), 5 seeds | Tests the actuator-dynamics-vs-hyperparameters hypothesis of §5 by holding dynamics fixed and copying only the exploration schedule. Insight: if PD/sim-tendon stay bimodal, robustness is a dynamics property, not a hyperparameter one. |
+| 3 | Medium | Log per-variant elbow joint-actuation statistics (range of motion, mean \|Δq_elbow\| per step) over the eval episodes | Quantify the §5 elbow-avoidance finding: confirm that the physical-tendon policy actuates the elbow far less than PD/sim tendon, and correlate low elbow usage with escape from the grasp-and-hover optimum. Insight: turns the visual observation into a measured claim and tests whether elbow-light placement is the robustness mechanism. |
 | 4 | Low | Re-train the two fragile variants with 5 additional seeds (~25 GPU-h) | Tighten the stall-probability estimate from 2/5 to roughly 4/10. Insight: confirms whether the collapse rate is ~40 % or a smaller tail. |
 
 ### Completed in this iteration
