@@ -18,7 +18,7 @@ from isaaclab.managers import CommandTerm, CommandTermCfg
 from isaaclab.markers import VisualizationMarkersCfg
 from isaaclab.markers.config import FRAME_MARKER_CFG
 from isaaclab.utils import configclass
-from isaaclab.utils.math import quat_unique, subtract_frame_transforms
+from isaaclab.utils.math import quat_from_euler_xyz, quat_unique, subtract_frame_transforms
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
@@ -170,10 +170,44 @@ class FKSampledPoseCommand(CommandTerm):
         return extras
 
     def _resample_command(self, env_ids: Sequence[int]) -> None:
+        # Two target-generation modes share this command's metric / reset / vis
+        # machinery so FK-sampled and uniform-box variants log identically and
+        # can be compared apples-to-apples:
+        #   * uniform_ranges set -> sample a fixed box in the robot ROOT frame
+        #     (Isaac Lab's stock UniformPoseCommand logic, ported here);
+        #   * otherwise          -> the original FK-through-physics sampling.
+        if self.cfg.uniform_ranges is not None:
+            self._resample_uniform(env_ids)
+            return
         # The reference robot (if any) uses simple revolute joints and needs no
         # coupling closure; the main-robot path keeps the optional coupling fn.
         use_coupling = self.fk_robot is None
         self._resample_fk(env_ids, use_coupling=use_coupling)
+
+    def _resample_uniform(self, env_ids: Sequence[int]) -> None:
+        """Sample EE-pose targets uniformly from a fixed box in the robot ROOT
+        frame, matching Isaac Lab's stock ``UniformPoseCommand``.
+
+        Position is drawn from ``cfg.uniform_ranges.pos_{x,y,z}`` and orientation
+        from uniform Euler ``roll``/``pitch``/``yaw`` (X-Y-Z). Because the target
+        is expressed in each robot's own base frame, one box definition is
+        automatically per-robot-relative and stays inside every arm's envelope.
+        """
+        rg = self.cfg.uniform_ranges
+        n = len(env_ids)
+        pos = torch.empty(n, 3, device=self.device)
+        pos[:, 0].uniform_(*rg.pos_x)
+        pos[:, 1].uniform_(*rg.pos_y)
+        pos[:, 2].uniform_(*rg.pos_z)
+
+        euler = torch.empty(n, 3, device=self.device)
+        euler[:, 0].uniform_(*rg.roll)
+        euler[:, 1].uniform_(*rg.pitch)
+        euler[:, 2].uniform_(*rg.yaw)
+        quat = quat_from_euler_xyz(euler[:, 0], euler[:, 1], euler[:, 2])
+
+        self.pose_command_b[env_ids, :3] = pos
+        self.pose_command_b[env_ids, 3:] = quat_unique(quat) if self.cfg.make_quat_unique else quat
 
     # ------------------------------------------------------------------
     # Geometric self-collision filter (origin-distance, kinematic, GPU)
@@ -425,6 +459,28 @@ class FKSampledPoseCommandCfg(CommandTermCfg):
     make_quat_unique: bool = False
     success_threshold: float = 0.02
     joint_range_margin: float = 0.10
+
+    @configclass
+    class Ranges:
+        """Uniform sampling ranges (min, max) for the fixed-box target mode.
+
+        Position ranges are in the robot ROOT frame [m]; orientation ranges are
+        uniform Euler angles [rad] applied X-Y-Z. Mirrors the field layout of
+        Isaac Lab's ``UniformPoseCommandCfg.Ranges`` for familiarity."""
+
+        pos_x: tuple[float, float] = MISSING
+        pos_y: tuple[float, float] = MISSING
+        pos_z: tuple[float, float] = MISSING
+        roll: tuple[float, float] = MISSING
+        pitch: tuple[float, float] = MISSING
+        yaw: tuple[float, float] = MISSING
+
+    uniform_ranges: Ranges | None = None
+    """If set, targets are drawn uniformly from this fixed box in the robot ROOT
+    frame (Isaac Lab's stock ``UniformPoseCommand`` logic) instead of via FK
+    sampling. All the command's metrics / reset / debug-vis behaviour is shared
+    between the two modes, so FK-sampled and uniform-box variants log
+    identically and stay directly comparable."""
 
     # ── Self-collision rejection filter ───────────────────────────────────
     self_collision_filter: bool = False
