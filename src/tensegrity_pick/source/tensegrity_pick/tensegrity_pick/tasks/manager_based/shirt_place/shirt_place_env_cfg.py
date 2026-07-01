@@ -284,12 +284,15 @@ class RewardsCfg:
     # the drum rim (grasp point ~1.3 m) is rewarded, not capped at 1.10 m.
     height_bonus = RewTerm(
         func=task_rew.shirt_height_bonus,
-        weight=8.0,
+        weight=5.0,
         params={
             "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
             "shirt_name": "shirt_proxy",
             "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
-            "max_height": 0.50,
+            # 0.65 (was 0.50): headroom so the arm keeps a climb gradient up to a
+            # grasp point of ~1.45 m — enough that the shirt hanging ~0.4 m below
+            # the tip fully clears the 0.88 m drum rim before the drop.
+            "max_height": 0.65,
             "max_distance": 0.15,
             "finger_cfg": SceneEntityCfg("robot", joint_names=["finger_joint"]),
             "max_velocity": 1.0,
@@ -333,23 +336,32 @@ class RewardsCfg:
     )
 
     # ── 4c. Suspend the whole shirt above the drum opening ──────────
+    # Weight cut 12 → 4: at 12 this per-step "shirt cleared over the drum" reward
+    # became a hover attractor — the policy parked the shirt above the drum and
+    # never released (place_success stuck at 0 while clearance climbed).  It now
+    # only *guides* to the drop pose; the release + drop must pay the real reward.
     clearance_over_drum = RewTerm(
         func=task_rew.shirt_clearance_over_drum,
-        weight=12.0,
+        weight=4.0,
         params={
             "shirt_name": "shirt_proxy",
             "drum_name": "drum_target",
             "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
             "rim_clearance": 0.08,
-            "clear_margin": 0.08,
+            # 0.20 (was 0.08): a smoother clearance gradient that *pulls* the
+            # whole hanging shirt above the rim, instead of an all-or-nothing step
+            # the policy could never reach (so it stayed 0 and gave no signal).
+            "clear_margin": 0.20,
             "drum_radius": 0.32,
         },
     )
 
     # ── 5. Release above drum ───────────────────────────────────────
+    # Small per-step openness shaping (was 25) — kept only as a gradient hint
+    # toward opening once above the drum...
     release = RewTerm(
         func=task_rew.shirt_release_above_target,
-        weight=25.0,
+        weight=5.0,
         params={
             "shirt_name": "shirt_proxy",
             "drum_name": "drum_target",
@@ -357,6 +369,27 @@ class RewardsCfg:
             "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
             "rim_clearance": 0.10,
             "drum_radius": 0.2735,
+        },
+    )
+
+    # ...with the real payoff a one-time bonus for actually committing to the drop
+    # (grasp opened centred over + above the drum rim).  Anti-hover: the drop is a
+    # discrete rewarded event, not a state the policy can hover in.
+    release_event = RewTerm(
+        func=task_rew.release_event_bonus,
+        weight=80.0,
+    )
+
+    # ── 5b. Anti-hover time cost ────────────────────────────────────
+    # Bleeds reward while a *lifted* shirt is held without being placed, so
+    # holding over the drum is worse than committing to the drop.
+    carry_time = RewTerm(
+        func=task_rew.carry_time_penalty,
+        weight=-1.5,
+        params={
+            "shirt_name": "shirt_proxy",
+            "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
+            "lift_threshold": 0.20,
         },
     )
 
@@ -520,6 +553,14 @@ class TerminationsCfg:
         },
     )
 
+    # NOTE: an earlier ``placed_settled`` termination (end the episode ~15 steps
+    # after a drop) backfired — placing has higher *per-step* reward but ending the
+    # episode early cut its *total* return below hovering-to-timeout, so PPO drifted
+    # back to hovering (reward↑ while place_success↓).  Removed: a placed shirt now
+    # keeps earning ``return_to_neutral`` (weight 100) for the full episode, so
+    # dropping strictly dominates holding.  The carry-time penalty still pressures
+    # the policy to place sooner.
+
 
 ##
 # Environment configuration
@@ -561,7 +602,10 @@ class ShirtPlaceEnvCfg(ManagerBasedRLEnvCfg):
         # was faster but let the cloth over-stretch into a strand.)  CCD stays off
         # (expensive; the gentle, low-speed motion does not tunnel).
         cp = SHIRT_CLOTH_CFG.pbd_params
-        cp.solver_position_iterations = 16
+        # 24 (was 16): stiffer inextensibility to curb the visible over-stretch on
+        # pickup (PBD projects the 1e5 stretch constraints more times per step).
+        # Throughput headroom exists (~2 it/s at 128 envs).
+        cp.solver_position_iterations = 24
         cp.enable_ccd = False
         cp.global_self_collision = True
         # 60 Hz physics (see decimation note above) — halves cloth sim cost.

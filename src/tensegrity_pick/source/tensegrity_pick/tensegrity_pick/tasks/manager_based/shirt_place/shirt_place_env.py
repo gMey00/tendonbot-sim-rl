@@ -57,8 +57,18 @@ FINGER_JOINT_NAME = "finger_joint"
 # fires when the gripper is commanded closed AND the tip has reached the cloth's
 # highest point; detach fires when it is commanded open (robust to the physical
 # gripper jamming).
-ATTACH_TRIGGER_DIST = 0.12   # finger tip → highest point distance to allow attach
-ATTACH_WELD_RADIUS = 0.18    # particles within this of the tip are welded (a bunch)
+# Small, gripper-pad-sized capture region (mirrors the GarmentLab / DexGarmentLab
+# AttachmentBlock).  The old 0.18 m radius welded a ~36 cm blob (hundreds of
+# vertices), dragged neighbours along ("force field"), and — with the tip
+# attaching from up to 0.12 m away — floated the patch far below the tip.  A tight
+# trigger + small radius grip only the actually-pinched cluster, at the tip.
+ATTACH_TRIGGER_DIST = 0.10   # finger tip → highest point distance to allow attach
+ATTACH_WELD_RADIUS = 0.07    # particles within this of the tip are welded
+# ^ Sized to the arm's reach: base_z bottoms out ≈0.05 m above the belt-level flat
+# cloth, so the radius must bridge that vertical gap plus a small pad footprint.
+# For a flat sheet ~0.05 m below the tip this captures a ~0.05 m-radius disc
+# (≈80 vertices — a pinch), vs the old 0.18 m blob (~1000 vertices).  Once welded,
+# the recentred offsets hold the cluster *at* the tip, so there is no float gap.
 FINGER_CMD_CLOSE = 0.40      # commanded finger target above this ⇒ closing
 FINGER_CMD_OPEN = 0.40       # commanded finger target below this ⇒ opening → release
 
@@ -85,6 +95,18 @@ GRIPPER_MIMIC = {
 GRIPPER_KIN_RATE = 4.0
 PLACE_FRACTION_THRESHOLD = 0.15  # cloth-fraction-in-drum counted as a placement
 BELT_HEIGHT = CONVEYOR_SURFACE_HEIGHT_M
+# Anti-hover: a release counts as "good" (earns the one-time release bonus) when
+# the gripper opens with the grasp point centred over the drum footprint and above
+# its rim.  After a placement latches, the episode ends this many control steps
+# later so the per-step shaping can no longer be farmed by holding.
+RELEASE_RIM_CLEARANCE = 0.10
+PLACE_SETTLE_STEPS = 15
+# Clearance predicate (must match the ``clearance_over_drum`` reward params) used
+# to fade out the per-step "positioned over the drum" shaping as the shirt clears,
+# so hovering-cleared is a reward desert and only releasing pays.
+CLEAR_RIM_CLEARANCE = 0.08
+CLEAR_MARGIN = 0.20
+CLEAR_DRUM_RADIUS = 0.32
 
 # Drum geometry — must match _BIN_GEOM in shirt_place_env_cfg.py.  Height spans
 # the drum interior depth (not the 0.30 m used for the rigid cube) so draped
@@ -128,6 +150,15 @@ class TensegrityShirtPlaceEnv(ManagerBasedRLEnv):
         # ── Latched flags + cloth-aware success metric ────────────────
         self._was_grasped = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         self._was_placed = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        # Anti-hover: one-shot flag set for the single step a good release happens
+        # (grasp opened while centred over + cleared above the drum), consumed by
+        # the ``release_event`` reward.  ``_steps_since_place`` counts control steps
+        # since the placement latched, so the episode can terminate shortly after a
+        # successful drop (the shaping can no longer be farmed by holding).
+        self._release_event = torch.zeros(self.num_envs, device=self.device)
+        self._steps_since_place = torch.full(
+            (self.num_envs,), -1, dtype=torch.long, device=self.device,
+        )
         # Peak fraction of cloth particles inside the drum during the episode —
         # a cloth-aware success signal (centroid-in-drum can be true while most
         # of the shirt hangs outside).
@@ -337,12 +368,41 @@ class TensegrityShirtPlaceEnv(ManagerBasedRLEnv):
         return self._cloth.is_attached
 
     @property
+    def clearance_fraction(self) -> torch.Tensor:
+        """Smooth [0,1] "shirt fully cleared over the drum" signal ``[N]``.
+
+        1.0 when the grasp point is over the drum footprint AND the whole shirt
+        (lowest particle) is ``CLEAR_MARGIN`` above the rim; 0 otherwise.  Used to
+        fade the per-step positioning shaping so a cleared-over-drum shirt earns
+        almost nothing unless it is released (breaks the hover-over-drum trap).
+        """
+        drum_pos = _get_world_pos(self.scene[DRUM_KEY], env=self)
+        gp = self.shirt_grasp_point_w
+        d_xy = torch.norm(gp[:, :2] - drum_pos[:, :2], dim=-1)
+        in_xy = d_xy < CLEAR_DRUM_RADIUS
+        rim = BELT_HEIGHT + CLEAR_RIM_CLEARANCE
+        bottom_z = self.shirt_min_z_w - self.scene.env_origins[:, 2]
+        clr = torch.clamp((bottom_z - rim) / CLEAR_MARGIN, 0.0, 1.0)
+        gate = in_xy & self._was_grasped
+        return torch.where(gate, clr, torch.zeros_like(clr))
+
+    @property
     def was_grasped(self) -> torch.Tensor:
         return self._was_grasped
 
     @property
     def was_placed(self) -> torch.Tensor:
         return self._was_placed
+
+    @property
+    def release_event(self) -> torch.Tensor:
+        """Per-env one-shot ``[num_envs]``: 1.0 the step a good release fired."""
+        return self._release_event
+
+    @property
+    def steps_since_place(self) -> torch.Tensor:
+        """Control steps since a placement latched (``-1`` if not yet placed)."""
+        return self._steps_since_place
 
     def _shirt_in_drum(self) -> torch.Tensor:
         shirt = self.scene[SHIRT_PROXY_KEY]
@@ -379,22 +439,49 @@ class TensegrityShirtPlaceEnv(ManagerBasedRLEnv):
 
         # Update cloth state from GPU buffers
         self._cloth.update()
-        # Attach / hold / detach the deterministic welded grasp
+        # Attach / hold / detach the deterministic welded grasp.  Capture the
+        # pre-update grasp state so a release (attached → open) can be detected.
+        prev_attached = self.grasp_active.clone()
         self._update_grasp()
         # Sync the kinematic proxy to the cloth centroid
         self._sync_proxy_to_cloth()
 
+        # ── One-time release bonus ────────────────────────────────────────
+        # Fire for the single step the gripper opens while the grasp point is
+        # centred over the drum footprint and above its rim (a sensible drop),
+        # consumed by the ``release_event`` reward next step.
+        released = prev_attached & (~self.grasp_active)
+        drum_pos = _get_world_pos(self.scene[DRUM_KEY], env=self)
+        gp = self.shirt_grasp_point_w
+        d_xy = torch.norm(gp[:, :2] - drum_pos[:, :2], dim=-1)
+        local_z = gp[:, 2] - self.scene.env_origins[:, 2]
+        good_release = (
+            released
+            & (d_xy < _DRUM_GEOM.radius)
+            & (local_z > BELT_HEIGHT + RELEASE_RIM_CLEARANCE)
+        )
+        self._release_event = good_release.float()
+
         still_running = ~(terminated | time_outs)
         self._was_grasped[still_running] |= self.grasp_active[still_running]
-        # Track the peak cloth-in-drum fraction (cloth-aware success metric) and
-        # latch a placement once a meaningful fraction of the grasped shirt is in
-        # the drum (centroid-in-cylinder misses a partly-draped shirt).
-        frac = self._shirt_particle_fraction_in_drum()
+        # A placement counts only when the shirt is a) in the drum AND b) *released*
+        # (not held).  Requiring the release closes the reward-hack where the policy
+        # simply lowers the still-gripped shirt into the drum so particles register
+        # inside without ever dropping it — the task wants the shirt held above the
+        # drum, then let go so it falls in.  The fraction metric likewise counts
+        # only released cloth, so it honestly reflects "dropped in".
+        released = ~self.grasp_active
+        frac = self._shirt_particle_fraction_in_drum() * released.float()
         self._max_drum_fraction[still_running] = torch.maximum(
             self._max_drum_fraction[still_running], frac[still_running]
         )
-        placed_now = (frac > PLACE_FRACTION_THRESHOLD) & self._was_grasped
+        placed_now = (frac > PLACE_FRACTION_THRESHOLD) & self._was_grasped & released
         self._was_placed[still_running] |= placed_now[still_running]
+        # Count control steps since a placement latched (for terminate-after-place).
+        newly_placed = placed_now & (self._steps_since_place < 0) & still_running
+        self._steps_since_place[newly_placed] = 0
+        counting = (self._steps_since_place >= 0) & still_running
+        self._steps_since_place[counting] += 1
         return obs, reward, terminated, time_outs, extras
 
     # ------------------------------------------------------------------
@@ -422,6 +509,8 @@ class TensegrityShirtPlaceEnv(ManagerBasedRLEnv):
         self._was_grasped[env_ids_t] = False
         self._was_placed[env_ids_t] = False
         self._max_drum_fraction[env_ids_t] = 0.0
+        self._release_event[env_ids_t] = 0.0
+        self._steps_since_place[env_ids_t] = -1
 
         # Release any welded grasp, then lay the shirt flat at the fixed pose and
         # sync the proxy/cloth buffers so reset-step observations are consistent.

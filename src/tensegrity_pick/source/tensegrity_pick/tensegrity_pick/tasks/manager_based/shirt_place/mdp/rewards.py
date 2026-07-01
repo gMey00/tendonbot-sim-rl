@@ -79,6 +79,18 @@ def _shirt_grasp_point(env: ManagerBasedRLEnv, shirt_name: str) -> torch.Tensor:
     return env.scene[shirt_name].data.root_pos_w
 
 
+def _hold_fade(env: ManagerBasedRLEnv) -> torch.Tensor | float:
+    """Multiplier that fades per-step positioning shaping out as the shirt clears.
+
+    Returns ``1 - clearance_fraction`` (→ 0 once the shirt is fully cleared over the
+    drum), so "positioned over the drum" rewards can't be farmed by hovering — the
+    only way to keep gaining reward from that state is to release and drop.
+    """
+    if hasattr(env, "clearance_fraction"):
+        return 1.0 - env.clearance_fraction
+    return 1.0
+
+
 def _shirt_fraction_in_drum(
     env: ManagerBasedRLEnv, shirt_name: str, drum_name: str, bin_geom: "BinCylinder",
 ) -> torch.Tensor:
@@ -235,7 +247,9 @@ def shirt_is_lifted(
     gate = is_above
     if hasattr(env, "grasp_active"):
         gate = gate & env.grasp_active
-    return torch.where(gate, 1.0, 0.0)
+    # Fade out once the shirt is cleared over the drum (anti-hover): holding a
+    # lifted, cleared shirt earns nothing — only releasing does.
+    return torch.where(gate, 1.0, 0.0) * _hold_fade(env)
 
 
 def shirt_height_bonus(
@@ -261,8 +275,8 @@ def shirt_height_bonus(
 
     if hasattr(env, "grasp_active"):
         gate = env.grasp_active
-        return torch.where(gate, normalized, torch.zeros_like(normalized))
-    return normalized
+        return torch.where(gate, normalized, torch.zeros_like(normalized)) * _hold_fade(env)
+    return normalized * _hold_fade(env)
 
 
 def shirt_approach_target(
@@ -297,7 +311,10 @@ def shirt_approach_target(
     if hasattr(env, "was_grasped"):
         gate = gate & env.was_grasped
 
-    return torch.where(gate, proximity, torch.zeros_like(proximity))
+    # Fade out as the shirt clears over the drum (anti-hover): the XY-tracking
+    # reward guides the shirt *to* the drum but stops paying once it is there, so
+    # the policy can't hover centred over the opening — it must drop.
+    return torch.where(gate, proximity, torch.zeros_like(proximity)) * _hold_fade(env)
 
 
 def shirt_clearance_over_drum(
@@ -338,6 +355,53 @@ def shirt_clearance_over_drum(
     return torch.where(gate, clearance, torch.zeros_like(clearance))
 
 
+def release_event_bonus(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """One-time bonus (N,) for opening the gripper over the drum at clearance.
+
+    Reads the env's one-shot ``release_event`` flag (1.0 for the single step a
+    good release fires — grasp opened while centred over + above the drum rim),
+    so the reward is a discrete drop event rather than a per-step openness term
+    the policy could farm or avoid.  Anti-hover: it pays only for *committing* to
+    the drop.
+    """
+    if hasattr(env, "release_event"):
+        return env.release_event
+    return torch.zeros(env.num_envs, device=env.device)
+
+
+def carry_time_penalty(
+    env: ManagerBasedRLEnv,
+    shirt_name: str,
+    belt_height: float,
+    lift_threshold: float = 0.20,
+) -> torch.Tensor:
+    """Per-step time cost (N,) while holding a *lifted* shirt that isn't placed.
+
+    Anti-hover pressure targeted at the exact failure mode: a grasped shirt held
+    up (grasp point well above the belt) without committing to the drop.  Gated on
+    ``lift_threshold`` so it never touches the reach/grasp phase — only sustained
+    hovering bleeds reward, pushing the policy to finish the placement.
+    """
+    if not (hasattr(env, "was_grasped") and hasattr(env, "was_placed")):
+        return torch.zeros(env.num_envs, device=env.device)
+    gp = _shirt_grasp_point(env, shirt_name)
+    local_z = gp[:, 2] - env.scene.env_origins[:, 2]
+    lifted = local_z > (belt_height + lift_threshold)
+    active = env.was_grasped & (~env.was_placed) & lifted
+    return active.to(torch.float32)
+
+
+def placed_and_settled(env: ManagerBasedRLEnv, settle_steps: int = 15) -> torch.Tensor:
+    """Terminate ``settle_steps`` control steps after a placement latched.
+
+    Ends the episode shortly after a successful drop so the per-step shaping can
+    no longer be farmed by holding — the terminal success reward dominates.
+    """
+    if hasattr(env, "steps_since_place"):
+        return env.steps_since_place >= settle_steps
+    return torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+
+
 def shirt_in_drum(
     env: ManagerBasedRLEnv,
     shirt_name: str,
@@ -364,7 +428,12 @@ def shirt_in_target(
     """
     frac = _shirt_fraction_in_drum(env, shirt_name, drum_name, bin_geom)
     if hasattr(env, "was_grasped"):
-        return frac * env.was_grasped.to(torch.float32)
+        gate = env.was_grasped.to(torch.float32)
+        # Only reward *released* cloth in the drum — a still-gripped shirt dipped
+        # into the drum earns nothing, so the policy must actually drop it.
+        if hasattr(env, "grasp_active"):
+            gate = gate * (~env.grasp_active).to(torch.float32)
+        return frac * gate
     return frac
 
 

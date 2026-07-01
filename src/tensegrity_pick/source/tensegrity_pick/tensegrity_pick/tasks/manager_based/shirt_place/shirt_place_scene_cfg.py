@@ -24,7 +24,7 @@ from ..shared.proj_base_scene_cfg import (
     ProjBaseSceneCfg,
     ROBOT_MOUNT_HEIGHT_M,
 )
-from ..shared.cloth_object import ClothBackend, ClothObjectCfg, PBDClothParams, XPBDClothParams
+from ..shared.cloth_object import ClothBackend, ClothObjectCfg, GraspMode, PBDClothParams, XPBDClothParams
 from tensegrity_pick.robots import TENS_5DOF_GRIPPER_CFG
 
 PLACE_MOUNT_HEIGHT_M = ROBOT_MOUNT_HEIGHT_M
@@ -85,12 +85,21 @@ _INITIAL_JOINT_POS = {
 # by changing this one value (or override SHIRT_CLOTH_CFG.backend per task).
 SHIRT_CLOTH_BACKEND = ClothBackend.PBD
 
+# Deterministic-grasp mechanics — switch here to compare the two implementations:
+#   GraspMode.WELD   : teleport the grasped cluster to the finger tip each step.
+#   GraspMode.ANCHOR : pin the grasped particles as PBD solver anchors (inverse
+#                      mass ≈ 0) — the pipeline-safe equivalent of the GarmentLab /
+#                      DexGarmentLab attachment, for a more physical, less stretchy
+#                      hold.
+SHIRT_GRASP_MODE = GraspMode.ANCHOR
+
 SHIRT_CLOTH_CFG = ClothObjectCfg(
     prim_path="{ENV_REGEX_NS}/Shirt",
     usd_path=TSHIRT_USD_PATH,
     xpbd_usd_path=TSHIRT_XPBD_USD_PATH,
     mesh_prim_path=TSHIRT_MESH_PRIM,
     backend=SHIRT_CLOTH_BACKEND,
+    grasp_mode=SHIRT_GRASP_MODE,
     pbd_params=PBDClothParams(),
     xpbd_params=XPBDClothParams(),
     init_pos=(0.15, -0.04, SPAWN_HEIGHT_M),

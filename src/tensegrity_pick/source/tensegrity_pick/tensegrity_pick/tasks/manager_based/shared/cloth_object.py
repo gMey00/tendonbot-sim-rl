@@ -63,6 +63,28 @@ class ClothBackend(Enum):
     XPBD = "xpbd"
 
 
+class GraspMode(Enum):
+    """Deterministic-grasp mechanics for the cloth (switchable).
+
+    - ``WELD``   : the grasped particle cluster is *teleported* to the finger tip
+      each control step (set_positions + zero velocity).  Simple and robust, but
+      the overwrite-once-per-step lets the solver tug the cluster between writes,
+      which injects the visible snap/stretch on pickup.
+    - ``ANCHOR`` : the grasped particles are pinned as **solver anchors** by
+      raising their mass so their inverse mass ≈ 0 (what a PhysX particle
+      *attachment* does internally): the PBD solver then satisfies the cloth's
+      stretch constraints against near-immovable anchors *every iteration*, so the
+      cluster resists being pulled out of shape — a more physical, less stretchy
+      hold.  This is the pipeline-compatible equivalent of the GarmentLab /
+      DexGarmentLab ``AttachmentBlock`` (a literal runtime ``PhysxPhysicsAttachment``
+      is not viable here — Isaac Lab bakes GPU physics at ``sim.reset()``, so a
+      mid-episode attachment prim is not picked up; verified empirically).
+    """
+
+    WELD = "weld"
+    ANCHOR = "anchor"
+
+
 # ---------------------------------------------------------------------------
 # Physics parameter data classes
 # ---------------------------------------------------------------------------
@@ -107,11 +129,15 @@ class PBDClothParams:
     friction: float = 0.3
     damping: float = 0.5
 
-    # Adhesion (for grasping).  adhesion_offset_scale MUST be > 0 or the adhesion
-    # force has no range and is silently inert.
-    adhesion: float = 0.2
-    adhesion_offset_scale: float = 2.0
-    particle_adhesion_scale: float = 1.0
+    # Adhesion — DISABLED.  It was a sticky particle↔surface force added for the
+    # abandoned *friction*-grasp approach.  With the deterministic weld/attachment
+    # grasp it is not needed, and a non-zero adhesion makes the cloth glue onto the
+    # conveyor top and drum rim: once the shirt touches those, moving the gripper
+    # drags stuck vertices and the sheet visibly over-stretches (user-reported).
+    # Zeroed so the cloth only interacts with objects through friction + collision.
+    adhesion: float = 0.0
+    adhesion_offset_scale: float = 2.0   # inert while adhesion == 0
+    particle_adhesion_scale: float = 0.0
     particle_friction_scale: float = 1.0
 
     # Total garment mass (kg).  Per-particle mass is mass / n_particles; PhysX
@@ -192,6 +218,14 @@ class ClothObjectCfg:
 
     backend: ClothBackend = ClothBackend.PBD
     """Which cloth simulation backend to author / drive."""
+
+    grasp_mode: GraspMode = GraspMode.WELD
+    """Deterministic-grasp mechanics (``WELD`` teleport vs ``ANCHOR`` solver pin)."""
+
+    anchor_mass: float = 1.0e3
+    """Per-particle mass assigned to grasped particles in ``ANCHOR`` mode (kg).
+    Large vs the ~3e-5 kg default so inverse mass ≈ 0 (a solver anchor), but not so
+    extreme it destabilises PBD.  Only used when ``grasp_mode is GraspMode.ANCHOR``."""
 
     pbd_params: PBDClothParams = field(default_factory=PBDClothParams)
     xpbd_params: XPBDClothParams = field(default_factory=XPBDClothParams)
@@ -667,6 +701,25 @@ class ClothObject:
         )
         self._attached = torch.zeros(num_envs, dtype=torch.bool, device=device)
 
+        # Grasp mechanics mode (WELD teleport vs ANCHOR solver-pin).  ANCHOR pins
+        # grasped particles by raising their mass (inverse mass ≈ 0) — only
+        # meaningful for the PBD particle backend, which exposes per-particle mass.
+        self._grasp_mode = cfg.grasp_mode
+        self._anchor_mass = float(cfg.anchor_mass)
+        self._default_masses = None
+        self._masses = None
+        if self._grasp_mode is GraspMode.ANCHOR and self._backend is ClothBackend.PBD:
+            self._default_masses = self._cloth_view.get_masses().clone()  # [N, P]
+            # Live copy written back wholesale — the particle-cloth backend rejects
+            # partial (subset-of-envs) mass writes, so we always push all envs.
+            self._masses = self._default_masses.clone()
+        elif self._grasp_mode is GraspMode.ANCHOR:
+            logger.warning(
+                "GraspMode.ANCHOR requires the PBD backend (per-particle mass); "
+                "falling back to WELD."
+            )
+            self._grasp_mode = GraspMode.WELD
+
         # Canonical rest shape, laid *flat*.  The cloth was flattened at apply
         # time along its thinnest axis, so here we orient that thin (sheet
         # normal) axis to +Z and the two large axes into the belt (XY) plane.
@@ -908,12 +961,20 @@ class ClothObject:
         grasp_centers: torch.Tensor,
         radius: float,
     ) -> None:
-        """Weld every particle within ``radius`` of the grasp centre to the tip.
+        """Weld the small particle cluster within ``radius`` of the tip to it.
+
+        Mirrors the GarmentLab / DexGarmentLab ``AttachmentBlock``: a *small*
+        capture region around the grasp point (radius ≈ a few edge lengths, like
+        the gripper-pad footprint), welded to the tip.  The frozen per-particle
+        offsets are **recentred on the welded group's centroid**, so that centroid
+        coincides with the tip — the cluster is gripped *at* the tip with no
+        vertical float gap, while its small internal spread is preserved (so the
+        mesh is not bunched to a point).
 
         Args:
             env_ids:       ``[k]`` env indices to (try to) attach.
             grasp_centers: ``[num_envs, 3]`` gripper-tip world positions.
-            radius:        attachment overlap radius (m).
+            radius:        attachment capture radius (m).
         """
         env_ids = env_ids.to(device=self.device, dtype=torch.long)
         if env_ids.numel() == 0:
@@ -925,9 +986,26 @@ class ClothObject:
         caught = mask.any(dim=1)                                 # [k]
         # Only weld envs that actually caught particles.
         mask = mask & caught.unsqueeze(1)
+        # Recentre the frozen offsets on the welded group's centroid so the
+        # cluster is held *at* the tip (removes the tip→cloth vertical gap),
+        # keeping only the small in-cluster spread.
+        raw = pts - gc.unsqueeze(1)                              # [k, P, 3]
+        maskf = mask.float().unsqueeze(-1)                       # [k, P, 1]
+        cnt = maskf.sum(dim=1).clamp(min=1.0)                    # [k, 1]
+        grp = (raw * maskf).sum(dim=1) / cnt                     # [k, 3] welded centroid rel. tip
+        offset = raw - grp.unsqueeze(1)                          # welded centroid → tip
         self._attach_mask[env_ids] = mask
-        self._attach_offset[env_ids] = pts - gc.unsqueeze(1)     # masked use only
+        self._attach_offset[env_ids] = offset                    # masked use only
         self._attached[env_ids] = caught
+
+        # ANCHOR mode: pin the welded particles as solver anchors (mass → large,
+        # inverse mass ≈ 0) so the PBD constraint solve treats them as fixed each
+        # iteration — the pipeline-safe equivalent of a PhysX particle attachment.
+        if self._grasp_mode is GraspMode.ANCHOR and self._masses is not None:
+            rows = self._default_masses[env_ids].clone()         # [k, P]
+            rows[mask] = self._anchor_mass
+            self._masses[env_ids] = rows
+            self._cloth_view.set_masses(self._masses, self._ALL_INDICES)
 
     def hold(self, grasp_centers: torch.Tensor) -> None:
         """Re-pin welded particles to ``grasp_centre + frozen_offset``.
@@ -953,10 +1031,15 @@ class ClothObject:
         self._set_velocities(self._vel_flat, attached_ids.to(torch.int32))
 
     def detach(self, env_ids: torch.Tensor) -> None:
-        """Release the welded grasp for ``env_ids``."""
+        """Release the grasp for ``env_ids`` (restores anchor masses if pinned)."""
         env_ids = env_ids.to(device=self.device, dtype=torch.long)
         if env_ids.numel() == 0:
             return
+        # ANCHOR mode: restore the released particles' original mass so the whole
+        # shirt falls/settles normally after the drop.
+        if self._grasp_mode is GraspMode.ANCHOR and self._masses is not None:
+            self._masses[env_ids] = self._default_masses[env_ids]
+            self._cloth_view.set_masses(self._masses, self._ALL_INDICES)
         self._attached[env_ids] = False
         self._attach_mask[env_ids] = False
 
