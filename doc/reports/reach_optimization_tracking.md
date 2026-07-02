@@ -772,3 +772,149 @@ physical dynamics.
 | Rollouts | 48 |
 | Timesteps | 150 000 |
 | Collision disable | ON |
+
+---
+
+## Iteration 14 (2026-06-28 → 2026-07-01) — F140 comparison grid, box targets, reference reward
+
+**Scope:** New 6-arm × 4-action-space comparison grid (24 variants), built for
+the action-space study (see `doc/reports/RESEARCH_BRIEF_action_spaces.md`).
+Full context and open problems were handed over in `doc/reach_task_handoff.md`;
+this entry summarises it for the change log.
+
+### Setup
+
+- **Arms (×6):** `UR5e-F140`, `UR10-F140`, `Kinova-F140` (rigid Robotiq 2F-140)
+  and their "Frankenstein" counterparts (same arm + compliant 2-DOF tensegrity
+  wrist spliced between flange and gripper).  All floor-standing at
+  `(0.75, 1.0, 0.75)`, EE body `robotiq_base_link`, shared setup funnelled
+  through `reach/config/f140_reach_common.py`.
+- **Action spaces (×4):** joint (EMA joint-position-to-limits, α=0.2),
+  Differential-IK relative (`_ik`), Differential-IK absolute (`_ikabs`),
+  Operational-Space Control (`_osc`).
+- **Targets:** switched from FK-sampled full-SO(3) poses to a **uniform
+  position box** in the robot base frame (`uniform_ranges` mode of
+  `FKSampledPoseCommand`): x (0.30, 0.50), y (−0.20, 0.20), z (0.25, 0.50),
+  orientation gripper-down `pitch=π` with free yaw — the IsaacLab UR10-reach
+  recipe, sized to fit every arm's envelope (farthest corner ≈ 86 % of UR5e
+  reach).  One target per episode; episode 6 s = 180 steps @ 30 Hz.
+- **Success metric thresholds:** position 5 cm.
+
+### Key findings (P1/P2 of the handoff)
+
+1. **Heavy orientation reward wrecked position (P1).**  An orientation weight
+   of −0.5 (+ extra fine-grained orientation term, position std widened to
+   0.5) made the 6-DOF UR arms trade position for orientation: 20–75 cm
+   position error.  **Fix: revert to the IsaacLab reference reward exactly**
+   (position −0.2, fine-grained tanh 0.1 @ std 0.1, orientation −0.1,
+   action_rate/joint_vel −1e-4 with the 4 500-step curriculum).
+   UR5e-F140: 55 cm → **1.8 cm**, 96 % of steps within 5 cm.
+2. **A fixed orientation target is geometrically unreachable for 6-DOF arms
+   (P2).**  A GPU diagnostic (`scripts/diagnose_box_orientation.py`) showed the
+   best possible *single* fixed orientation covers ~0 % of the box for UR5e
+   (~2–9 % for the 7-DOF Kinova).  Orientation is therefore **loose by
+   design**; reach is a position task.  Do not re-add orientation weight.
+
+### Status at end of iteration (seed 42, 100k timesteps)
+
+20/24 variants at 2–9 cm / 73–96 %.  By action space: joint 3.1 cm / 91 %,
+ik 3.4 cm / 88 %, ikabs 4.5 cm / 85 %, **osc 21.3 cm / 38 %**.  Open problems:
+OSC diverges on the tensegrity wrist (P3: `ur10_frankenstein_osc` 65 cm / 0 %,
+`ur5e_frankenstein_osc` 41 cm / 0 %), `kinova_frankenstein_osc` collapsed
+(P4: logs 0.8 cm but 0 % success), and `ur5e_f140_osc` / two ikabs variants
+mediocre (P5).
+
+---
+
+## Iteration 15 (2026-07-02) — OSC stability & controller tuning: full grid passes
+
+**Goal:** Fix the OSC divergences (P3/P4) and tighten the weak controller
+configs (P5) while keeping the comparison fair — same reward, targets and
+observations everywhere; only per-action-space controller/PPO settings differ,
+identically across arms.
+
+### Root cause of the OSC+Frankenstein divergence (P3/P4)
+
+`apply_osc_action` zeroed the implicit PD of **all** non-gripper actuators —
+including the compliant tensegrity wrist (`wrist_x/y_joint`: effort limit
+3.5 N·m, PD 400/20, near-zero reflected inertia) — and commanded them with
+pure-effort OSC.  Undamped compliant joints oscillate, the EE error feeds back
+into the task-space loop, and the arm diverges.  P4 confirmed via episode
+length: `kinova_frankenstein_osc` episodes were killed by `joint_vel_diverged`
+after **3.0 of 180 steps** on average — its logged "0.8 cm / 2°" was an
+artifact of frozen 3-step episodes, exactly the degenerate pattern the handoff
+warned about (§8).
+
+### Changes
+
+1. **OSC wrist fix** (`reach/config/osc_reach_common.py`,
+   `TENSEGRITY_WRIST_JOINTS`): the `tendon_wrist` actuator keeps its PD (holds
+   neutral, like the gripper groups) and `wrist_x/y_joint` are excluded from
+   the OSC action's joint set / Jacobian.  OSC corrects wrist deflection with
+   the rigid arm joints.  Redundancy for null-space posture control is
+   detected from the OSC joint count (Kinova 7-DOF: redundant; URs: not).
+2. **OSC partial inertial dynamics decoupling** (`osc_reach_common.py`):
+   `inertial_dynamics_decoupling=True` + `partial_inertial_dynamics_decoupling=True`.
+   Full decoupling (franka sample) is ill-conditioned on these arm+gripper
+   articulations, but the partial (translational/rotational block) form is
+   robust and scales task-space gains by the arm's inertia, so the same
+   kp/ζ behave consistently across light (UR5e) and heavy (UR10) arms.
+3. **ikabs PPO exploration** (all six `agents/skrl_ppo_ikabs_cfg.yaml`):
+   `initial_log_std` 0.0 → **−1.0**.  IK-abs actions are an absolute EE pose
+   in metres; std=1 Gaussian exploration swamps the 0.2–0.4 m target box.
+
+### Experiments that lost (kept for the record)
+
+| Hypothesis | Variant tested | Result | Verdict |
+|---|---|---|---|
+| OSC damping ratio ζ=2 (under-damping suspected) | ur5e_f140_osc | 11.9 → 44.0 cm, 0 % (over-damped crawl) | rejected |
+| OSC stiffness ceiling 200 → 400 | kinova_f140_osc | 4.1/74 % → 4.3/72 % | neutral, rejected |
+
+### Results (seed 42, 100k timesteps, §8 metric conventions of the handoff)
+
+Full 24-variant grid retrained 2026-07-02 (runs `10-33` – `11-00`).  Joint and
+IK-rel variants reproduced their Iteration-14 numbers bit-exactly (configs
+untouched, deterministic training) — sanity check that only the intended knobs
+changed.
+
+| Variant | Iter 14 (cm / %succ) | Iter 15 (cm / %succ) | Driver |
+|---|---|---|---|
+| ur5e_f140_osc | 11.9 / 67 | **2.1 / 93** | decoupling |
+| ur10_f140_osc | 4.8 / 85 | **3.1 / 91** | decoupling |
+| kinova_f140_osc | 4.1 / 74 | **3.7 / 87** | decoupling |
+| ur5e_frankenstein_osc | 41.0 / 0 | **3.8 / 91** | wrist fix + decoupling |
+| ur10_frankenstein_osc | 65.1 / 0 | 20.1 / 58 † | wrist fix + decoupling |
+| kinova_frankenstein_osc | collapsed (P4) | **3.0 / 90** | wrist fix + decoupling |
+| ur10_frankenstein_ikabs | 8.9 / 73 | **5.1 / 83** | ikabs std |
+| kinova_f140_ikabs | 5.5 / 73 | 5.8 / 67 | ~neutral |
+| ur10_f140_ikabs | 2.8 / 94 | 4.7 / 85 | slightly worse |
+| ur5e_f140_ikabs | 2.6 / 92 | 2.1 / 94 | ikabs std |
+| ur5e_frankenstein_ikabs | 4.4 / 85 | 3.8 / 87 | ikabs std |
+| kinova_frankenstein_ikabs | 2.6 / 92 | 2.4 / 90 | ~neutral |
+| joint / ik variants (12) | 1.8–4.9 / 83–96 | unchanged (bit-exact) | — |
+
+By action space (mean position error / mean success):
+
+| Space | Iter 14 | Iter 15 |
+|---|---|---|
+| joint | 3.1 cm / 91 % | 3.1 cm / 91 % |
+| ik (rel) | 3.4 cm / 88 % | 3.4 cm / 88 % |
+| ikabs | 4.5 cm / 85 % | 4.0 cm / 84 % |
+| **osc** | **21.3 cm / 38 %** | **7.0 cm / 87 %** (3.3 / 90 % excl. †) |
+
+### († ) `ur10_frankenstein_osc` — seed sensitivity, not divergence
+
+The seed-42 run converges to a *stable* local optimum (full 180-step episodes,
+plateau from ~iteration 16) that trades position for orientation (its 75°
+orientation error beats healthy ur10_f140_osc's 87°).  Same config, different
+seeds: **seed 7 → 4.1 cm / 90 %, seed 123 → 6.5 cm / 76 %** — both pass.  No
+per-variant config change was made (it would break the fair comparison);
+recommendation: report the study multi-seed (`tools/train_alex.sh -s "…"`), or
+footnote this variant.
+
+### Acceptance status (handoff §9)
+
+- No divergent or collapsed runs; every run completes full episodes.
+- 23/24 variants ≤ 5.8 cm and ≥ 67 % success (bar: ≤ ~8 cm, > ~60 %); the one
+  miss is the documented seed-42 outlier above.
+- Reward (IsaacLab reference), target box, observation structure: unchanged.
