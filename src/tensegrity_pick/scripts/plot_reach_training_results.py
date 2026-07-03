@@ -22,28 +22,43 @@ sys.path.insert(0, str(_Path(__file__).resolve().parents[3] / ".config"))
 import plot_config as pcfg
 pcfg.apply_style()
 
-# Relative sub-paths (joined with --root at runtime). The canonical extension
-# tree lives under src/tensegrity_pick/source/... — older versions of this
-# script wrote to a stray top-level source/ tree, which is the wrong location.
+# Relative sub-paths, joined with --root at runtime. --root defaults to the
+# extension root (src/tensegrity_pick, derived from this script's location) so
+# logs, figures and reports resolve to the canonical tree regardless of the
+# caller's working directory.
+_EXTENSION_ROOT: Final = Path(__file__).resolve().parents[1]
 _LOG_SUBDIR: Final = "logs/skrl/reach"
 _FIGURES_SUBDIR: Final = (
-    "src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures"
+    "source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures"
 )
 _REPORTS_SUBDIR: Final = (
-    "src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/reports"
+    "source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/reports"
 )
+
+# Floor-standing F140 comparison arms (mounted upright at (0.75, 1.0, 0.75)).
+_F140_ARM_LABELS: Final[dict[str, str]] = {
+    "ur10_f140": "UR10 6-DOF + F140",
+    "ur10_frankenstein": "UR10 + Tensegrity Wrist (8-DOF)",
+    "ur5e_f140": "UR5e 6-DOF + F140",
+    "ur5e_frankenstein": "UR5e + Tensegrity Wrist (8-DOF)",
+    "kinova_f140": "Kinova Gen3 7-DOF + F140",
+    "kinova_frankenstein": "Kinova + Tensegrity Wrist (9-DOF)",
+}
+# Each comparison arm trains in four action spaces; the log-dir suffix mirrors
+# the task-ID suffix (Template-Reach-<Arm>[-IK-Rel|-IK-Abs|-OSC]-v0).
+_ACTION_SPACE_LABELS: Final[dict[str, str]] = {
+    "": "Joint (EMA)",
+    "_ik": "IK-Rel",
+    "_ikabs": "IK-Abs",
+    "_osc": "OSC",
+}
 
 VARIANT_NAMES: Final[list[str]] = [
     "tensegrity",
     "tensegrity_tendon",
     "tensegrity_physical_tendon",
-    # Floor-standing F140 comparison arms (mounted upright at (0.75, 1.0, 0.75)).
-    "ur10_f140",
-    "ur10_frankenstein",
-    "ur5e_f140",
-    "ur5e_frankenstein",
-    "kinova_f140",
-    "kinova_frankenstein",
+    # 6 F140 comparison arms x 4 action spaces = 24 grid variants.
+    *(f"{arm}{space}" for arm in _F140_ARM_LABELS for space in _ACTION_SPACE_LABELS),
 ]
 
 DEFAULT_CURRICULUM_STEP: Final = 4500
@@ -57,12 +72,11 @@ VARIANT_LABELS: Final[dict[str, str]] = {
     "tensegrity": "Tensegrity 5-DOF (PD)",
     "tensegrity_tendon": "Tensegrity 5-DOF (Tendon)",
     "tensegrity_physical_tendon": "Tensegrity 5-DOF (Physical Tendon)",
-    "ur10_f140": "UR10 6-DOF + F140",
-    "ur10_frankenstein": "UR10 + Tensegrity Wrist (8-DOF)",
-    "ur5e_f140": "UR5e 6-DOF + F140",
-    "ur5e_frankenstein": "UR5e + Tensegrity Wrist (8-DOF)",
-    "kinova_f140": "Kinova Gen3 7-DOF + F140",
-    "kinova_frankenstein": "Kinova + Tensegrity Wrist (9-DOF)",
+    **{
+        f"{arm}{space}": f"{arm_label} — {space_label}"
+        for arm, arm_label in _F140_ARM_LABELS.items()
+        for space, space_label in _ACTION_SPACE_LABELS.items()
+    },
 }
 
 # Semantic colour aliases for this task
@@ -83,14 +97,21 @@ def write_report(variant: str, run_name: str, stats: dict, report_path: Path) ->
     scalars = stats["scalars"]
 
     def metric(tag: str) -> float:
-        entry = scalars.get(tag)
-        return float(entry["final_mean"]) if entry else 0.0
+        # Newer skrl logs "Episode_Reward/<term>"; older runs used an
+        # "Info / " prefix. Accept either.
+        for candidate in (tag, f"Info / {tag}"):
+            entry = scalars.get(candidate)
+            if entry:
+                return float(entry["final_mean"])
+        return 0.0
 
-    success_tag = (
-        "Info / Episode_Reward/pose_goal_reached"
-        if "Info / Episode_Reward/pose_goal_reached" in scalars
-        else "Info / Episode_Reward/goal_reached"
-    )
+    # Derived human-readable values. Episode_Reward/<term> is a per-step mean:
+    # position error [m] = -tracking_reward / |weight|; a *_reached success
+    # fraction = value / weight (weight = 1e-6).
+    pos_error_cm = -metric("Episode_Reward/end_effector_position_tracking") / -POSITION_ERROR_WEIGHT * 100.0
+    pos_success_pct = metric("Episode_Reward/position_reached") / SUCCESS_WEIGHT * 100.0
+    ori_success_pct = metric("Episode_Reward/orientation_reached") / SUCCESS_WEIGHT * 100.0
+    pose_success_pct = metric("Episode_Reward/pose_reached") / SUCCESS_WEIGHT * 100.0
 
     report = f"""# Reach Results Report
 
@@ -106,14 +127,16 @@ def write_report(variant: str, run_name: str, stats: dict, report_path: Path) ->
 | Metric | Value |
 |---|---|
 | Total episode reward (mean) | {metric('Reward / Total reward (mean)') if 'Reward / Total reward (mean)' in scalars else metric('Reward / Instantaneous reward (mean)'):.4f} |
-| Position tracking reward | {metric('Info / Episode_Reward/end_effector_position_tracking'):.4f} |
-| Orientation tracking reward | {metric('Info / Episode_Reward/end_effector_orientation_tracking'):.4f} |
-| Position fine-grained reward | {metric('Info / Episode_Reward/end_effector_position_tracking_fine_grained'):.6f} |
-| Position reached (< 5cm) | {metric('Info / Episode_Reward/position_reached'):.4f} |
-| Orientation reached (< 0.3 rad) | {metric('Info / Episode_Reward/orientation_reached'):.4f} |
-| Pose reached (both) | {metric('Info / Episode_Reward/pose_reached'):.4f} |
-| Action rate penalty | {metric('Info / Episode_Reward/action_rate'):.6f} |
-| Joint velocity penalty | {metric('Info / Episode_Reward/joint_vel'):.6f} |
+| **Mean position error** | **{pos_error_cm:.1f} cm** |
+| **Position reached (< 5 cm)** | **{pos_success_pct:.0f} % of steps** |
+| Orientation reached (< 0.3 rad) | {ori_success_pct:.0f} % of steps |
+| Pose reached (both) | {pose_success_pct:.0f} % of steps |
+| Position tracking reward | {metric('Episode_Reward/end_effector_position_tracking'):.4f} |
+| Orientation tracking reward | {metric('Episode_Reward/end_effector_orientation_tracking'):.4f} |
+| Position fine-grained reward | {metric('Episode_Reward/end_effector_position_tracking_fine_grained'):.6f} |
+| Action rate penalty | {metric('Episode_Reward/action_rate'):.6f} |
+| Joint velocity penalty | {metric('Episode_Reward/joint_vel'):.6f} |
+| Mean episode length | {metric('Episode / Total timesteps (mean)'):.1f} steps |
 | Policy std deviation | {metric('Policy / Standard deviation'):.4f} |
 | Learning rate (final) | {metric('Learning / Learning rate'):.2e} |
 
@@ -148,7 +171,10 @@ def write_report(variant: str, run_name: str, stats: dict, report_path: Path) ->
 
 
 def resolve_latest_run(root: Path) -> Path:
-    candidates = sorted(root.glob("*_ppo_torch"))
+    # Runs are named <timestamp>_ppo_torch, or <timestamp>_ppo_torch_seed<N>
+    # when launched with an explicit seed (tools/train_alex.sh); the timestamp
+    # prefix keeps lexicographic order == chronological order for both forms.
+    candidates = sorted(root.glob("*_ppo_torch*"))
     if not candidates:
         raise FileNotFoundError(f"No PPO runs found under {root}")
     return candidates[-1]
@@ -300,8 +326,12 @@ def annotate_curriculum(axis: plt.Axes, curriculum_step: int, y_frac: float = 0.
 def resolve_tag(accumulator: EventAccumulator, *candidates: str) -> tuple[np.ndarray, np.ndarray]:
     available = set(accumulator.Tags().get("scalars", []))
     for tag in candidates:
-        if tag in available:
-            return load_scalars(accumulator, tag)
+        # Reward terms are logged with an "Info / " prefix by older skrl
+        # versions and without it by newer ones; accept either form.
+        alt = tag.removeprefix("Info / ") if tag.startswith("Info / ") else f"Info / {tag}"
+        for resolved in (tag, alt):
+            if resolved in available:
+                return load_scalars(accumulator, resolved)
     return np.array([]), np.array([])
 
 
@@ -462,15 +492,22 @@ def plot_reward_decomposition(
 ) -> None:
     available = set(accumulator.Tags().get("scalars", []))
 
+    # Newer skrl versions log reward terms as "Episode_Reward/<term>"; older
+    # runs used an "Info / " prefix. Accept whichever form the run contains.
     candidate_terms: list[tuple[str, str, str]] = [
-        ("Info / Episode_Reward/end_effector_position_tracking", "Pos. Error", _C_RED),
-        ("Info / Episode_Reward/end_effector_position_tracking_fine_grained", "Pos. Fine", _C_TEAL),
-        ("Info / Episode_Reward/end_effector_position_tracking_proximity", "Pos. Proximity", _C_AMBER),
-        ("Info / Episode_Reward/end_effector_orientation_tracking", "Orient. Error", _C_ORANGE),
-        ("Info / Episode_Reward/action_rate", "Action Rate", _C_GREY),
-        ("Info / Episode_Reward/joint_vel", "Joint Velocity", _C_PURPLE),
+        ("Episode_Reward/end_effector_position_tracking", "Pos. Error", _C_RED),
+        ("Episode_Reward/end_effector_position_tracking_fine_grained", "Pos. Fine", _C_TEAL),
+        ("Episode_Reward/end_effector_position_tracking_proximity", "Pos. Proximity", _C_AMBER),
+        ("Episode_Reward/end_effector_orientation_tracking", "Orient. Error", _C_ORANGE),
+        ("Episode_Reward/action_rate", "Action Rate", _C_GREY),
+        ("Episode_Reward/joint_vel", "Joint Velocity", _C_PURPLE),
     ]
-    reward_terms = [(t, l, c) for t, l, c in candidate_terms if t in available]
+    reward_terms = [
+        (tag, label, colour)
+        for term, label, colour in candidate_terms
+        for tag in (term, f"Info / {term}")
+        if tag in available
+    ]
 
     if not reward_terms:
         print("  ⚠ No reward terms available — skipping reward decomposition")
@@ -587,19 +624,34 @@ def _fmt(val: float) -> str:
 def plot_converged_summary(accumulator: EventAccumulator, output: Path, variant_label: str) -> None:
     available = set(accumulator.Tags().get("scalars", []))
 
+    def _resolve(term: str) -> str | None:
+        # With or without the "Info / " prefix, depending on the skrl version.
+        for tag in (term, f"Info / {term}"):
+            if tag in available:
+                return tag
+        return None
+
     candidate_reward_tags: list[tuple[str, str]] = [
-        ("Info / Episode_Reward/end_effector_position_tracking_proximity", "Pos. Proximity"),
-        ("Info / Episode_Reward/end_effector_position_tracking_fine_grained", "Pos. Fine"),
+        ("Episode_Reward/end_effector_position_tracking_proximity", "Pos. Proximity"),
+        ("Episode_Reward/end_effector_position_tracking_fine_grained", "Pos. Fine"),
     ]
-    reward_tags = [(tag, label) for tag, label in candidate_reward_tags if tag in available]
+    reward_tags = [
+        (resolved, label)
+        for term, label in candidate_reward_tags
+        if (resolved := _resolve(term)) is not None
+    ]
 
     candidate_penalty_tags: list[tuple[str, str]] = [
-        ("Info / Episode_Reward/end_effector_position_tracking", "Pos. Error"),
-        ("Info / Episode_Reward/end_effector_orientation_tracking", "Orient. Error"),
-        ("Info / Episode_Reward/action_rate", "Action Rate"),
-        ("Info / Episode_Reward/joint_vel", "Joint Velocity"),
+        ("Episode_Reward/end_effector_position_tracking", "Pos. Error"),
+        ("Episode_Reward/end_effector_orientation_tracking", "Orient. Error"),
+        ("Episode_Reward/action_rate", "Action Rate"),
+        ("Episode_Reward/joint_vel", "Joint Velocity"),
     ]
-    penalty_tags = [(tag, label) for tag, label in candidate_penalty_tags if tag in available]
+    penalty_tags = [
+        (resolved, label)
+        for term, label in candidate_penalty_tags
+        if (resolved := _resolve(term)) is not None
+    ]
 
     def final_mean(tag: str) -> float:
         _, values = load_scalars(accumulator, tag)
@@ -697,8 +749,9 @@ def main() -> None:
     parser.add_argument(
         "--root",
         type=str,
-        default=".",
-        help="Workspace root directory. Figure and report paths are resolved relative to this.",
+        default=str(_EXTENSION_ROOT),
+        help="Extension root directory (default: src/tensegrity_pick, inferred from the "
+        "script location). Log, figure and report paths are resolved relative to this.",
     )
     parser.add_argument(
         "--logs-dir",

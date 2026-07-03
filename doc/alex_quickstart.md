@@ -337,6 +337,34 @@ Detach with `Ctrl-C` / `q` — this leaves the training job itself untouched.
 
 ---
 
+## 7a. Rendering play videos — ⚠️ not possible on Alex
+
+You **cannot render Isaac Sim 5.1 videos on Alex** (as of driver 610.43,
+cluster-wide). Training is unaffected (PhysX/CUDA only), but the RTX renderer
+used to record play videos does not work here. The failure was traced through
+four layers:
+
+1. **glibc**: Isaac Sim 5.1's render/USD libs need glibc ≥ 2.35; Alex is
+   AlmaLinux 9.8 = glibc 2.34. → worked around with an Apptainer container
+   (Ubuntu 22.04, `src/tensegrity_pick/scripts/rendering/container/`).
+2. **No graphics driver on `rtxpro6k`**: the Blackwell nodes ship a
+   **compute-only** NVIDIA driver — no OpenGL/Vulkan userspace — so the RTX
+   renderer can't start there at all. → moved to the `a40` partition.
+3. **Vulkan ICD path on `a40`**: the host ICD uses an absolute `library_path`;
+   fixed with a relative-path ICD so the `--nv`-injected lib is found. → Vulkan
+   then enumerates the A40 inside the container.
+4. **RTX renderer vs driver 610.43**: Isaac Sim 5.1's `librtx.scenedb.plugin.so`
+   **segfaults on startup on driver 610.43** (it expects ~535). This is
+   cluster-wide and not fixable from user space. → **render off-cluster.**
+
+**Render the trained policies on a workstation** whose GPU driver Isaac Sim 5.1
+supports (e.g. the FAPS workstation). The turn-key tooling and full diagnosis
+live in `src/tensegrity_pick/scripts/rendering/` (`README.md`,
+`sync_checkpoints.sh`, `render_reach_workstation.sh`). Workflow: pull the
+checkpoints from Alex, activate the env, run `render_reach_workstation.sh`.
+
+---
+
 ## 8. Everyday Slurm commands
 
 These are the core commands you'll use daily (all standard Slurm, applicable on

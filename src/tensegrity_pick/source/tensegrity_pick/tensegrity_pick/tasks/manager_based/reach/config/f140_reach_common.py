@@ -21,11 +21,12 @@ the boilerplate so the six variants stay consistent.
 
 from __future__ import annotations
 
+import math
+
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets.articulation import ArticulationCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationTermCfg as ObsTerm
-from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
@@ -98,15 +99,36 @@ def configure_f140_reach(
     env.scene.robot.spawn.rigid_props.disable_gravity = True
     _stabilize_gripper(env.scene.robot)
 
-    # ── Command: FK-sampled reachable EE poses ────────────────────────────
+    # ── Command: NVIDIA-style uniform box of reachable EE poses ───────────
+    # Diagnostic switch away from FK-sampled full-SO(3) targets to a fixed box in
+    # the robot ROOT frame (Isaac Lab's stock UniformPoseCommand logic; here as a
+    # mode of the project command so all success / reach-time metrics are kept).
+    #
+    # The box is sized to fit inside EVERY comparison arm's reach envelope so all
+    # six can reach every target: UR5e (0.85 m) is the tightest, Kinova Gen3
+    # (0.90 m) next, UR10 (1.30 m) has slack. The farthest box corner is
+    # sqrt(0.50² + 0.20² + 0.50²) ≈ 0.735 m ≈ 86 % of UR5e / 82 % of Kinova reach,
+    # so no target sits at a full-stretch singularity; nearest corner ≈ 0.39 m is
+    # clear of the shoulder deadzone.
+    #
+    # Orientation is fixed "gripper pointing straight down" with free yaw, exactly
+    # like the Franka reference (pitch=π). The Robotiq robotiq_base_link local +z
+    # is the approach axis (see cube_place/gripper_cfg: "local Z projects downward
+    # toward the cube"); quat_from_euler_xyz(roll=0, pitch=π, yaw=·) maps that +z
+    # onto the base-frame −z ⇒ tool down, spun freely about the vertical.
     env.commands.ee_pose.body_name = F140_EE_BODY
+    # joint_names is unused by the box sampler but kept: downstream IK/OSC configs
+    # read it (self.commands.ee_pose.joint_names) to size their action terms.
     env.commands.ee_pose.joint_names = controlled_joints
     env.commands.ee_pose.joint_range_margin = joint_range_margin
-    # Reject FK-sampled configurations that are self-colliding so every target
-    # is reachable by a *collision-free* posture (the gripper finger cluster is
-    # excluded from the check — see FKSampledPoseCommandCfg).  This keeps each
-    # robot's full own-workspace minus only genuinely-infeasible targets.
-    env.commands.ee_pose.self_collision_filter = True
+    env.commands.ee_pose.uniform_ranges = mdp.FKSampledPoseCommandCfg.Ranges(
+        pos_x=(0.30, 0.50),
+        pos_y=(-0.20, 0.20),
+        pos_z=(0.25, 0.50),
+        roll=(0.0, 0.0),
+        pitch=(math.pi, math.pi),
+        yaw=(-math.pi, math.pi),
+    )
     # Disable debug-vis marker point-instancers during (headless) training:
     # at 4096 envs they trigger a FabricManager prototype mismatch and a
     # carb.tasking mutex-recursion assertion crash.  They are GUI-only anyway;
@@ -130,29 +152,21 @@ def configure_f140_reach(
         env.rewards.pose_reached,
     ):
         term.params["asset_cfg"].body_names = [F140_EE_BODY]
-    # Widen tanh gradient: these arms start ~0.4-0.5 m from target.
-    env.rewards.end_effector_position_tracking_fine_grained.params["std"] = 0.5
     env.rewards.joint_vel.params["asset_cfg"] = SceneEntityCfg("robot", joint_names=controlled_joints)
 
-    # ── Orientation reward rebalance ──────────────────────────────────────
-    # The stock reach reward under-weights orientation (-0.1) versus position
-    # (-0.2 plus a +0.1 fine-grained tanh "homing" bonus orientation lacks), so a
-    # redundant arm facing arbitrary FK-sampled SO(3) targets rationally ignores
-    # orientation and plateaus at ~30° error.  Raise the geodesic-orientation
-    # weight and add a matching fine-grained tanh term so orientation gets a dense
-    # gradient near the goal too.  Applies to every variant equally (it does not
-    # remove any robot capability), so the per-robot action-space comparison stays
-    # fair while full 6-DOF tracking becomes learnable.
-    env.rewards.end_effector_orientation_tracking.weight = -0.5
-    env.rewards.end_effector_orientation_tracking_fine_grained = RewTerm(
-        func=mdp.orientation_command_error_tanh,
-        weight=0.1,
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=[F140_EE_BODY]),
-            "std": 0.5,
-            "command_name": "ee_pose",
-        },
-    )
+    # ── Reward balance: keep the Isaac Lab reference values ────────────────
+    # Left exactly at the stock reach reward (position -0.2, position fine-grained
+    # tanh 0.1 @ std 0.1, orientation -0.1, no fine-grained orientation term).
+    #
+    # An earlier rebalance (orientation weight -0.5, an added fine-grained
+    # orientation tanh, and a widened position std of 0.5) was introduced to force
+    # orientation learning against the OLD FK-sampled full-SO(3) targets.  With the
+    # uniform target box's easy fixed "gripper-down" orientation that instead
+    # over-weighted orientation: the 6-DOF UR arms sacrificed position to satisfy
+    # the (now-easy) orientation and their position error roughly doubled/tripled,
+    # while the 7-DOF Kinova (redundant) improved.  The reference balance — which
+    # Isaac Lab validated on the Franka reach, itself a uniform-box task — keeps
+    # position the dominant objective, so it is restored here unchanged.
 
     # ── Observations / terminations: controlled joints only ───────────────
     # Encode joint positions as (sin, cos) to remove the ±π wrap discontinuity

@@ -1,0 +1,138 @@
+{
+  "run": "2026-07-02_10-33-04_ppo_torch_seed42",
+  "variant": "ur10_frankenstein_ikabs",
+  "completion": {
+    "is_complete": true,
+    "status": "completed",
+    "target_timesteps": 100000,
+    "checkpoint_max_step": 100000,
+    "event_max_step": 100000
+  },
+  "scalars": {
+    "Stats / Inference time (ms)": {
+      "final_mean": 0.40658576488494874,
+      "final_std": 0.0011573540443138618,
+      "max_step": 100000
+    },
+    "Stats / Env stepping time (ms)": {
+      "final_mean": 13.883492279052735,
+      "final_std": 0.08722479268146534,
+      "max_step": 100000
+    },
+    "Reward / Instantaneous reward (max)": {
+      "final_mean": 0.0022286251769401133,
+      "final_std": 0.00021991796721166623,
+      "max_step": 100000
+    },
+    "Reward / Instantaneous reward (min)": {
+      "final_mean": -0.030838146805763245,
+      "final_std": 0.0008128480814282278,
+      "max_step": 100000
+    },
+    "Reward / Instantaneous reward (mean)": {
+      "final_mean": -0.0015308497240766883,
+      "final_std": 0.00018699693768807647,
+      "max_step": 100000
+    },
+    "Episode_Reward/end_effector_position_tracking": {
+      "final_mean": -0.010131171997636556,
+      "final_std": 0.0004737667032698648,
+      "max_step": 100000
+    },
+    "Episode_Reward/end_effector_position_tracking_fine_grained": {
+      "final_mean": 0.07032538056373597,
+      "final_std": 0.0013271126444051487,
+      "max_step": 100000
+    },
+    "Episode_Reward/end_effector_orientation_tracking": {
+      "final_mean": -0.0923344112932682,
+      "final_std": 0.0031365640034517685,
+      "max_step": 100000
+    },
+    "Episode_Reward/position_reached": {
+      "final_mean": 8.26341721449353e-07,
+      "final_std": 1.3076006691536192e-08,
+      "max_step": 100000
+    },
+    "Episode_Reward/orientation_reached": {
+      "final_mean": 7.615617540453549e-10,
+      "final_std": 9.603714849474622e-10,
+      "max_step": 100000
+    },
+    "Episode_Reward/pose_reached": {
+      "final_mean": 7.605119546703204e-10,
+      "final_std": 9.600379865148141e-10,
+      "max_step": 100000
+    },
+    "Episode_Reward/action_rate": {
+      "final_mean": -0.0030059790005907416,
+      "final_std": 0.00018910048497003973,
+      "max_step": 100000
+    },
+    "Episode_Reward/joint_vel": {
+      "final_mean": -0.010305686481297016,
+      "final_std": 0.0004386286770396353,
+      "max_step": 100000
+    },
+    "Loss / Policy loss": {
+      "final_mean": 0.0015073647198732942,
+      "final_std": 0.0004267974992504675,
+      "max_step": 100000
+    },
+    "Loss / Value loss": {
+      "final_mean": 0.08471987247467042,
+      "final_std": 0.01693637010001507,
+      "max_step": 100000
+    },
+    "Loss / Entropy loss": {
+      "final_mean": 0.055561169236898425,
+      "final_std": 0.001868851689653852,
+      "max_step": 100000
+    },
+    "Policy / Standard deviation": {
+      "final_mean": 0.13882528841495514,
+      "final_std": 0.0029799550221466502,
+      "max_step": 100000
+    },
+    "Learning / Learning rate": {
+      "final_mean": 0.0003936622611945495,
+      "final_std": 1.97946208969147e-05,
+      "max_step": 100000
+    },
+    "Stats / Algorithm update time (ms)": {
+      "final_mean": 42.959469604492185,
+      "final_std": 0.4215500556165235,
+      "max_step": 100000
+    },
+    "Reward / Total reward (max)": {
+      "final_mean": 0.07592000849545003,
+      "final_std": 0.018058218584848386,
+      "max_step": 100000
+    },
+    "Reward / Total reward (min)": {
+      "final_mean": -1.765852403640747,
+      "final_std": 0.28915969172154604,
+      "max_step": 100000
+    },
+    "Reward / Total reward (mean)": {
+      "final_mean": -0.26848023384809494,
+      "final_std": 0.029427613076127825,
+      "max_step": 100000
+    },
+    "Episode / Total timesteps (max)": {
+      "final_mean": 180.0,
+      "final_std": 0.0,
+      "max_step": 100000
+    },
+    "Episode / Total timesteps (min)": {
+      "final_mean": 180.0,
+      "final_std": 0.0,
+      "max_step": 100000
+    },
+    "Episode / Total timesteps (mean)": {
+      "final_mean": 180.0,
+      "final_std": 0.0,
+      "max_step": 100000
+    }
+  }
+}

@@ -44,10 +44,7 @@ simulation documentation.
 | `Template-Reach-Tensegrity-Tendon-Play-v0` | Tendon | Reach Tendon (play/eval variant, 50 envs). |
 | `Template-Reach-Tensegrity-Physical-Tendon-v0` | Physical Tendon | **Reach (Physical Tendon)** — Same task as Reach but with body-force elbow tendons and antiparallelogram linkage. |
 | `Template-Reach-Tensegrity-Physical-Tendon-Play-v0` | Physical Tendon | Reach Physical Tendon (play/eval variant, 50 envs). |
-| `Template-Reach-UR10e-v0` | PD | **Reach (UR10e)** — Same reach task with UR10e + Robotiq 2F-140 (PG-6 baseline). |
-| `Template-Reach-UR10e-Play-v0` | PD | Reach UR10e (play/eval variant, 50 envs). |
-| `Template-Reach-Kinova-v0` | PD | **Reach (Kinova)** — Same reach task with Kinova Gen3 7-DOF + Robotiq 2F-140 (PG-6 baseline). |
-| `Template-Reach-Kinova-Play-v0` | PD | Reach Kinova (play/eval variant, 50 envs). |
+| `Template-Reach-<Arm>[-IK-Rel\|-IK-Abs\|-OSC]-v0` | Joint / IK / OSC | **Reach comparison grid** — 6 arms (`UR5e-F140`, `UR5e-Frankenstein`, `UR10-F140`, `UR10-Frankenstein`, `Kinova-F140`, `Kinova-Frankenstein`) × 4 action spaces = 24 variants (+ `…-Play-v0` twins); replaces the former `Template-Reach-UR10e/Kinova-v0`. See the [reach README](source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/README.md). |
 | `Template-Tensegrity-Cube-Place-v0` | PD | **Cube Place** — 1 green + 1 red cube below the robot, conveyor inactive. Place the green cube into the drum. Curriculum: green-only → green + red. |
 | `Template-Tensegrity-Cube-Place-Play-v0` | PD | Cube Place (play/eval variant, 50 envs). |
 | `Template-Tensegrity-Cube-Place-Tendon-v0` | Tendon | **Cube Place (Tendon)** — Same task as Cube Place but the arm is tendon-driven. |
@@ -160,20 +157,15 @@ python scripts/zero_agent.py   --task=Template-Tensegrity-Cube-Place-Tendon-v0  
 python scripts/skrl/train.py   --task=Template-Tensegrity-Cube-Place-Tendon-v0      --headless
 python scripts/skrl/play.py    --task=Template-Tensegrity-Cube-Place-Tendon-Play-v0 --num_envs=10
 
-# --- Reach (UR10e) ---
-python scripts/zero_agent.py   --task=Template-Reach-UR10e-v0      --num_envs=10
-python scripts/skrl/train.py   --task=Template-Reach-UR10e-v0      --headless
-python scripts/skrl/play.py    --task=Template-Reach-UR10e-Play-v0 --num_envs=10
+# --- Reach comparison grid (6 arms x 4 action spaces; example: UR5e-F140 + OSC) ---
+python scripts/zero_agent.py   --task=Template-Reach-UR5e-F140-OSC-v0      --num_envs=10
+python scripts/skrl/train.py   --task=Template-Reach-UR5e-F140-OSC-v0      --headless
+python scripts/skrl/play.py    --task=Template-Reach-UR5e-F140-OSC-Play-v0 --num_envs=10
 
 # --- Cube Place (UR10e) ---
 python scripts/zero_agent.py   --task=Template-UR10e-Cube-Place-v0      --num_envs=10
 python scripts/skrl/train.py   --task=Template-UR10e-Cube-Place-v0      --headless
 python scripts/skrl/play.py    --task=Template-UR10e-Cube-Place-Play-v0 --num_envs=10
-
-# --- Reach (Kinova Gen3) ---
-python scripts/zero_agent.py   --task=Template-Reach-Kinova-v0      --num_envs=10
-python scripts/skrl/train.py   --task=Template-Reach-Kinova-v0      --headless
-python scripts/skrl/play.py    --task=Template-Reach-Kinova-Play-v0 --num_envs=10
 
 # --- Cube Place (Kinova Gen3) ---
 python scripts/zero_agent.py   --task=Template-Kinova-Cube-Place-v0      --num_envs=10

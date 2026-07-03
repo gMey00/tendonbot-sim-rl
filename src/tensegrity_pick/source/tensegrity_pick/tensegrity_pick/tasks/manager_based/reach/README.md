@@ -2,438 +2,330 @@
 
 [← Back to extension overview](../../../../../../README.md) · [Project root](../../../../../../../../README.md)
 
-End-effector pose tracking for all active robot configurations based on the IsaacLab sample task.  The robot
-must move `TARGET_LINK` to randomly sampled target poses that are guaranteed
-reachable by construction.
+End-effector pose tracking, based on the IsaacLab reference reach task. The
+robot must move its EE body to randomly sampled targets. Two variant families
+share the same MDP (rewards, terminations, curriculum, sim parameters):
+
+- **F140 comparison grid** — 6 industrial arms × 4 action spaces
+  (**24 variants**), built for the action-space study
+  ([research brief](../../../../../../../../doc/reports/RESEARCH_BRIEF_action_spaces.md)).
+  Targets are a uniform position box; orientation is intentionally loose.
+- **Tensegrity family** — the original 5-DOF tensegrity manipulator (PD,
+  Tendon, Physical Tendon). Targets are FK-sampled full poses, reachable by
+  construction.
 
 ![Task Scene](figures/scene_setup.png)
 
 ## Table of Contents
 
-- [Reach Task](#reach-task)
-  - [Table of Contents](#table-of-contents)
-  - [Goal](#goal)
-  - [Variants](#variants)
-  - [Directory Structure](#directory-structure)
-  - [Scene](#scene)
-  - [Controlled Joints](#controlled-joints)
-    - [Tensegrity / Tensegrity Tendon (5 DOF)](#tensegrity--tensegrity-tendon-5-dof)
-    - [Tensegrity Physical Tendon (7 DOF)](#tensegrity-physical-tendon-7-dof)
-    - [UR10e (6 DOF)](#ur10e-6-dof)
-    - [Kinova Gen3 (7 DOF)](#kinova-gen3-7-dof)
-  - [Actions](#actions)
-    - [PD variants](#pd-variants)
-    - [Tendon variant](#tendon-variant)
-    - [Physical Tendon variant](#physical-tendon-variant)
+- [Variants](#variants)
+  - [F140 comparison grid (24 variants)](#f140-comparison-grid-24-variants)
+  - [Tensegrity family (3 variants)](#tensegrity-family-3-variants)
+- [Documentation Map](#documentation-map)
+- [Directory Structure](#directory-structure)
+- [Shared MDP](#shared-mdp)
+  - [Targets (commands)](#targets-commands)
   - [Observations (policy group)](#observations-policy-group)
-  - [Command Generator — FK-Sampled Pose](#command-generator--fk-sampled-pose)
   - [Rewards](#rewards)
-    - [Task rewards](#task-rewards)
-    - [Success metrics (logging only)](#success-metrics-logging-only)
-    - [Regularisation](#regularisation)
-  - [Terminations](#terminations)
-  - [Curriculum](#curriculum)
-  - [Reset Events](#reset-events)
+  - [Terminations, Curriculum, Events](#terminations-curriculum-events)
   - [Simulation Parameters](#simulation-parameters)
-  - [PPO Hyperparameters](#ppo-hyperparameters)
-  - [Training](#training)
-  - [Running](#running)
-  - [Training Results](#training-results)
-    - [Training Figures](#training-figures)
-    - [Regenerating Plots and Reports](#regenerating-plots-and-reports)
-  - [Related](#related)
-
-## Goal
-
-Teach an RL agent to track arbitrary end-effector poses (position **and**
-orientation) as quickly and smoothly as possible.  Targets are produced by a
-custom **FK-Sampled Pose Command** generator that samples random joint
-positions within the robot's limits, computes forward kinematics through the
-physics engine, and stores the resulting pose as the command.  This guarantees
-every target is reachable.
+- [Training](#training)
+  - [On the Alex cluster (recommended)](#on-the-alex-cluster-recommended)
+  - [Locally](#locally)
+  - [Evaluation and Play](#evaluation-and-play)
+- [Training Results](#training-results)
+  - [F140 grid](#f140-grid)
+  - [Tensegrity family](#tensegrity-family)
+  - [Regenerating Plots and Reports](#regenerating-plots-and-reports)
+- [Related](#related)
 
 ## Variants
 
+### F140 comparison grid (24 variants)
+
+Task IDs follow `Template-Reach-<Arm>[-IK-Rel|-IK-Abs|-OSC]-v0`; append
+`-Play` before `-v0` for the evaluation config (e.g.
+`Template-Reach-UR5e-F140-OSC-Play-v0`). No suffix = joint (EMA) action space.
+
+| Arm | DOF (controlled) | Joint | IK-Rel | IK-Abs | OSC | Config |
+|---|---|---|---|---|---|---|
+| `UR5e-F140` | 6 | ✓ | ✓ | ✓ | ✓ | [`config/ur5e_f140/`](config/ur5e_f140/) |
+| `UR5e-Frankenstein` | 8 (6+2 wrist) | ✓ | ✓ | ✓ | ✓ | [`config/ur5e_frankenstein/`](config/ur5e_frankenstein/) |
+| `UR10-F140` | 6 | ✓ | ✓ | ✓ | ✓ | [`config/ur10_f140/`](config/ur10_f140/) |
+| `UR10-Frankenstein` | 8 (6+2 wrist) | ✓ | ✓ | ✓ | ✓ | [`config/ur10_frankenstein/`](config/ur10_frankenstein/) |
+| `Kinova-F140` | 7 | ✓ | ✓ | ✓ | ✓ | [`config/kinova_f140/`](config/kinova_f140/) |
+| `Kinova-Frankenstein` | 9 (7+2 wrist) | ✓ | ✓ | ✓ | ✓ | [`config/kinova_frankenstein/`](config/kinova_frankenstein/) |
+
+"F140" = rigid Robotiq 2F-140 gripper; "Frankenstein" = the same arm with the
+compliant 2-DOF **tensegrity wrist** spliced between flange and gripper
+(+2 controlled DOF, redundant). All six arms are floor-mounted upright at
+`(0.75, 1.0, 0.75)` and track the EE body `robotiq_base_link`. Robot
+definitions: [`robots/`](../../../robots/) (`ur5e`, `ur10`, `kinova_gen3`,
+`*_frankenstein` configs).
+
+The four action spaces (controllers, gains, PPO differences, fairness rules)
+are documented in **[action_spaces.md](action_spaces.md)**.
+
+### Tensegrity family (3 variants)
+
 | Environment ID | Robot | DOF | Actuation | Config |
 |---|---|---|---|---|
-| `Template-Reach-Tensegrity-v0` | Tensegrity 5-DOF | 5 | PD (joint position) | `config/tensegrity/` |
-| `Template-Reach-Tensegrity-Play-v0` | Tensegrity 5-DOF | 5 | PD (eval) | `config/tensegrity/` |
-| `Template-Reach-Tensegrity-Tendon-v0` | Tensegrity 5-DOF | 5 | Tendon | `config/tensegrity_tendon/` |
-| `Template-Reach-Tensegrity-Tendon-Play-v0` | Tensegrity 5-DOF | 5 | Tendon (eval) | `config/tensegrity_tendon/` |
-| `Template-Reach-Tensegrity-Physical-Tendon-v0` | Tensegrity 5-DOF (physical) | 7 | Physical Tendon | `config/tensegrity_tendon/` |
-| `Template-Reach-Tensegrity-Physical-Tendon-Play-v0` | Tensegrity 5-DOF (physical) | 7 | Physical Tendon (eval) | `config/tensegrity_tendon/` |
-| `Template-Reach-UR10e-v0` | UR10e + Robotiq 2F-140 | 6 | PD | `config/ur10e/` |
-| `Template-Reach-UR10e-Play-v0` | UR10e + Robotiq 2F-140 | 6 | PD (eval) | `config/ur10e/` |
-| `Template-Reach-Kinova-v0` | Kinova Gen3 + Robotiq 2F-140 | 7 | PD | `config/kinova/` |
-| `Template-Reach-Kinova-Play-v0` | Kinova Gen3 + Robotiq 2F-140 | 7 | PD (eval) | `config/kinova/` |
+| `Template-Reach-Tensegrity-v0` | Tensegrity 5-DOF | 5 | PD (joint position) | [`config/tensegrity/`](config/tensegrity/) |
+| `Template-Reach-Tensegrity-Tendon-v0` | Tensegrity 5-DOF | 5 | Tendon (Jacobian-transpose) | [`config/tensegrity_tendon/`](config/tensegrity_tendon/) |
+| `Template-Reach-Tensegrity-Physical-Tendon-v0` | Tensegrity 5-DOF (physical 4-bar elbow) | 7 | Body-force tendons | [`config/tensegrity_tendon/`](config/tensegrity_tendon/) |
 
-All variants use the base `ManagerBasedRLEnv` as the gymnasium entry point
-(no custom env subclass needed for reach).
+Each also has a `…-Play-v0` twin. Details: controlled joints and tendon
+actuation are documented in the
+[physical elbow spec](config/tensegrity_tendon/physical_elbow_spec.md); the
+Physical Tendon variant uses a hidden PD **FK reference robot** for target
+sampling (see tracking log, iteration 13).
 
-### Variant Specifications
+> The former ceiling-mounted `Template-Reach-UR10e-v0` / `Template-Reach-Kinova-v0`
+> variants were superseded by the F140 comparison grid and are no longer
+> registered (their old training artifacts remain under `figures/ur10e`,
+> `reports/ur10e`, `figures/kinova`, `reports/kinova`).
 
-Detailed hardware, actuator, observation/action space, and training
-configuration for each robot:
+## Documentation Map
 
-- [Physical Elbow Tensegrity](config/tensegrity_tendon/physical_elbow_spec.md)
-- [Kinova Gen3](config/kinova/kinova_spec.md)
-- [UR10e](config/ur10e/ur10e_spec.md)
+| Document | Content |
+|---|---|
+| this README | variant matrix, shared MDP, training workflow, results |
+| [action_spaces.md](action_spaces.md) | the 4 controllers of the grid: joint EMA, IK-Rel/Abs, OSC (wrist handling, inertial decoupling), per-space PPO settings, fairness rules |
+| [physical_elbow_spec.md](config/tensegrity_tendon/physical_elbow_spec.md) | tensegrity physical-elbow kinematics and actuation |
+| [optimization tracking log](../../../../../../../../doc/reports/reach_optimization_tracking.md) | full change history (iterations 0–15) with root-cause analyses |
+| [reach task handoff](../../../../../../../../doc/reach_task_handoff.md) | mission/state snapshot of the grid study (2026-07-01) |
+| [Alex quickstart](../../../../../../../../doc/alex_quickstart.md) | cluster workflow (Slurm, rendering caveats) |
 
 ## Directory Structure
 
 ```
 reach/
-├── reach_env_cfg.py              # Base MDP config (shared by all variants)
+├── README.md                     # ← you are here
+├── action_spaces.md              # the 4 action spaces of the F140 grid
+├── reach_env_cfg.py              # Base MDP config (shared by ALL variants)
 ├── mdp/
-│   ├── fk_sampled_pose_command.py
-│   └── rewards.py
+│   ├── fk_sampled_pose_command.py  # command term: FK sampling + uniform-box mode + metrics
+│   ├── rewards.py                  # tracking terms + *_reached success terms
+│   ├── observations.py             # joint_pos_sin_cos
+│   └── events.py                   # clamp_infinite_joint_limits
 ├── config/
-│   ├── tensegrity/
-│   │   ├── joint_pos_env_cfg.py  # TensegrityReachEnvCfg
-│   │   └── agents/skrl_ppo_cfg.yaml
-│   ├── tensegrity_tendon/
-│   │   ├── joint_pos_env_cfg.py          # TensegrityReachTendonEnvCfg
-│   │   ├── joint_pos_env_cfg_physical.py # TensegrityReachPhysicalTendonEnvCfg
-│   │   └── agents/
-│   │       ├── skrl_ppo_cfg.yaml
-│   │       └── skrl_ppo_cfg_physical.yaml
-│   ├── ur10e/
-│   │   ├── joint_pos_env_cfg.py  # UR10eReachEnvCfg
-│   │   └── agents/skrl_ppo_cfg.yaml
-│   └── kinova/
-│       ├── joint_pos_env_cfg.py  # KinovaReachEnvCfg
-│       └── agents/skrl_ppo_cfg.yaml
-├── figures/
-│   ├── scene_setup.png
-│   ├── tensegrity/               # Training plots for tensegrity PD
-│   ├── tensegrity_tendon/              # Training plots for tensegrity tendon
-│   ├── tensegrity_physical_tendon/     # Training plots for tensegrity physical tendon
-│   ├── ur10e/                          # Training plots for UR10e
-│   └── kinova/                   # Training plots for Kinova
-└── reports/
-    ├── tensegrity/
-    ├── tensegrity_tendon/
-    ├── tensegrity_physical_tendon/
-    ├── ur10e/
-    └── kinova/
+│   ├── f140_reach_common.py      # shared grid setup: mount, box command, joint action, reward
+│   ├── ik_reach_common.py        # IK-Rel/Abs action + arm stiffening
+│   ├── osc_reach_common.py       # OSC action (wrist exclusion, partial decoupling)
+│   ├── <arm>/                    # ur5e_f140, ur5e_frankenstein, ur10_f140,
+│   │   │                         # ur10_frankenstein, kinova_f140, kinova_frankenstein
+│   │   ├── joint_pos_env_cfg.py  # arm setup + joint action (+ _PLAY subclass)
+│   │   ├── ik_rel_env_cfg.py     # + IK-Rel action
+│   │   ├── ik_abs_env_cfg.py     # + IK-Abs action
+│   │   ├── osc_env_cfg.py        # + OSC action
+│   │   └── agents/skrl_ppo{,_ik,_ikabs,_osc}_cfg.yaml
+│   ├── tensegrity/               # tensegrity PD variant
+│   └── tensegrity_tendon/        # tendon + physical-tendon variants
+├── figures/<variant>/            # training plots (per variant)
+└── reports/<variant>/            # training reports (per variant)
 ```
 
-## Scene
+## Shared MDP
 
-Inherited from `ProjBaseSceneCfg` (ground plane, dome light, dual conveyor
-belts, target drum).
+All variants inherit [`reach_env_cfg.py`](reach_env_cfg.py), which mirrors the
+IsaacLab reference reach task.
 
-| Element | Details |
-|---|---|
-| Env spacing | 5.0 m |
-| Conveyor | Dual belt (4 m total), surface at 0.80 m, **inactive** |
-| Target drum | Plastic drum at (0.15, 0.85, 0.0) m |
+### Targets (commands)
 
-Robot mounting positions vary per variant (see `proj_base_scene_cfg.py`).
+One target per episode (`resampling_time_range = (1e9, 1e9)`), generated by
+the project's `FKSampledPoseCommand` in one of two modes:
 
-## Controlled Joints
+| | F140 grid | Tensegrity family |
+|---|---|---|
+| Mode | `uniform_ranges` position box | FK-sampled full pose |
+| Position | x (0.30, 0.50), y (−0.20, 0.20), z (0.25, 0.50) m in the base frame | forward kinematics of uniformly sampled joint configurations |
+| Orientation | gripper-down (`pitch = π`), free yaw — **intentionally loose** | reachable by construction |
 
-### Tensegrity / Tensegrity Tendon (5 DOF)
+The box fits inside every comparison arm's envelope (farthest corner ≈ 86 % of
+UR5e reach). A *fixed* orientation target is geometrically unreachable across
+the box for the 6-DOF UR arms (verified by
+[`scripts/diagnose_box_orientation.py`](../../../../../../../../src/tensegrity_pick/scripts/diagnose_box_orientation.py));
+reach is therefore a **position task** — do not re-add orientation reward
+weight (see tracking log, iterations 14–15).
 
-| Joint | Type |
-|---|---|
-| `base_y_joint` | Prismatic |
-| `base_z_joint` | Prismatic |
-| `elbow_joint` | Revolute |
-| `wrist_y_joint` | Revolute |
-| `wrist_x_joint` | Revolute |
-
-Target link: `tool_link_0`
-
-### Tensegrity Physical Tendon (7 DOF)
-
-Uses a 4-bar antiparallelogram linkage instead of a single `elbow_joint`.
-`coupler_right_joint` is excluded from the articulation tree (loop-closure
-constraint).
-
-| Joint | Type |
-|---|---|
-| `base_y_joint` | Prismatic |
-| `base_z_joint` | Prismatic |
-| `rod_left_joint` | Revolute |
-| `rod_right_joint` | Revolute |
-| `coupler_left_joint` | Revolute |
-| `wrist_y_joint` | Revolute |
-| `wrist_x_joint` | Revolute |
-
-Target link: `tool_link_0`
-
-### UR10e (6 DOF)
-
-| Joint |
-|---|
-| `shoulder_pan_joint` |
-| `shoulder_lift_joint` |
-| `elbow_joint` |
-| `wrist_1_joint` |
-| `wrist_2_joint` |
-| `wrist_3_joint` |
-
-Target link: `robotiq_base_link`
-
-### Kinova Gen3 (7 DOF)
-
-| Joint |
-|---|
-| `joint_1` … `joint_7` |
-
-Target link: `end_effector_link`
-
-The gripper is **not** controlled in the reach task.
-
-## Actions
-
-### PD variants
-
-| Variant | Term | Dims | Type | Scale |
-|---|---|---|---|---|
-| Tensegrity | `arm_action` | 5 | Joint position delta | 0.5 |
-| UR10e | `arm_action` | 6 | Joint position delta | 0.125 |
-| Kinova | `arm_action` | 7 | Joint position delta | 0.125 |
-
-### Tendon variant
-
-| Term | Dims | Type | Details |
-|---|---|---|---|
-| `base_action` | 2 | Joint position delta | `base_y_joint`, `base_z_joint`, scale=0.5 |
-| `arm_tendon` | 5 | Tendon tensions | max_tension=500 N, Jacobian transpose from URDF |
-
-### Physical Tendon variant
-
-| Term | Dims | Type | Details |
-|---|---|---|---|
-| `base_action` | 2 | Joint position to limits | `base_y_joint`, `base_z_joint`, maps [-1, 1] → joint limits |
-| `arm_tendon` | 5 | Physical tendon efforts | max_tension=500 N, body-force tendons at physical attachment points |
-
-Elbow actuation uses 2 body-force tendons applied at physical cable
-attachment points on `root_link` and `forearm_link`.  Wrist actuation uses
-3 tendons mapped via a constant Jacobian transpose.
-
-All PD actions use `use_default_offset=True`.
-
-## Observations (policy group)
-
-All observation terms are concatenated into a single vector.
+### Observations (policy group)
 
 | Term | Dim | Description |
 |---|---|---|
-| `joint_pos` | N | Relative joint positions (±0.01 uniform noise) |
-| `joint_vel` | N | Relative joint velocities (±0.01 uniform noise) |
-| `pose_command` | 7 | FK-sampled target pose (x, y, z, qw, qx, qy, qz) in root frame |
-| `actions` | M | Previous actions |
+| `joint_pos` | 2N | Controlled joint positions, **sin/cos encoded** (removes the ±π wrap for continuous Kinova joints; ±0.01 uniform noise) |
+| `joint_vel` | N | Controlled joint velocities (±0.01 noise) |
+| `pose_command` | 7 | Target pose (x, y, z, qw, qx, qy, qz) in root frame |
+| `actions` | M | Previous actions (M = action dim of the variant) |
 
-Where N = DOF count and M = action dimension for that variant.
+`enable_corruption = True` during training, disabled in the `-Play` configs.
 
-| Variant | N | M | Total |
-|---|---|---|---|
-| Tensegrity PD | 5 | 5 | 22 |
-| Tensegrity Tendon | 5 | 7 | 24 |
-| Tensegrity Physical Tendon | 7 | 7 | 28 |
-| UR10e | 6 | 6 | 25 |
-| Kinova | 7 | 7 | 28 |
+### Rewards
 
-`enable_corruption = True` during training, disabled during play.
-
-## Command Generator — FK-Sampled Pose
-
-| Parameter | Value |
-|---|---|
-| Resampling interval | 4.0 s (fixed) |
-| Success threshold | 0.05 m (position error) |
-| Sampling method | Uniform random in `[joint_lower, joint_upper]` → FK |
-| Debug visualisation | Frame markers for goal + current EE pose |
-
-## Rewards
-
-### Task rewards
+The **IsaacLab reference reach reward, unchanged** — restoring it exactly was
+the key fix of the grid study (tracking log, iteration 14). Do not rebalance.
 
 | Term | Weight | Function |
 |---|---|---|
-| `end_effector_position_tracking` | −0.2 | L2 position error (unbounded penalty) |
-| `end_effector_position_tracking_fine_grained` | +0.1 | `1 − tanh(d / 0.1)` — medium-range dense reward |
+| `end_effector_position_tracking` | −0.2 | L2 position error |
+| `end_effector_position_tracking_fine_grained` | +0.1 | `1 − tanh(d / 0.1)` |
 | `end_effector_orientation_tracking` | −0.1 | Quaternion error magnitude |
+| `action_rate` | −0.0001 → −0.005 | curriculum ramp at 4 500 steps |
+| `joint_vel` | −0.0001 → −0.001 | curriculum ramp at 4 500 steps |
 
-### Success metrics (logging only)
+Success metrics (logging only, weight 1×10⁻⁶ — divide the TensorBoard value by
+1e-6 to recover the success fraction):
 
-These terms have near-zero weight (1×10⁻⁶) so they appear in TensorBoard
-without affecting the reward signal.
-
-| Term | Threshold | Function |
-|---|---|---|
-| `position_reached` | 0.02 m (2 cm) | Binary 1.0 when position error < threshold |
-| `orientation_reached` | 0.1 rad (5.7°) | Binary 1.0 when orientation error < threshold |
-| `pose_reached` | both | Binary 1.0 when both position **and** orientation thresholds are met |
-
-### Regularisation
-
-| Term | Initial Weight | Final Weight | Notes |
-|---|---|---|---|
-| `action_rate` | −0.0001 | −0.005 | L2 action delta (curriculum ramp over 4 500 steps) |
-| `joint_vel` | −0.0001 | −0.001 | L2 joint velocity (curriculum ramp over 4 500 steps) |
-
-## Terminations
-
-| Term | Type | Condition |
-|---|---|---|
-| `time_out` | Truncation | Episode length exceeded (12.0 s / 360 steps) |
-| `joint_vel_diverged` | Truncation | Any joint velocity exceeds 100 rad/s (physics divergence guard) |
-
-## Curriculum
-
-| Step Threshold | Change |
+| Term | Threshold |
 |---|---|
-| 0 → 4 500 | `action_rate` weight ramps from −0.0001 to −0.005 |
-| 0 → 4 500 | `joint_vel` weight ramps from −0.0001 to −0.001 |
+| `position_reached` | position error < **0.05 m** |
+| `orientation_reached` | orientation error < **0.3 rad** |
+| `pose_reached` | both |
 
-## Reset Events
+> **Reading the metrics:** `Episode_Reward/<term>` is a *per-step mean*, not an
+> episodic sum. Mean position error [m] = −`end_effector_position_tracking` / 0.2.
+> A run with tiny tracking error but 0 % success has collapsed episodes — check
+> `Episode / Total timesteps (mean)` (= 180 when healthy).
 
-| Event | Details |
+### Terminations, Curriculum, Events
+
+| Term | Condition |
 |---|---|
-| `reset_robot_joints` | Controlled joints scaled to 75 %–125 % of defaults; velocities zeroed |
+| `time_out` | episode length exceeded |
+| `joint_vel_diverged` | any *controlled* joint velocity > 100 rad/s (physics divergence guard) |
 
-## Simulation Parameters
+Reset: controlled joints to default ± 0.125 rad offset, zero velocity;
+`clamp_infinite_joint_limits` replaces infinite/oversized joint limits
+(Kinova continuous joints, UR ±2π joints) with finite ranges.
+
+### Simulation Parameters
 
 | Parameter | Value |
 |---|---|
-| Physics dt | 1/60 s ≈ 16.67 ms |
+| Physics dt | 1/60 s |
 | Decimation | 2 (control at 30 Hz) |
-| Episode length | 12.0 s (360 control steps) |
-| Default num_envs | 4 096 (train) / 50 (play) |
-
-## PPO Hyperparameters
-
-All variants share the same PPO configuration (see `config/<variant>/agents/skrl_ppo_cfg.yaml`):
-
-| Parameter | Value | Notes |
-|---|---|---|
-| `models.separate` | `False` | Shared policy / value backbone |
-| `policy.min_log_std` | `−20.0` | Effectively unclamped exploration |
-| `policy.initial_log_std` | `0.0` | Start with std ≈ 1 |
-| `policy.layers` | `[64, 64]` | Compact network, ELU activations |
-| `value.layers` | `[64, 64]` | Matches policy network size |
-| `rollouts` | `24` | Rollout horizon per update |
-| `learning_epochs` | `5` | Gradient steps per rollout |
-| `mini_batches` | `4` | Mini-batch splits per epoch |
-| `learning_rate` | `1.0e-03` | KL-adaptive scheduler (threshold 0.01) |
-| `discount_factor` | `0.99` | — |
-| `lambda` (GAE) | `0.95` | — |
-| `write_interval` | `auto` | Eliminates TensorBoard I/O bottleneck |
-| `timesteps` | 48 000 (tensegrity, tendon, physical tendon) / 96 000 (UR10e, Kinova) | Industrial arms need longer training |
+| Episode length | **6.0 s (180 control steps)** |
+| num_envs | 4 096 (train) / 50 (play) |
+| Gravity | disabled on the robot (kinematic task) |
+| Gripper joints | PD-stabilised (stiffness 100, damping 100, armature 10) |
 
 ## Training
 
-Training uses SKRL PPO with 4 096 parallel environments.
-See `config/<variant>/agents/skrl_ppo_cfg.yaml` for the full hyperparameter set.
+### On the Alex cluster (recommended)
 
-Use `train_reach.sh` to train one or more variants in sequence and
-auto-generate plots and reports:
+See the [Alex quickstart](../../../../../../../../doc/alex_quickstart.md). From
+the repo root on a login node:
 
 ```bash
-cd src/tensegrity_pick
+source .config/env_vars.sh
 
-# All variants
-./scripts/train_reach.sh
+# Single variant (100k timesteps ≈ 30–45 min on one GPU)
+bash tools/train_alex.sh -t 02:00:00 Template-Reach-UR5e-F140-OSC-v0 --headless
 
-# Specific variants
-./scripts/train_reach.sh tensegrity ur10e
+# Smoke test a config change first (cheap)
+bash tools/train_alex.sh -i 60 -t 00:20:00 -j smoke Template-Reach-UR5e-F140-OSC-v0 --headless --num_envs 1024
 
-# Plot / report only (no training)
-./scripts/train_reach.sh --skip-train
+# The whole 24-variant grid, or a subset
+bash tools/train_reach_alex.sh
+bash tools/train_reach_alex.sh --arms "UR5e-F140 Kinova-F140" --spaces "osc ikabs"
+
+# Multi-seed study of one variant
+bash tools/train_alex.sh -s "7 42 123" -t 02:00:00 Template-Reach-UR10-Frankenstein-OSC-v0 --headless
 ```
 
-## Running
+### Locally
 
 ```bash
 cd src/tensegrity_pick
 
-# Training (replace <VARIANT_ID> with an ID from the Variants table)
 conda run --no-capture-output -n env_isaaclab \
     python3 scripts/skrl/train.py \
-    --task Template-Reach-Tensegrity-v0 --headless
+    --task Template-Reach-UR5e-F140-v0 --headless
 
+# Tensegrity family pipeline (train + plots + reports)
+./scripts/train_reach.sh tensegrity tensegrity_tendon
+```
+
+### Evaluation and Play
+
+```bash
+# Rigorous evaluation → JSON (success_rate / success_held / position_error / reach_time)
 conda run --no-capture-output -n env_isaaclab \
-    python3 scripts/skrl/train.py \
-    --task Template-Reach-Tensegrity-Tendon-v0 --headless
+    python3 scripts/skrl/evaluate_reach.py \
+    --task Template-Reach-UR5e-F140-Play-v0
 
-conda run --no-capture-output -n env_isaaclab \
-    python3 scripts/skrl/train.py \
-    --task Template-Reach-Tensegrity-Physical-Tendon-v0 --headless
-
-conda run --no-capture-output -n env_isaaclab \
-    python3 scripts/skrl/train.py \
-    --task Template-Reach-UR10e-v0 --headless
-
-conda run --no-capture-output -n env_isaaclab \
-    python3 scripts/skrl/train.py \
-    --task Template-Reach-Kinova-v0 --headless
-
-# Play latest checkpoint
+# Interactive play of the latest checkpoint (workstation only — rendering
+# does NOT work on Alex, see doc/alex_quickstart.md §7a)
 conda run --no-capture-output -n env_isaaclab \
     python3 scripts/skrl/play.py \
-    --task Template-Reach-Tensegrity-Play-v0 --num_envs 10
+    --task Template-Reach-UR5e-F140-Play-v0 --num_envs 10
 ```
 
 ## Training Results
 
-| Variant | Steps | Total Reward | Pos. Error | Orient. Error | Fine-Grained | Report | Date |
-|---|---|---|---|---|---|---|---|
-| Tensegrity PD | 48k | +0.77 | −0.006 | −0.009 | 0.087 | [Report](reports/tensegrity/reach_results_tensegrity_2026-04-06_17-53-45_ppo_torch.md) | 2026-04-06 |
-| Tensegrity Tendon | 48k | +0.75 | −0.007 | −0.012 | 0.085 | [Report](reports/tensegrity_tendon/reach_results_tensegrity_tendon_2026-04-06_18-19-18_ppo_torch.md) | 2026-04-06 |
-| Tensegrity Physical Tendon | 48k | −1.64 | −0.055 | −0.092 | 0.025 | [Report](reports/tensegrity_physical_tendon/reach_results_tensegrity_physical_tendon_2026-04-06_18-44-32_ppo_torch.md) | 2026-04-06 |
-| UR10e | 96k | −0.21 | −0.051 | −0.021 | 0.056 | [Report](reports/ur10e/reach_results_ur10e_2026-03-30_07-37-24_ppo_torch.md) | 2026-03-30 |
-| Kinova | 96k | +0.62 | −0.014 | −0.019 | 0.088 | [Report](reports/kinova/reach_results_kinova_2026-03-30_06-29-39_ppo_torch.md) | 2026-03-30 |
+### F140 grid
 
-**Note:** Tensegrity PD and Tendon both improved after Iteration 11 (penetrable
-scene, margin 0.01, FK coupling).  The Physical Tendon variant regressed
-significantly — the combination of antiparallelogram coupling enforcement and
-margin reduction from 0.25 → 0.01 made the goal distribution much harder for
-this variant.  Further investigation needed (longer training, intermediate
-margin, etc.).
+Converged values (last 10 % of training), seed 42, 100k timesteps, runs of
+2026-07-02. Cell = **mean position error (cm) / % of steps within 5 cm**.
+Orientation is loose by design; the 7-DOF Kinovas track it best.
 
-### Training Figures
+| Arm | Joint | IK-Rel | IK-Abs | OSC |
+|---|---|---|---|---|
+| UR5e-F140 | **1.8 / 96 %** | 2.1 / 93 % | 2.1 / 94 % | 2.1 / 93 % |
+| UR5e-Frankenstein | 3.7 / 87 % | 3.8 / 88 % | 3.8 / 87 % | 3.8 / 91 % |
+| UR10-F140 | 3.2 / 91 % | 3.2 / 88 % | 4.7 / 85 % | 3.1 / 91 % |
+| UR10-Frankenstein | 4.7 / 88 % | 4.9 / 83 % | 5.1 / 83 % | 20.1 / 58 % † |
+| Kinova-F140 | 2.9 / 88 % | 4.0 / 89 % | 5.8 / 67 % | 3.7 / 87 % |
+| Kinova-Frankenstein | 2.5 / 93 % | 2.7 / 88 % | 2.4 / 90 % | 3.0 / 90 % |
 
-| Variant | Figures |
-|---|---|
-| Tensegrity PD | [figures/tensegrity/](figures/tensegrity/) |
-| Tensegrity Tendon | [figures/tensegrity_tendon/](figures/tensegrity_tendon/) |
-| Tensegrity Physical Tendon | [figures/tensegrity_physical_tendon/](figures/tensegrity_physical_tendon/) |
-| UR10e | [figures/ur10e/](figures/ur10e/) |
-| Kinova | [figures/kinova/](figures/kinova/) |
+† Seed-42 optimization outlier, not a controller failure: the identical config
+converges to 4.1 cm / 90 % (seed 7) and 6.5 cm / 76 % (seed 123). See the
+[tracking log](../../../../../../../../doc/reports/reach_optimization_tracking.md),
+iteration 15.
+
+Per-variant figures and reports are generated into
+[`figures/<variant>/`](figures/) and [`reports/<variant>/`](reports/) — e.g.
+[figures/ur5e_f140_osc/](figures/ur5e_f140_osc/),
+[reports/ur5e_f140_osc/](reports/ur5e_f140_osc/). Log-dir names use the
+variant naming `<arm>[_ik|_ikabs|_osc]` (no suffix = joint).
+
+### Tensegrity family
+
+Historical results (older configs — 12 s episodes, FK full-pose targets; see
+the tracking log for context):
+
+| Variant | Steps | Total Reward | Report | Date |
+|---|---|---|---|---|
+| Tensegrity PD | 48k | +0.77 | [reports/tensegrity/](reports/tensegrity/) | 2026-04-06 |
+| Tensegrity Tendon | 48k | +0.75 | [reports/tensegrity_tendon/](reports/tensegrity_tendon/) | 2026-04-06 |
+| Tensegrity Physical Tendon | 150k | −0.35 (best) | [reports/tensegrity_physical_tendon/](reports/tensegrity_physical_tendon/) | 2026-04-08 |
 
 ### Regenerating Plots and Reports
 
 ```bash
 cd src/tensegrity_pick
 
-# All variants (uses latest run per variant automatically)
+# One variant (uses the latest run automatically; --variant name = log-dir name)
 conda run --no-capture-output -n env_isaaclab \
-    python3 scripts/plot_reach_training_results.py --variant tensegrity
+    python3 scripts/plot_reach_training_results.py --variant ur5e_f140_osc
 
+# All 24 grid variants
+for arm in ur10_f140 ur10_frankenstein ur5e_f140 ur5e_frankenstein kinova_f140 kinova_frankenstein; do
+  for sfx in "" _ik _ikabs _osc; do
+    conda run --no-capture-output -n env_isaaclab \
+        python3 scripts/plot_reach_training_results.py --variant "$arm$sfx"
+  done
+done
+
+# Multi-seed aggregate plot
 conda run --no-capture-output -n env_isaaclab \
-    python3 scripts/plot_reach_training_results.py --variant tensegrity_tendon
-
-conda run --no-capture-output -n env_isaaclab \
-    python3 scripts/plot_reach_training_results.py --variant tensegrity_physical_tendon
-
-conda run --no-capture-output -n env_isaaclab \
-    python3 scripts/plot_reach_training_results.py --variant ur10e
-
-conda run --no-capture-output -n env_isaaclab \
-    python3 scripts/plot_reach_training_results.py --variant kinova
-
-# Or regenerate all at once via the pipeline script
-./scripts/train_reach.sh --skip-train
+    python3 scripts/plot_reach_training_results.py --seeds \
+    logs/skrl/reach/ur10_frankenstein_osc/*_ppo_torch_seed*
 ```
 
 ## Related
 
-- [Robot specification](../../../../../../../../res/Tensegrity/README.md) — kinematic chain, joint constraints, tendon geometry
-- [Tendon simulation](../../../../../../../../doc/tendon_simulation.md) — physics model and validation
-- [Cube place task](../cube_place/README.md) — cube pick-and-place task
-- [Cube sort task](../cube_sort/README.md) — cube sorting on active conveyor
+- [Action spaces of the grid](action_spaces.md) — controllers, gains, fairness rules
+- [Robot specification](../../../../../../../../res/Tensegrity/README.md) — tensegrity kinematic chain, tendon geometry
+- [Tendon simulation](../../../../../../../../doc/Tensegrity_robot/tendon_simulation.md) — physics model and validation
+- [Cube place task](../cube_place/README.md) · [Cube sort task](../cube_sort/README.md)
 - [Extension overview](../../../../../../README.md) — all registered tasks and scripts
