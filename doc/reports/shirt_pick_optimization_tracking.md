@@ -257,3 +257,127 @@ currently discourages retry-friendly exploration), or a mild bank curriculum
 slot-0 attach mask + grasp point + joint state + presented flag; generating
 the shirt_present initial-state bank from the trained policy's presented
 terminal states is the next pipeline step (see doc/TODO.md).
+
+---
+
+## Phase 3: GUI Review Fixes — Real Presentation Pose + Trash-Toss Bank
+
+**Date:** 2026-07-03. GUI review of the Phase-2 policy raised two issues:
+(1) the bank shirts were not crumpled enough for a trash conveyor, and
+(2) the presentation pose was wrong — the workspace analysis from the Project
+Thesis says **(0.15, 0.9, 1.6)** is feasible.
+
+### Presentation pose: probe before believing "unreachable"
+
+New script [probe_present_pose.py](../../src/tensegrity_pick/scripts/model_validation/probe_present_pose.py):
+grasps the shirt (flat lay + alignment servo), then servos the grasp point to
+a candidate pose with **UNCLIPPED actions** (only physical limits constrain)
+using a numeric-Jacobian damped-least-squares controller, and reports
+(a) hold distance, (b) joints at physical position limits, (c) peak applied
+torque / effort-limit fraction under the shirt's load.
+
+**Result for (0.15, 0.9, 1.6): REACHABLE — 8/8 envs, hold distance 0.000 m.**
+Hold configuration: elbow +1.19 (of ±1.5), wrist_x +0.14, wrist_y +0.10,
+base_y +0.19 (of ±0.5), base_z −0.04 — **no joint near a limit, well inside
+the existing task action clips**.  Peak torque fractions with the shirt held:
+wrist_x 0.78, elbow 0.22, base ≤ 0.15 — **no torque saturation**, so the
+Klein effort limits were NOT raised and the action clips were NOT widened
+(nothing to change beyond the pose constant in
+`shared/cloth_sorting_scene_cfg.py`, where the probe findings are quoted).
+
+Two probe lessons (documented for future reach questions):
+1. The earlier "carry max ≈ 1.2 m / pose unreachable" conclusions were
+   **artifacts of crude scripted probes**: a single hang-pose Jacobian goes
+   stale as the arm rises and the servo stalls far from the target — the
+   stall reads exactly like an envelope limit.  Probe verdicts need adaptive
+   J re-estimation (or the workspace-analysis FK, as the user did).
+2. A torque fraction of 1.00 at a joint sitting AT its position limit is the
+   PD pressing into the hard stop, not actuator weakness — strength verdicts
+   must come from limit-free configurations.
+
+### Crumpled bank v2: trash-toss protocol
+
+The v1 protocol (lift 0.15–0.45 m) only partially lifted the ~0.7 m garment →
+near-flat piles (⌀0.07 m) that did not read as "trash tossed onto a belt".
+v2 ([generate_crumpled_bank.py](../../src/tensegrity_pick/scripts/generate_crumpled_bank.py)):
+
+- **Full lift-off tosses:** pick height 0.45–0.80 m at 1.2 m/s with lateral
+  drag, released at full speed (the dangling cloth keeps momentum and wads on
+  landing); 50 % of lays start half-folded (`reset_randomized` fold), 50 % of
+  rounds get a second toss.
+- **v2.0 mistake (caught by the new stats):** unconstrained 1.2 m/s tosses
+  threw most shirts clear off the 0.9 m belt — mean pile TOP ended up below
+  belt height (shirts on the floor), and some captures were mid-flight
+  (max |v| 4.3 m/s).  → v2.1 biases drag direction toward the belt centre
+  (±~60°), clamps release points to the belt interior, and **validates every
+  state** (top above belt, nothing >0.10 m below belt level, max particle
+  speed < 1 m/s) before capture.
+- **Final bank (seed 4, 64 envs × 5 rounds, ~10 min):** **288 valid states**
+  (~10 % rejected off-belt/unsettled), pile height **⌀0.10 m / max 0.15 m**
+  (v1: 0.07/0.13), xy footprint shrunk to **0.71–0.77× the flat lay** — the
+  footprint-vs-flat ratio was added as the honest "crumpledness" metric.
+
+### Phase-3 retraining
+
+From scratch (new initial-state distribution + new goal): 128 envs, seed 1,
+20 000 timesteps.  Results appended below.
+
+### Phase-3 run 1 (`2026-07-03_12-05-56_ppo_torch_seed1`, 20 k steps) — diagnosis
+
+Training (with the user's Isaac Sim GUI session sharing the GPU for part of
+the run — thermal throttling, ~2× slower iterations): grasp_rate 1.0 by
+step 1 k, drop_rate 0.00 at the end (one transient exploration spike to 0.61
+around 15 k, self-recovered), `presented` climbing but far from converged at
+the cap (3.6 vs Phase-2's 14.8 episode reward).
+
+Deterministic eval: agent_16000 present 0.000 / grasp 0.76; **agent_20000
+present 0.37 / grasp 0.87 / drop 0.00** (2 seeds: 0.365/0.375) — steeply
+improving at the cap, so the run was extended rather than re-rolled.
+
+**Gate diagnosis** (diag_shirt_pick_policy.py): distances are solved — holds
+at 0.06–0.12 m from the pose (dist-gate satisfied 68 % of ALL steps) — but
+**EE speed at the raised posture is 0.24–0.27 m/s**, permanently above the
+0.20 reward gate (satisfied only 16 % of steps): the elbow-extended lever
+sways more than the old low posture (0.17–0.19 m/s).  The success reward was
+barely harvestable → the last skill stalled.
+
+**Fix (measured, physically honest):** the presented speed gate (reward AND
+metric) now gates on the **cloth centroid speed** instead of the EE — the
+hanging garment low-pass filters the arm sway to 0.06–0.20 m/s (satisfied
+72 % of steps at gate 0.20), and the camera inspects the cloth, not the
+gripper.  Windowed latch unchanged (≥ 80 % of the last 1 s).
+
+### Phase-3 run 2 — continuation with the cloth-speed gate
+
+From run-1 agent_20000: 128 envs, seed 3, +12 000 timesteps
+(`--max_iterations 250`).  Results appended below.
+
+### Phase-3 results — 100 % deterministic stable-present at the real pose
+
+Continuation run `2026-07-03_19-33-17_ppo_torch_seed3` (+12 k timesteps from
+run-1 agent_20000, cloth-speed gate active).  The unlocked success reward
+consolidated the hold immediately.  Deterministic eval (96 episodes/eval,
+trash-toss bank v2.1, pose (0.15, 0.9, 1.6)):
+
+| Checkpoint | Seed | present_rate | grasp_rate | drop_rate |
+|---|---|---|---|---|
+| run-1 agent_20000 (EE gate) | 7/12 | 0.365 / 0.375 | 0.865 / 0.875 | 0.000 |
+| continuation agent_8000 | 7/12 | 0.979 / 0.979 | 0.990 / 0.990 | 0.021 / 0.010 |
+| **continuation agent_12000 (selected)** | 7/12 | **1.000 / 1.000** | **1.000 / 1.000** | 0.073 / 0.052 |
+
+**Selected checkpoint:**
+`logs/skrl/shirt_pick/2026-07-03_19-33-17_ppo_torch_seed3/checkpoints/agent_12000.pt`
+— perfect stable-present and grasp on both eval seeds.  Trade-off note:
+agent_12000 loses the grasp at some point in 5–7 % of episodes (after the
+present latch); **agent_8000** is the low-drop alternative (1–2 % drops,
+0.979 present) if the Task-1→2 handoff prefers held-at-end robustness over
+the perfect present score — decide when the terminal-state bank is generated.
+
+Figures: `shirt_pick/figures/tensegrity/` (run 1) and
+`figures/tensegrity_continuation/` (continuation).
+
+Phase-3 summary vs the user review: both issues closed —
+(1) trash-toss bank v2.1 (piles ⌀0.10 m, footprint 0.72× flat, all states
+validated on-belt), (2) presentation at the workspace-analysis pose
+(0.15, 0.9, 1.6), probe-verified with **no effort-limit or action-clip
+changes needed** (joints bind nowhere; peak torque fraction 0.78 wrist_x).

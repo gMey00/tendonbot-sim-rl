@@ -4,18 +4,19 @@
 # holding point on the hanging shirt and stretches it for front/back camera
 # assessment.
 #
-# STUB status — the shirt hangs from a static solver anchor at the
-# presentation pose, standing in for the retrieving robot's grip (the passive
-# ``holder_robot`` in the scene is visual only for now).  Open pipeline work
-# (see doc/TODO.md):
-#   * initialize from the Task-1 terminal-state bank instead of the idealized
-#     centre-hang (skill-chaining distribution shift is the central risk)
-#   * SECOND attachment for the learning robot — ``ClothObject`` currently
-#     manages one attachment set per env, and the anchor slot is used by the
-#     holder; supporting robot-grasp + holder-anchor simultaneously is the
-#     core Task-2 implementation work (PBD two-attachment stability!)
-#   * lowest-point regrasp target, tautness proxy (inter-grasp distance /
-#     rest distance), projected-coverage reward from the camera viewpoints
+# Initial states: the shirt hangs from a static solver anchor at the
+# presentation pose (slot 1), pinned at ONE RANDOM particle patch — restored
+# from the cached hanging-state bank (``scripts/generate_hanging_bank.py``),
+# standing in for the retrieving robot's grip.  Slot 0 stays reserved for the
+# learning arm's own grasp (two-attachment stretch, Stage-0 de-risked).
+# Open task work (see doc/TODO.md):
+#   * enable the learning arm's grasp at the LOWEST hanging point (naive
+#     second-grab heuristic) + stretch MDP
+#   * tautness proxy (inter-grasp distance / rest distance), projected
+#     silhouette-coverage success metric (shared/cloth_metrics.py) from the
+#     inspection-camera viewpoints
+#   * later: initialize from the Task-1 terminal-state bank instead of the
+#     idealized random-point hang (skill-chaining distribution shift)
 
 from __future__ import annotations
 
@@ -24,19 +25,27 @@ from typing import Sequence
 import torch
 
 from ..shared.cloth_sorting_env import ClothSortingEnvBase
-from ..shared.cloth_sorting_scene_cfg import PRESENTATION_POS
+from ..shared.cloth_sorting_scene_cfg import HANGING_BANK_PATH, PRESENTATION_POS
+from ..shared.proj_base_scene_cfg import DRUM_HEIGHT_M
 
 # Particles within this radius of the anchor are pinned (pad-sized, matches
 # the validated ATTACH_WELD_RADIUS).
 HOLDER_ANCHOR_RADIUS = 0.07
+# Only restore hang states short enough to clear the drum tops: the reusable
+# drum at (0.15, 1.0) sits directly under the presentation pose (0.15, 0.90),
+# so a full-length drape (up to ~0.86 m) would dip into it.
+MAX_HANG_DRAPE = PRESENTATION_POS[2] - DRUM_HEIGHT_M - 0.04
 
 
 class ShirtPresentEnv(ClothSortingEnvBase):
     """Stretch the hanging shirt for inspection (bimanual, second arm learns)."""
 
-    # The single ClothObject attachment slot is used by the holder anchor, so
-    # the learning robot's deterministic grasp stays off in the stub.
+    # The holder anchor uses slot 1; the learning robot's deterministic grasp
+    # (slot 0) stays off until the task's regrasp MDP is implemented.
     enable_hand_grasp = False
+
+    # Random-particle hang states (missing file → centre-hang fallback below).
+    hanging_bank_path = HANGING_BANK_PATH
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -50,15 +59,22 @@ class ShirtPresentEnv(ClothSortingEnvBase):
     # ------------------------------------------------------------------
 
     def _reset_cloth(self, env_ids: torch.Tensor) -> None:
-        """Teleport the flat shirt to the presentation pose and pin its centre.
+        """Hang the shirt from the holder anchor, pinned at one random point.
 
-        The sheet drapes under gravity into a centre-hung garment — an
-        idealized stand-in for the Task-1 terminal state ("held at the former
-        highest point").  TODO(pipeline): sample from the cached Task-1
-        terminal-state bank instead.
+        Primary path: restore a relaxed random-particle hang from the cached
+        hanging-state bank (slot 1 anchored at ``PRESENTATION_POS``).
+        Fallback without a bank: teleport the flat sheet to the pose and pin
+        its centre patch (it drapes into an idealized centre-hang — NOT
+        settled, so early-episode swing is larger than with the bank).
+        TODO(pipeline): eventually sample from the Task-1 terminal-state bank.
         """
         n = env_ids.numel()
         if n == 0:
+            return
+        if self._reset_cloth_hanging_from_bank(
+            env_ids, self._anchor_pos, slot=1, radius=HOLDER_ANCHOR_RADIUS,
+            max_drape=MAX_HANG_DRAPE,
+        ):
             return
         origins = self.scene.env_origins[env_ids]
         centroids = origins.clone()

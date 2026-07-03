@@ -844,6 +844,17 @@ class ClothObject:
         """Lowest point of the laid-flat shirt relative to its centroid (≤ 0)."""
         return self._flat_rest_min_z
 
+    @property
+    def flat_rest_pos(self) -> torch.Tensor:
+        """Flat rest-shape particle positions ``[P, 3]``, centroid-centred.
+
+        The canonical relaxed flat lay (adopted from the one-off pre-settle).
+        Reference geometry for cloth metrics: per-particle rest distances
+        (stretch/tautness ratios) and the flat silhouette area
+        (``shared/cloth_metrics.py::flat_silhouette_area``).
+        """
+        return self._flat_rest
+
     def recompute_flat_rest_from_current(self) -> None:
         """Adopt the current (settled) shape of env 0 as the canonical rest.
 

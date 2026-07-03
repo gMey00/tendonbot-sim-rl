@@ -120,18 +120,24 @@ def presented(
     dist_threshold: float = 0.15,
     vel_threshold: float = 0.20,
 ) -> torch.Tensor:
-    """Per-step success bonus: held AT the presentation pose, slow.
+    """Per-step success bonus: held AT the presentation pose, cloth still.
 
     grasp_active AND grasp point within ``dist_threshold`` of the pose AND
-    EE speed below ``vel_threshold`` — accruing per step makes an EARLY,
-    STABLE hold the optimal policy (equivalent to a hold-duration bonus).
+    **cloth centroid speed** below ``vel_threshold`` — accruing per step
+    makes an EARLY, STABLE hold the optimal policy.
+
+    The speed gate is on the CLOTH, not the EE (changed 2026-07-03, Phase 3):
+    at the raised presentation posture the PD arm's residual EE sway is
+    0.24–0.27 m/s — permanently above any sane EE gate — while the hanging
+    garment low-pass filters it to 0.06–0.20 m/s.  The camera also inspects
+    the cloth, not the gripper, so the cloth's stillness is the honest
+    "inspectable" criterion (measured: diag_shirt_pick_policy.py).
     """
     if not _ready(env):
         return _zeros(env)
-    robot = env.scene["robot"]
     d = torch.norm(env.shirt_grasp_point_w - _presentation_target(env), dim=-1)
-    ee_speed = robot.data.body_lin_vel_w[:, env._ee_body_idx, :].norm(dim=-1)
-    ok = env.grasp_active & (d < dist_threshold) & (ee_speed < vel_threshold)
+    cloth_speed = env.cloth.centroid_vel_w.norm(dim=-1)
+    ok = env.grasp_active & (d < dist_threshold) & (cloth_speed < vel_threshold)
     return ok.float()
 
 

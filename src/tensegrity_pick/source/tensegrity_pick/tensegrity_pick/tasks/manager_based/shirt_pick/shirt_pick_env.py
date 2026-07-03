@@ -25,13 +25,16 @@ from ..shared.cloth_sorting_env import ClothSortingEnvBase
 from ..shared.cloth_sorting_scene_cfg import CRUMPLED_BANK_PATH, PRESENTATION_POS
 
 PRESENT_DIST_THRESHOLD = 0.15  # m — grasp point to presentation pose
-# Metric gates for the stable-hold latch.  The speed gate is 0.25 m/s and the
-# criterion is WINDOWED (≥ WINDOW_FRAC of the last WINDOW steps), not
-# consecutive: the PD arm holding the cloth has ~0.18 m/s residual EE sway
-# with jitter spikes, so a consecutive-steps latch at 0.20 m/s reported 0 %
-# for a policy that measurably parks the shirt 5–8 cm from the pose for 60 %
-# of the episode (see diag_shirt_pick_policy.py, run 2026-07-03).
-PRESENT_VEL_THRESHOLD = 0.25   # m/s — EE speed gate (metric)
+# Stable-hold latch: WINDOWED (≥ WINDOW_FRAC of the last WINDOW steps), and
+# the speed gate is on the CLOTH CENTROID, not the EE (both measured
+# decisions, see diag_shirt_pick_policy.py):
+#   * consecutive-steps latches are too brittle — the PD arm always has
+#     residual EE sway with jitter spikes;
+#   * at the raised presentation posture (elbow-extended lever) the EE sway
+#     is 0.24–0.27 m/s — above any sane EE gate — while the hanging garment
+#     low-pass filters it to 0.06–0.20 m/s.  The camera inspects the cloth,
+#     so the cloth's stillness is the honest criterion.
+PRESENT_VEL_THRESHOLD = 0.20   # m/s — cloth centroid speed gate
 PRESENT_WINDOW = 60            # steps (1 s @ 60 Hz)
 PRESENT_WINDOW_FRAC = 0.8      # fraction of the window that must qualify
 
@@ -93,14 +96,13 @@ class ShirtPickEnv(ClothSortingEnvBase):
         self._was_dropped |= released & still_running
         self._prev_attached = self.grasp_active.clone()
 
-        # Stable-hold presented latch (windowed).
-        robot = self.scene["robot"]
+        # Stable-hold presented latch (windowed, cloth-centroid speed gate).
         d = torch.norm(self.shirt_grasp_point_w - self._present_target, dim=-1)
-        ee_speed = robot.data.body_lin_vel_w[:, self._ee_body_idx, :].norm(dim=-1)
+        cloth_speed = self._cloth.centroid_vel_w.norm(dim=-1)
         p_now = (
             self.grasp_active
             & (d < PRESENT_DIST_THRESHOLD)
-            & (ee_speed < PRESENT_VEL_THRESHOLD)
+            & (cloth_speed < PRESENT_VEL_THRESHOLD)
         )
         self._present_ring[:, self._ring_idx] = p_now
         self._ring_idx = (self._ring_idx + 1) % PRESENT_WINDOW

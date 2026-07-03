@@ -3,13 +3,13 @@
 Constants and functions shared across all tasks using the ceiling-mounted
 5-DOF tensegrity robot with Robotiq 2F-140 gripper.
 
-All local-z offsets are NEGATIVE because tool_link_0's local +Z axis points
-UPWARD (toward the ceiling mount) in world frame.  A negative offset along
-local Z therefore projects downward toward the conveyor / cube.
-Verified by diagnostic: applying +0.225 to tool_link_0 at any base_z gives a
-world position ~22.5 cm above the TCP (wrong); -0.225 gives ~22.5 cm below
-the TCP (correct).  See also scripts/measure_positions.py for per-config
-measurements.
+Offsets are stored as frame-independent DISTANCES; the local-Z direction that
+points toward the finger tips depends on the EE reference frame and is looked
+up per body name in ``EE_FRAME_TIP_SIGN`` (tool_link_0: −Z, robotiq_base_link
+/ end_effector_link: +Z — measured by
+scripts/model_validation/check_f140_finger_tip.py).  The legacy negative
+``*_Z`` constants keep the tool_link_0 convention for the tensegrity-only
+tasks.  See also scripts/measure_positions.py for per-config measurements.
 """
 
 from __future__ import annotations
@@ -31,11 +31,53 @@ if TYPE_CHECKING:
 # Gripper geometry constants
 # ---------------------------------------------------------------------------
 
-FINGER_TIP_OPEN_Z = -0.215    # local -Z = toward floor (tool_link_0 +Z points up)
-FINGER_TIP_CLOSED_Z = -0.235
-FINGER_TIP_LOCAL_Z = -0.225   # static average for belt-collision checks
-GRASP_CENTER_LOCAL_Z = -0.1925  # centre between finger pads
+# Distances (m) from the EE reference frame origin along the gripper axis
+# toward the finger tips.  Frame-independent magnitudes — the DIRECTION of
+# that axis in the EE frame's local Z depends on the frame convention, see
+# ``EE_FRAME_TIP_SIGN`` below.
+FINGER_TIP_OPEN_DIST = 0.215
+FINGER_TIP_CLOSED_DIST = 0.235
+FINGER_TIP_STATIC_DIST = 0.225   # static average for belt-collision checks
+GRASP_CENTER_DIST = 0.1925       # centre between finger pads
 FINGER_JOINT_CLOSE_POS = 0.7854
+
+# Sign of the EE frame's local-Z direction that points toward the finger tips.
+# Measured empirically (scripts/model_validation/check_f140_finger_tip.py,
+# 2026-07-04): on every arm carrying the Robotiq 2F-140, ``tool_link_0`` and
+# ``robotiq_base_link`` are CO-LOCATED with antiparallel Z axes —
+# ``tool_link_0`` +Z points up the arm (fingers at −Z, the original
+# tensegrity calibration), ``robotiq_base_link`` +Z points into the fingers.
+# Kinova's ``end_effector_link`` is co-located with robotiq_base_link
+# (+0.6 mm) and shares its direction.
+EE_FRAME_TIP_SIGN = {
+    "tool_link_0": -1.0,        # tensegrity arms
+    "robotiq_base_link": 1.0,   # UR5e/UR10/Kinova F140 (+ present on tensegrity)
+    "end_effector_link": 1.0,   # Kinova flange (F140 variants resolve robotiq_base_link first)
+}
+
+
+def tip_frame_sign(body_name: str) -> float:
+    """Local-Z sign toward the finger tips for a known EE frame.
+
+    Raises with a pointer to the calibration probe for unknown frames instead
+    of silently projecting the grasp geometry to the wrong side.
+    """
+    try:
+        return EE_FRAME_TIP_SIGN[body_name]
+    except KeyError:
+        raise KeyError(
+            f"No finger-tip frame convention for EE body '{body_name}' — measure it "
+            "with scripts/model_validation/check_f140_finger_tip.py and add it to "
+            "gripper_cfg.EE_FRAME_TIP_SIGN."
+        ) from None
+
+
+# Legacy tool_link_0-frame constants (negative local Z), kept for the
+# tensegrity-only tasks (cube_place/cube_sort/shirt_place) that import them.
+FINGER_TIP_OPEN_Z = -FINGER_TIP_OPEN_DIST
+FINGER_TIP_CLOSED_Z = -FINGER_TIP_CLOSED_DIST
+FINGER_TIP_LOCAL_Z = -FINGER_TIP_STATIC_DIST
+GRASP_CENTER_LOCAL_Z = -GRASP_CENTER_DIST
 
 
 # ---------------------------------------------------------------------------
@@ -83,14 +125,23 @@ def project_local_z_offset(
     return ee_pos + quat_apply(ee_quat, offset.expand_as(ee_pos))
 
 
+def _tip_sign(robot: Articulation, body_cfg: SceneEntityCfg) -> float:
+    """Finger-direction sign for the EE body referenced by ``body_cfg``."""
+    return tip_frame_sign(robot.body_names[body_cfg.body_ids[0]])
+
+
 def grasp_center_w(robot: Articulation, body_cfg: SceneEntityCfg) -> torch.Tensor:
     """World position of the grasp centre between the finger pads (N, 3)."""
-    return project_local_z_offset(robot, body_cfg, GRASP_CENTER_LOCAL_Z)
+    return project_local_z_offset(
+        robot, body_cfg, _tip_sign(robot, body_cfg) * GRASP_CENTER_DIST
+    )
 
 
 def finger_tip_w(robot: Articulation, body_cfg: SceneEntityCfg) -> torch.Tensor:
     """World position of the finger tips (lowest point of the gripper) (N, 3)."""
-    return project_local_z_offset(robot, body_cfg, FINGER_TIP_LOCAL_Z)
+    return project_local_z_offset(
+        robot, body_cfg, _tip_sign(robot, body_cfg) * FINGER_TIP_STATIC_DIST
+    )
 
 
 def dynamic_finger_tip_w(
@@ -101,7 +152,9 @@ def dynamic_finger_tip_w(
     """World position of finger tips adjusted for actual finger joint state (N, 3)."""
     finger_pos = robot.data.joint_pos[:, finger_cfg.joint_ids[0]]
     closure = torch.clamp(finger_pos / FINGER_JOINT_CLOSE_POS, 0.0, 1.0)
-    tip_z = FINGER_TIP_OPEN_Z + closure * (FINGER_TIP_CLOSED_Z - FINGER_TIP_OPEN_Z)
+    tip_z = _tip_sign(robot, body_cfg) * (
+        FINGER_TIP_OPEN_DIST + closure * (FINGER_TIP_CLOSED_DIST - FINGER_TIP_OPEN_DIST)
+    )
 
     ee_pos = robot.data.body_pos_w[:, body_cfg.body_ids[0], :]
     ee_quat = robot.data.body_quat_w[:, body_cfg.body_ids[0], :]
