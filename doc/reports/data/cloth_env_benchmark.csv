@@ -1,0 +1,5 @@
+n_envs,construct_s,steps_per_s,env_steps_per_s,cuda_alloc_gb,cuda_reserved_gb,driver_used_gb,reset_s,sane,physx_overflow_warnings
+32,27.9,13.183,421.9,0.04,0.08,4.38,0.01,True,0
+64,63.5,6.235,399.0,0.07,0.12,5.47,0.01,True,0
+128,144.6,2.448,313.4,0.12,0.23,7.75,0.02,True,0
+256,399.7,0.870,222.7,0.24,0.43,12.06,0.01,True,0

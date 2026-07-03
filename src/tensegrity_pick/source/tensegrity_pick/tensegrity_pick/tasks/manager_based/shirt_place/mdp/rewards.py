@@ -193,6 +193,11 @@ def shirt_ee_distance(
 
     if hasattr(env, "grasp_active"):
         result = result * (~env.grasp_active).float()
+    # Off after placement: otherwise this keeps pulling the arm toward the
+    # cloth lying *inside the drum*, fighting return_to_neutral (post-place
+    # drift observed in deterministic eval).
+    if hasattr(env, "was_placed"):
+        result = result * (~env.was_placed).float()
     return result
 
 
@@ -220,6 +225,10 @@ def shirt_grasp_reward(
     reward = closure * proximity
     if hasattr(env, "grasp_active"):
         reward = reward + env.grasp_active.float()
+    # Off after placement (see shirt_ee_distance): no pull toward the placed
+    # cloth, and no incentive to close the gripper again over the drum.
+    if hasattr(env, "was_placed"):
+        reward = reward * (~env.was_placed).float()
     return reward
 
 
@@ -560,10 +569,40 @@ def shirt_off_conveyor_penalty(
     env: ManagerBasedRLEnv,
     shirt_name: str,
     bounds: ConveyorBounds,
+    drum_name: str | None = None,
+    drum_radius: float = 0.40,
 ) -> torch.Tensor:
-    """Penalty (1.0) when shirt proxy is outside conveyor region."""
+    """Penalty (1.0) when the shirt has been *dropped on the floor*.
+
+    Fires when the shirt centroid falls below the belt level OUTSIDE the drum
+    footprint.  The old ``out_y`` test (|y| beyond the belt) also fired for the
+    entire legitimate carry to the drum (y ≈ 0.85) and — worse — the ``out_z``
+    test fired every step the shirt rested *inside the drum* (z < 0.70), so a
+    successful placement bled −5/step for the rest of the episode.  Now only a
+    genuinely dropped shirt is penalised.
+    """
     shirt: RigidObject = env.scene[shirt_name]
     local = shirt.data.root_pos_w - env.scene.env_origins
-    out_y = (local[:, 1] < bounds.y_min) | (local[:, 1] > bounds.y_max)
-    out_z = local[:, 2] < bounds.z_min
-    return (out_y | out_z).to(torch.float32)
+    fallen = local[:, 2] < bounds.z_min
+    if drum_name is not None:
+        pos_d = _get_world_pos(env.scene[drum_name], env=env)
+        d_xy = torch.norm(shirt.data.root_pos_w[:, :2] - pos_d[:, :2], dim=-1)
+        fallen = fallen & (d_xy > drum_radius)
+    return fallen.to(torch.float32)
+
+
+def arm_velocity_bonus_until_placed(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    max_velocity: float = 5.0,
+) -> torch.Tensor:
+    """Anti-frozen-arm bonus, switched OFF once the shirt is placed.
+
+    After placement the task is to settle at the neutral pose; rewarding raw
+    arm velocity there encourages pointless waving / diving instead of coming
+    to rest.
+    """
+    bonus = arm_velocity_bonus(env, asset_cfg=asset_cfg, max_velocity=max_velocity)
+    if hasattr(env, "was_placed"):
+        bonus = bonus * (~env.was_placed).float()
+    return bonus

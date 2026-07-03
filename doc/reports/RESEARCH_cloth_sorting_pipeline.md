@@ -1,0 +1,141 @@
+# RL-Based Condition-Sorting of Textiles in Isaac Lab / Isaac Sim 5.1.0: Research Report and Implementation Plan
+
+## TL;DR
+- **The three-task decomposition is sound and matches established multi-stage garment pipelines** (Berkeley laundry, Doumanoglou dual-arm unfolding, Cloth Funnels, SpeedFolding); the strongest recommendations are: initialize crumpled shirts from a **cached bank of pre-settled particle states** rather than settling at reset; use **highest-point pick (Task 1) → lowest-point regrasp (Task 2)** as camera-realistic, literature-validated heuristics; and formulate Task 3 as a **goal-conditioned policy with target-bin position in the observation**, not a one-hot label.
+- **Your "deprecated-but-functional" premise on PBD particle cloth is correct for Isaac Sim 5.1.0**: the "particle cloth removed" language applies to newer standalone Omniverse Kit Physics (107.x) and Isaac Sim 6.0, but in 5.1.0 the surface-deformable FEM schema is an opt-in beta while legacy `PhysxParticleClothAPI` / `ClothPrim` remains the shipping default. Read/write per-particle state via `ClothPrim.get_world_positions`/`set_world_positions` and velocities, or the underlying `UsdGeom.Points` `points` attribute.
+- **The biggest risks are not perception but physics and MDP-boundary design**: PBD overstretch artifacts, two-simultaneous-attachment stability during the bimanual stretch, reset performance at 4096 envs with cloth, and reward hacking (hiding the shirt). Each has concrete mitigations below. The single most important un-asked question you must answer first is the **Task 1→2 handoff distribution**: train Task 2 from a cached bank of realistic Task-1 terminal states, not idealized states, to avoid skill-chaining distribution shift.
+
+## Initial Prompts
+
+So I am working on an RL project in IsaacLab. My final goal is to have a complete sorting pipeline for homogeneous clothing items based on their condition (Reusable, recyclable, trash). The image I uploaded shows the experiment/project scene in Isaaclab. I am using IsaacLab with IsaacSim 5.1.0 and Physx PBD cloth.
+
+I currently have a somewhat running RL task where the first robot simply picks up a shirt at its highest point, carries it towards a bin, and throws it in. The cloth simulation and gripping are loosely based on the implementations in Garmentlab and Dex Garmentlab. The T-Shirt asset I am using comes from the ClothesNetM dataset.
+
+But the final process should be:
+
+1. First Robot picks a clothing Item (currently only shirts) from the conveyor and holds it in front of a camera.
+2. A Second robot arm picks a second holding spot and stretches the cloth so a camera from the front and a camera from the back can assess the condition of the shirt.
+3. After the classification succeeded, the second arm throws the shirt, depending on the condition, into the right bin.
+
+As stated in the process, I want to split the overall process into 3 separate tasks.
+Because each step is intrinsically separate, this allows for a simple single-agent PPO rather than the otherwise required multi-agent RL.
+
+But there are some questions and some planning for the implementation of these three tasks I still have, and I need to figure out:
+
+1. The robot should pick the shirts from a trash conveyor, so the starting positions won't be simply flat: How do I randomize the shirts so realistically crumbled shirts are produced, just as they would appear on a conveyor for trash? How do I implement this randomization as efficiently and performantly as possible for training? Which point on the shirt should the robot choose for grabbing, and, without integrating a simulated camera, which points are realistically recognizable by a camera? How can the robot first manipulate the shirt so that a camera can actually pick out that point?
+2. Which second grabbing point should the second robot choose, such that both robots together span the shirt in a way that a maximum of the shirt is visible in the cameras, and cloth assessment can be done as reliably as possible? Should I first write a script to evaluate all possible gripping pairs and the simulation outcomes, or has anyone done something similar before with known outcomes? Which grabbing points could a camera + object detection actually find based on a hanging cloth? How do I decide how far the cloth should be stretched by the second arm? Do I need to consider something else?
+3. How do I best train the label-based different placement for different clothes with one RL task?
+
+Research the questions asked and consider whether there are any other questions I need to answer before implementing the tasks. Also, research whether anyone has already implemented similar tasks or even the entire pipeline.
+
+Then give me a report on what you found with an overall plan for the process and its orchestration. And Answers for each of the single steps and their implementation.
+
+At the end, I would like you to add an implementation plan for all three tasks, with iterations, what I have to consider for each task, and how to handle each problem I will have.
+
+
+Regarding 1.: 
+Finally, the retrieving robot should be one of the 4: Tensegrity (starting with that), UR5e, UR10, and Kinova Gen3, to check feasibility across different robots. Further, they may be extended with an additional tensegrity wrist to evaluate its usefulness. All have the Robotiq F-140 gripper. The second robot will be a UR/Kinova (+ tensegrity wrist) and the same gripper.
+Regarding 2.:
+First, I want to concentrate on the RL part with the camera-based object detection and classification as a black box. If time allows, I want to look at it after the RL part works. But I want to design the observation space for your RL, as realistically as possible, so only observe stuff about the t-shirt, that I could actually get from cameras and AI-detection models. (So you should also research a bit what I could use there and what data I would get from there.
+Regarding 3.:
+The sim2real considerations always guide the project, but I first want to lock down the core tasks and reward shaping, before including any camera simulation. So the observations should be shaped to be as realistic as possible, while also omitting the direct need for a camera simulation and small algorithms within it. If time after everything works allows I may add these simulations aswell, so keep the possibilitys open.
+
+## Key Findings
+
+### 1. Crumpled shirt initialization
+- The **"drop-and-settle" protocol** is the field standard. SoftGym's `ClothFlattenEnv`/`ClothFoldCrumpledEnv` generate crumpled states by picking a random point, lifting, and letting the cloth fall, then wait up to **300 steps** with a **stable-velocity threshold of 0.01** before caching. States are stored to a pickle (`cloth_flatten_init_states.pkl`) and reloaded — this is exactly the caching pattern you should replicate.
+- FlingBot, Cloth Funnels, and GarmentLab all use random drop / random-fold initial-state generators; GarmentLab explicitly introduces a "Novel State" axis where it disturbs garment initial state to test on wrinkled/folded clothes.
+- **State caching is the efficient path at 4096 envs.** Settling cloth every reset is prohibitively expensive; the field precedent (SoftGym) is to pre-compute a dataset of settled states once and sample from it. You can write cached particle positions/velocities directly to the cloth at reset via `ClothPrim.set_world_positions`/`set_velocities` (or the `points` USD attribute), avoiding per-reset settling. Augment the bank cheaply with SO(2) yaw rotations and mirroring about the shirt's symmetry plane.
+
+### 2. Grasp-point selection on crumpled cloth
+- **Highest-point pick** is the canonical bootstrap heuristic and is trivially detectable from a depth camera — this validates your Task 1 design. The ICRA 2024 Cloth Competition benchmark and GarmentLab both use "grasp highest (or random) point, lift, then grasp lowest point" as the standard in-air unfolding initialization.
+- **Semantic keypoints (collar/shoulder/hem) are unreliable when crumpled.** Herrera et al. (arXiv:2606.06292, "Synthetic Data Generation and Vision-based Wrinkle and Keypoint Detection for Bimanual Cloth Manipulation") report, in their Table I, that keypoint mean-position error on completely folded states is **1.7615 ± 0.7461 px** for their wrinkle-aware method versus **26.0830 ± 27.1104 px** for the Lips et al. baseline, and **10.4520 ± 4.1205 px** for a Cheng Li YOLOv5 approach that "generates false positives when only wrinkles are visible." This is direct evidence that your actor observation should NOT assume reliable semantic keypoints on the crumpled conveyor shirt — use geometric features (highest point, point-cloud, mask) there, reserving semantic keypoints for the hanging/stretched states.
+- **Value-map / spatial-action-map** learning (FlingBot, Cloth Funnels, APS-Net) is the dominant paradigm for learning grasp points over images, but it is a top-down pick-and-place image formulation, not your continuous-control tendon-manipulator formulation. Use it as inspiration for the "evaluate all grasp points" idea, not as an architecture to copy.
+- **Interactive perception / manipulation-for-perception** is well-precedented: FlingBot's dynamic flings, Cloth Funnels' canonicalization, and Doumanoglou's active random forests all reveal graspable structure before the real grasp.
+
+### 3. Bimanual stretch for inspection
+- **Lowest-point regrasp** is the literature-standard second grasp for a garment already held by one gripper (Maitin-Shepard 2010; Doumanoglou 2014; GarmentLab uses the lowest-point heuristic as its unfolding initialization). Hanging under gravity is a near-canonical state: Doumanoglou, Kargakos, Kim & Malassiotis (ICRA 2014, DOI:10.1109/ICRA.2014.6906974) achieved **100% accuracy in active recognition and a 93.3% unfolding success rate** using Random Decision Forests (recognition) plus Hough forests (keypoints) on depth data with a dual-arm robot and an Xtion sensor. This validates using the **hanging shirt's lowest point as a reliably camera-detectable second grasp point.**
+- **Shoulder-shoulder grasp** is the T-shirt-specific ideal for maximal span (SpeedFolding's fling-to-fold grasps a sleeve and bottom corner; dual-arm fling works grasp two shoulders/corners). If your keypoint detector can find shoulders on the hanging shirt, shoulder-shoulder maximizes spanned area; if not, lowest-point is the robust fallback.
+- **"Stretched for inspection" = maximize projected coverage area / flatten wrinkles.** The standard metrics are **coverage area ratio, IoU with a canonical template, and keypoint distance** (used as a factorized reward in Cloth Funnels and APS-Net). Your no-camera proxy for "inspectability" should be the **projected area of the cloth onto the camera image plane** (convex-hull or occupancy of projected particles), plus a wrinkle/flatness penalty.
+- **"Stretch until taut."** Dual-arm works stop stretching when cloth tension/force reaches a threshold or when inter-gripper distance approaches the rest distance between the grasped vertices. In PBD you have no true force sensor, so use the **ratio of current inter-grasp Euclidean distance to the rest (geodesic/graph) distance between those two particles** as a tautness proxy, and stop before it exceeds ~1.0 to avoid PBD spring overstretch artifacts.
+- **The ICRA 2024 Cloth Competition** is the key evidence base for second-grasp selection on hanging cloth. Per De Gusseme et al. (arXiv:2508.16749; International Journal of Robotics Research, DOI:10.1177/02783649251414885): a dual-arm **UR5e + ZED2i** setup, with 176 live evaluation trials expanding a dataset to **679 unfolding demonstrations across 34 garments**; the top three teams were **AIR-JNU (0.60), Team Ljubljana (0.57), and Ewha Glab (0.55)** average coverage. The paper explicitly highlights the "surprisingly strong achievements of hand-engineered methods" and a "trade-off between grasp success and coverage." This tells you a heuristic second-grasp baseline is competitive and worth implementing before RL.
+
+### 4. Label-conditioned placement (Task 3)
+- **Goal-conditioned formulation wins.** The Isaac Lab reach task uses `UniformPoseCommandCfg` to put a target pose in the observation via the CommandManager; this is the standard multi-goal PPO pattern. Recommend putting the **target bin's 3D position (and optionally rim geometry) in the observation**; the discrete condition label merely selects which bin position is fed in. This generalizes ("throw into bin at position X") and avoids training three separate policies or a brittle one-hot.
+- **TossingBot** is the throwing precedent (Zeng, Song, Lee, Rodriguez & Funkhouser, "TossingBot: Learning to Throw Arbitrary Objects with Residual Physics," RSS 2019 / IEEE T-RO 36(4) 2020): it conditions a throw on a target landing position `p` and learns a residual δ on top of a ballistic release-velocity estimate, achieving **"500+ mean picks per hour (600+ grasps per hour with 85% throwing accuracy); and generalizes to new objects and target locations."** This is direct support for target-position-conditioned throwing over placing when bins are outside easy reach.
+
+### 5. Prior work on the whole pipeline
+- **Industrial textile sorting (SIPTex/Sysav Malmö, Fibersort/Valvan, TOMRA) is sensor+airjet based, NOT robotic manipulation.** The world's first fully automated textile sorting plant, at Sysav Industri AB in Malmö, was handed over in mid-September 2020 and integrates **four TOMRA AUTOSORT NIR/VIS optical separator units**; it is part of the Vinnova-funded SIPTex (Step 3) project led by the IVL Swedish Environmental Research Institute, is designed to sort roughly **24,000 tonnes of textile per year** by fibre type and colour, and — per TOMRA/STADLER — "people are needed only to start and stop the plant." There is no dual-arm manipulation and no per-garment inspection stretch. This confirms your robotic-manipulation condition-sorting pipeline is **novel relative to industry**.
+- **The closest academic precedents are multi-stage cloth pipelines**: the Berkeley PR2 laundry pipeline (Maitin-Shepard 2010 towel-corner detection + folding), Doumanoglou's dual-arm unfold→classify→fold pipeline, Cloth Funnels canonicalization-then-downstream, and SpeedFolding (crumpled→smoothed→folded). Your unfold-for-inspection-then-sort framing is a genuinely new combination but built entirely on validated components.
+- **GarmentLab benchmark tasks** relevant to you: Fling Tops (unfold), Hang Tops, Fold Tops, Store Tops. **DexGarmentLab** adds dexterous Fold/Fling/Hang/Store/Wear tasks. Neither has a "condition inspection stretch" or "sort by condition" task — but Fling Tops and Hang Tops are the closest analogs to Tasks 1–2 and their code is a reference for PBD cloth + grasp in Isaac Sim.
+
+### 6. Camera-realistic observation design
+- Real cloth perception systems deliver: **depth point clouds** (down-sampled to N points; UniFolding uses segmented point clouds, FabricFlowNet/CLASP use particle/point representations), **highest point from depth** (trivial, robust), **segmentation masks** (SAM/SAM2, OWLv2 used to filter depth in CLASP), **semantic keypoints with visibility flags** (reliable on flat/hanging, unreliable on crumpled), **bounding box, and coverage/area**. Mirror these outputs in your observation: e.g., N sampled surface-point positions, detected keypoint positions **plus per-keypoint visibility flags**, projected coverage, grasped-point position.
+- **Asymmetric actor-critic is supported but needs care in skrl.** Isaac Lab's RL wrappers implement asymmetric AC by using an observation group named `"critic"` (vs `"policy"`), which sets `num_states`/`state_space`; RL-Games consumes `obs`/`states`. **skrl historically aliased STATES to OBSERVATIONS** and separating them was in-progress work by the maintainer (Toni-SM) — so verify your installed skrl version actually separates policy vs value observation spaces, or use the RL-Games-style `"critic"` group. RSL-RL cleanly supports asymmetric AC (critic sees more than actor) and is a viable fallback backend. Put privileged cloth state (full particle positions, true condition label, contact/attachment status) in the critic; keep the actor camera-realistic.
+
+### 7. Isaac Sim 5.1.0 PBD particle cloth API (verified)
+- **Particle cloth persists in 5.1.0.** The 5.0/5.1 release notes describe surface/volume deformables as a **beta, opt-in** feature (Edit → Preferences → Physics → Enable Deformable Schema Beta) that "replaces current particle cloth and deformable body functionality" — future/optional framing. The categorical "The particle cloth feature has been removed" statement is from standalone Kit Physics (omni_physics 107.x/latest) and applies to Isaac Sim 6.0, not 5.1.0. **Caveat: verify on your live 5.1.0 install.**
+- **State read/write API**: `ClothPrim` (in `isaacsim.core.prims`; renamed from the legacy `omni.isaac.core.prims.ClothPrimView` per the Isaac Lab migration guide) exposes per-particle world positions and velocities getters/setters (`get_world_positions`/`set_world_positions`, `get_velocities`/`set_velocities`). The authoritative underlying attribute for positions is the `UsdGeom.Points`/mesh **`points`** attribute (`GetPointsAttr().Set(Vt.Vec3fArray(...))`); velocities are the PhysxSchema particle velocities attribute.
+- **Performance constraints at scale**: GPU particle buffers are pre-allocated once and do not grow; the key knob is **`gpu_max_particle_contacts` (default 2^20 = 1,048,576)** plus per-system `maxParticles`. CPU particle sim is unsupported (GPU required). Set `suppress_readback=True` (disable USD sync) for massive parallelization. **Isaac Lab does not officially support cloth through its API** (issue #2004) — you must call Isaac Sim particle APIs directly, which matches your current approach.
+- **GarmentLab/DexGarmentLab scale caveat**: GarmentLab is pinned to Isaac Sim 4.0.0 and DexGarmentLab to 4.5.0; both run at **modest instance counts** (single-scene demos, downstream GarmentPile caps at 5 garments/scene). Their "highly parallelized" claims refer to data-collection pipelines, not thousands of parallel cloth-physics envs. **You should not assume their code will scale unmodified to 4096 cloth envs** — expect to profile and tune particle budgets yourself.
+
+## Details
+
+### Pipeline architecture and orchestration
+The three single-agent PPO tasks form a linear skill chain. The critical engineering issue is the **MDP boundary between tasks**: the initial-state distribution of Task N+1 must equal the terminal-state distribution of Task N. Skill-chaining literature (Lee et al. Adversarial Skill Chaining / T-STAR; policy-sequencing works) shows naive chaining fails when a downstream policy sees start states never encountered in training, and that success drops as more skills are chained (e.g., policy sequencing success improved from 0%→56% and 59%→87% with terminal-state regularization in furniture assembly).
+
+**Recommended orchestration:** decouple the tasks via **cached state banks**, not live policy hand-off during training:
+1. Train Task 1 to convergence. Roll out the trained Task-1 policy across many envs and **snapshot terminal states** (particle positions + velocities + robot joint state + attachment status) into a bank.
+2. Train Task 2 by **resetting from that bank** (sampling real Task-1 terminal states), so Task 2 sees the true, messy distribution. Optionally add noise/augmentation.
+3. Repeat: snapshot Task-2 terminal (stretched) states → train Task 3 from them.
+This is cheaper than joint fine-tuning and directly addresses distribution shift while keeping single-agent PPO.
+
+### Task-by-task observation design (camera-realistic actor, privileged critic)
+- **Task 1 actor**: highest-point 3D position (depth-derivable), N down-sampled visible surface points, cloth bounding box, gripper/arm proprioception, conveyor state. **Critic adds**: full particle field, true grasp success, attachment status.
+- **Task 2 actor**: hanging-shirt lowest-point 3D position, N surface points from front/back viewpoints, optional shoulder keypoints **with visibility flags**, current inter-grasp distance, projected coverage estimate, both arms' proprioception. **Critic adds**: full particle field, true rest-distance-normalized tautness, true spanned area.
+- **Task 3 actor**: grasped-point position, shirt projected extent, **target bin position** (goal-conditioned), arm proprioception. **Critic adds**: full particle state, precise relative bin geometry.
+
+### Reward design and hacking modes
+- **Task 1**: reward for lifting the highest point to target height + holding stably in front of the camera position; penalty for dropping. **Hack risk**: none major.
+- **Task 2**: reward = projected coverage / spanned area (inspectability proxy) with wrinkle penalty; taut-but-not-overstretched bonus. **Hack risks**: (a) **grasping and hiding/bunching the shirt to game a poorly-shaped coverage metric** — mitigate by measuring coverage from the actual front/back camera viewpoints, not top-down, and requiring both grasps to remain attached; (b) **PBD overstretch to inflate area** — cap reward when tautness ratio > 1.0 and penalize particle-spring strain.
+- **Task 3**: sparse landing-in-correct-bin reward + shaped distance-to-bin; TossingBot-style. **Hack risk**: throwing into the nearest bin regardless of label — mitigate because label only enters via target-bin position, so "nearest" and "correct" diverge across randomized bin layouts.
+
+### PBD-specific technical guidance
+- **Two simultaneous attachments** (robot 1 holds while robot 2 grasps and stretches): in the attach-block workaround each gripper creates a rigid attachment to the nearest particle(s). Two attachments are physically representable, but stiff stretching between two pinned particles is exactly where PBD mass-spring systems overstretch. Keep solver iteration counts high, stretch slowly, and cap inter-grasp distance. DexGarmentLab explicitly documents that GarmentLab's attach-block approach is unnatural — even a single finger-block touching the garment can lift it — and that **adhesion + particle-rigid friction** gives more realistic, force-based grip. Worth adopting for the second grasp if attach-block proves unstable under load.
+- **Reset at 4096 envs**: write cached `points`+velocities per-env at reset; this is far cheaper than settling. Historically Isaac particle reset was done by stop/restart the sim (IsaacLab discussion #1105 notes no clean reset API), so the cache-and-write approach is essential. Profile particle buffer sizing (`gpu_max_particle_contacts`, `maxParticles`) — with ~2000–3000 verts × 4096 envs you are pushing particle counts hard; you may need fewer envs for cloth than for rigid-body tasks.
+
+### Robot-set considerations
+The tendon-driven 5-DOF tensegrity manipulator, UR5e/UR10/Kinova Gen3 all sharing the Robotiq 2F-140, means you should **abstract the action space to end-effector / task space** (IK or operational-space control) so the same policy transfers across arms, with the arm-specific low-level controller swapped underneath. PhysX 5.1 added a solver constraint-ordering option (resolve dynamic contact toward the end of the solver) specifically to improve gripping stability — relevant for the Robotiq grasp under cloth load.
+
+## Recommendations (staged)
+
+**Stage 0 — De-risk physics (weeks 1–2).** Verify particle cloth works in your 5.1.0 build; benchmark max stable parallel cloth env count at ~2500 verts (likely far below 4096). Implement and validate `ClothPrim` state read/write and the cached-bank reset. **Threshold to proceed**: stable sim of ≥256 cloth envs with deterministic cache-restore resets.
+
+**Stage 1 — Task 1 (weeks 3–6).** Generate a crumpled-state bank via drop-and-settle (SoftGym protocol: settle to velocity <0.01, cache), augment by yaw+mirror. Implement highest-point pick + lift-to-camera. Start with a **scripted/heuristic** baseline before RL (per ICRA-2024 finding that heuristics are strong). Then train PPO. **Success criterion**: >90% stable lift-and-hold; snapshot terminal-state bank.
+
+**Stage 2 — Task 2 (weeks 7–11).** Reset Task 2 from Task-1 terminal bank. Implement lowest-point regrasp heuristic baseline; add shoulder-keypoint grasp if detector is reliable on hanging state. Reward = camera-plane projected coverage + tautness bonus + overstretch penalty. **Success criterion**: median projected coverage comparable to ICRA-2024 top-three (~0.55–0.60) on held-out shirts; snapshot stretched-state bank. Optionally run a **brute-force vertex-pair evaluation script** offline (evaluate spanned area over sampled grasp-point pairs) to establish an oracle upper bound and label good second-grasp regions — precedented by value-map works that learn over point pairs.
+
+**Stage 3 — Task 3 (weeks 12–14).** Goal-conditioned PPO with target-bin position in observation; TossingBot-style throw or place. Randomize bin layout so label≠nearest. **Success criterion**: >85% correct-bin placement across randomized layouts and all three labels.
+
+**Stage 4 — Integration & robot-swap (weeks 15+).** Chain the three trained policies via the banks; measure end-to-end. Swap tensegrity→UR5e/UR10/Kinova via task-space action abstraction. Add tiled-rendering cameras only after state-based policies work, then re-train perception front-ends to emit the same observation vector.
+
+**Benchmarks that change the plan**: if stable cloth env count < ~256, drop vertex budget or switch the stretch task to FEM surface deformables (beta) for stability; if keypoint detection on hanging shirts proves unreliable in your renders, commit to lowest-point-only regrasp; if skrl asymmetric AC is not truly separated in your version, switch to RSL-RL.
+
+## Additional open questions you must decide
+1. **Task 1→2 handoff**: cached terminal states (recommended) vs live policy rollout vs idealized scripted states. Distribution shift is the central risk.
+2. **Does robot 1 keep holding during Task 2?** Two simultaneous PBD attachments must be validated; if unstable, define a handover where robot 1 releases after robot 2 secures its grasp (adds a regrasp sub-problem).
+3. **Per-task episode termination & success criteria** (drop = failure; timeout; coverage threshold; bin-landing).
+4. **Inspectability metric** without cameras: front+back projected coverage vs full 3D spanned area — and whether shirt rotation is needed for both sides or two fixed cameras suffice.
+5. **Sim time budget per task** (physics steps per episode; cloth substeps).
+6. **Robot placement / workspace overlap** and **two-arm collision avoidance** during the stretch.
+7. **Conveyor motion during Task 1** — moving target or stopped for pick?
+8. **Gripper self-occlusion** of the shirt from the inspection cameras.
+9. **Action-space abstraction** (task-space vs joint-space) to support the arm swap with one policy family.
+10. **Curriculum**: flat → slightly wrinkled → fully crumpled state banks, staged by episode return.
+
+## Caveats
+- **Particle-cloth removal is version-specific**; confirm on your live 5.1.0 install. Migrating to surface deformables later is non-trivial because they use a different physical model (XPBD FEM corotational linear elasticity vs PBD mass-spring), so a mid-project switch would invalidate tuned parameters.
+- GarmentLab/DexGarmentLab target Isaac Sim 4.0/4.5 and run at modest scale; treat their code as reference, not drop-in, and expect substantial work to scale cloth to thousands of envs.
+- Some cited detector-accuracy numbers (e.g., the 1.76 px vs 26.08 px keypoint-error figures) come from individual papers on their own synthetic/real datasets and may not transfer to your renders; treat keypoint reliability claims as directional.
+- skrl's asymmetric actor-critic support has been in flux; the separation of observation vs state spaces must be verified in your installed version.
+- The ICRA-2024 competition coverage scores (0.60/0.57/0.55) are for real dual-UR5e unfolding, not your simulated inspection-stretch; use as a rough reference, not a hard target.

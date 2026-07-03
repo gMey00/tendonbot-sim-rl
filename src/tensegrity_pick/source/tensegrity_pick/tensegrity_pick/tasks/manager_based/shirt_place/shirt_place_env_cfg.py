@@ -323,6 +323,9 @@ class RewardsCfg:
     )
 
     # ── 4b. Goal tracking fine (std=0.20) ───────────────────────────
+    # NOTE: tightening this (std 0.15, weight 8) was tried and made the policy
+    # release early at the rim edge (deterministic drum-fraction fell 0.91→0.37)
+    # — reverted to the settings that produced the best deterministic drops.
     goal_tracking_fine = RewTerm(
         func=task_rew.shirt_approach_target,
         weight=6.0,
@@ -348,10 +351,11 @@ class RewardsCfg:
             "drum_name": "drum_target",
             "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
             "rim_clearance": 0.08,
-            # 0.20 (was 0.08): a smoother clearance gradient that *pulls* the
-            # whole hanging shirt above the rim, instead of an all-or-nothing step
-            # the policy could never reach (so it stayed 0 and gave no signal).
-            "clear_margin": 0.20,
+            # 0.05 (was 0.20): full clearance at a shirt-bottom height of 0.93 m.
+            # The 0.20 margin demanded 1.08 m — kinematically unreachable, so both
+            # this reward and the anti-hover fade saturated at ~0 and gave no
+            # signal.  Must match CLEAR_MARGIN in shirt_place_env.py.
+            "clear_margin": 0.05,
             "drum_radius": 0.32,
         },
     )
@@ -375,9 +379,14 @@ class RewardsCfg:
     # ...with the real payoff a one-time bonus for actually committing to the drop
     # (grasp opened centred over + above the drum rim).  Anti-hover: the drop is a
     # discrete rewarded event, not a state the policy can hover in.
+    # Weight 240 (was 80): rewards are multiplied by dt (1/60 s), so a one-shot
+    # weight w is worth only w/60 total — the old "80" paid 1.3, dwarfed by the
+    # per-step terms (a full-episode per-step weight w pays w×5).  240 ≈ 4 total,
+    # graded ×(0.25..1) by release quality (centering × whole-shirt-lift) in
+    # shirt_place_env.py, so a centred, cleared drop pays ~4 and a rim-graze ~1.
     release_event = RewTerm(
         func=task_rew.release_event_bonus,
-        weight=80.0,
+        weight=240.0,
     )
 
     # ── 5b. Anti-hover time cost ────────────────────────────────────
@@ -407,12 +416,19 @@ class RewardsCfg:
     # ── 7. Return to neutral after placement ────────────────────────
     # Gated on was_placed — drives the arm back to its default pose once the
     # shirt is in the drum (prevents lingering over the rim).  Mirrors cube_place.
+    # std 0.40 (was 0.25): at 0.25 the reward was ≈0 (flat gradient) anywhere far
+    # from neutral, so a post-place arm parked over the drum — or diving into the
+    # belt — felt no pull home (Bug A).  The wider tanh reaches those poses.
+    # Weight 200 (was 100): at 100 the policy settled for parking over the drum
+    # (~50 % of the term's max) after the drop; doubling makes the full return
+    # the dominant post-place objective (still no conflict with shirt_in_target,
+    # which pays regardless of arm pose).
     return_to_neutral = RewTerm(
         func=task_rew.return_to_neutral,
-        weight=100.0,
+        weight=200.0,
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=MISSING),
-            "std": 0.25,
+            "std": 0.40,
         },
     )
 
@@ -434,9 +450,11 @@ class RewardsCfg:
 
     # ── Arm utilization ─────────────────────────────────────────────
     # Cut (was 0.25): it rewarded raw arm velocity, encouraging the fast motion
-    # that whips the cloth.  Kept small only to discourage a frozen arm.
+    # that whips the cloth.  Kept small only to discourage a frozen arm, and
+    # switched off once the shirt is placed (post-place the arm should settle
+    # at neutral, not keep moving).
     arm_utilization = RewTerm(
-        func=task_rew.arm_velocity_bonus,
+        func=task_rew.arm_velocity_bonus_until_placed,
         weight=0.10,
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=MISSING),
@@ -495,13 +513,19 @@ class RewardsCfg:
         },
     )
 
-    # ── Off-conveyor penalty ────────────────────────────────────────
+    # ── Dropped-on-floor penalty ────────────────────────────────────
+    # Reworked: the old out-of-Y test fired for the whole legitimate carry to
+    # the drum (y≈0.85), and the below-belt test fired every step the shirt
+    # rested INSIDE the drum — punishing success at −5/step.  Now only a shirt
+    # that has fallen below belt level outside the drum footprint is penalised.
     shirt_off_conveyor = RewTerm(
         func=task_rew.shirt_off_conveyor_penalty,
         weight=-5.0,
         params={
             "shirt_name": "shirt_proxy",
             "bounds": _CONVEYOR_BOUNDS,
+            "drum_name": "drum_target",
+            "drum_radius": 0.40,
         },
     )
 
@@ -514,13 +538,20 @@ class CurriculumCfg:
     training so early exploration is unconstrained and late policies are smooth.
     """
 
+    # num_steps counts env.step() calls (== trainer timesteps), NOT per-env
+    # samples: at 150000 the ramp never fired within a 20000-timestep run, so
+    # the smoothness penalties stayed at the tiny exploration values forever.
+    # 8000 engages them once the behaviour has formed (place>0 by ~4000).
+    # num_steps 2000: engages shortly after start.  For fresh runs discovery
+    # happens ~5-9k, but fine-tuning resumes from an already-competent policy;
+    # if a from-scratch run struggles to discover the task, raise this again.
     action_rate = CurrTerm(
         func=mdp.modify_reward_weight,
-        params={"term_name": "action_rate", "weight": -2e-3, "num_steps": 150000},
+        params={"term_name": "action_rate", "weight": -3e-3, "num_steps": 2000},
     )
     joint_vel = CurrTerm(
         func=mdp.modify_reward_weight,
-        params={"term_name": "joint_vel", "weight": -2e-3, "num_steps": 150000},
+        params={"term_name": "joint_vel", "weight": -2e-3, "num_steps": 2000},
     )
 
 
@@ -543,13 +574,19 @@ class TerminationsCfg:
         },
     )
 
+    # max_penetration 0.12 (was 0.20): the conveyor box physically stops the
+    # gripper, so the virtual tip bottoms out ~0.125 m below the belt with the
+    # fingers bent back against the surface — the old 0.20 threshold was
+    # unreachable and the termination was dead code.  0.12 ends episodes where
+    # the arm grinds into the belt at full force (the post-place dive of Bug B)
+    # while leaving headroom for moderate finger-belt presses during a grasp.
     belt_collision = DoneTerm(
         func=task_rew.belt_collision_termination,
         time_out=True,
         params={
             "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
             "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
-            "max_penetration": 0.20,
+            "max_penetration": 0.12,
         },
     )
 

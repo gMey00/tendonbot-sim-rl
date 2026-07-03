@@ -104,8 +104,12 @@ PLACE_SETTLE_STEPS = 15
 # Clearance predicate (must match the ``clearance_over_drum`` reward params) used
 # to fade out the per-step "positioned over the drum" shaping as the shirt clears,
 # so hovering-cleared is a reward desert and only releasing pays.
+# CLEAR_MARGIN 0.20 → 0.05: at 0.20 full clearance needed the shirt's lowest
+# particle at 1.08 m — kinematically unreachable (max lift puts the bottom at
+# ~0.93 m), so the anti-hover fade never engaged.  0.05 completes the fade at a
+# bottom height of 0.93 m, which the arm can actually reach.
 CLEAR_RIM_CLEARANCE = 0.08
-CLEAR_MARGIN = 0.20
+CLEAR_MARGIN = 0.05
 CLEAR_DRUM_RADIUS = 0.32
 
 # Drum geometry — must match _BIN_GEOM in shirt_place_env_cfg.py.  Height spans
@@ -446,10 +450,13 @@ class TensegrityShirtPlaceEnv(ManagerBasedRLEnv):
         # Sync the kinematic proxy to the cloth centroid
         self._sync_proxy_to_cloth()
 
-        # ── One-time release bonus ────────────────────────────────────────
+        # ── One-time release bonus (quality-graded) ──────────────────────
         # Fire for the single step the gripper opens while the grasp point is
-        # centred over the drum footprint and above its rim (a sensible drop),
-        # consumed by the ``release_event`` reward next step.
+        # over the drum footprint and above its rim, consumed by the
+        # ``release_event`` reward next step.  The magnitude grades the drop:
+        # centred releases with the whole shirt lifted near/above the rim pay
+        # up to 4× a barely-valid rim-graze, steering the policy toward drops
+        # where ~100 % of the cloth falls inside instead of draping the edge.
         released = prev_attached & (~self.grasp_active)
         drum_pos = _get_world_pos(self.scene[DRUM_KEY], env=self)
         gp = self.shirt_grasp_point_w
@@ -460,7 +467,12 @@ class TensegrityShirtPlaceEnv(ManagerBasedRLEnv):
             & (d_xy < _DRUM_GEOM.radius)
             & (local_z > BELT_HEIGHT + RELEASE_RIM_CLEARANCE)
         )
-        self._release_event = good_release.float()
+        rim = BELT_HEIGHT + CLEAR_RIM_CLEARANCE
+        bottom_z = self.shirt_min_z_w - self.scene.env_origins[:, 2]
+        centering = torch.clamp(1.0 - d_xy / _DRUM_GEOM.radius, 0.0, 1.0)
+        height_q = torch.clamp((bottom_z - (rim - 0.10)) / 0.10, 0.0, 1.0)
+        quality = centering * height_q
+        self._release_event = good_release.float() * (0.25 + 0.75 * quality)
 
         still_running = ~(terminated | time_outs)
         self._was_grasped[still_running] |= self.grasp_active[still_running]

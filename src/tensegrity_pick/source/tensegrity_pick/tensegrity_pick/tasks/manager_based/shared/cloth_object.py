@@ -687,19 +687,31 @@ class ClothObject:
             num_envs, device=device, dtype=torch.int32,
         )
 
-        # ── Deterministic attachment-grasp state (per env) ────────────────
+        # ── Deterministic attachment-grasp state (per env, multi-slot) ────
         # Mirrors the GarmentLab / DexGarmentLab AttachmentBlock: particles
         # within a radius of the gripper tip are welded to it and tracked as the
         # arm moves.  ``attach`` freezes the per-particle offset, ``hold`` re-pins
         # each control step, ``detach`` releases.
+        #
+        # Two independent attachment SLOTS support the bimanual pipeline tasks
+        # (Stage-0 de-risk item "two simultaneous attachments"):
+        #   slot 0 — the robot hand grasp (default; all pre-existing callers,
+        #            e.g. shirt_place, use this implicitly and are unchanged)
+        #   slot 1 — a second gripper / static holder anchor (shirt_present)
+        # A particle can belong to at most one slot (attach excludes particles
+        # already held by another slot).
         self._attach_topk = 50  # particles averaged for ``highest_point_w``
+        self.num_attach_slots = 2
         self._attach_mask = torch.zeros(
-            num_envs, self._max_particles, dtype=torch.bool, device=device,
+            self.num_attach_slots, num_envs, self._max_particles,
+            dtype=torch.bool, device=device,
         )
         self._attach_offset = torch.zeros(
-            num_envs, self._max_particles, 3, device=device,
+            self.num_attach_slots, num_envs, self._max_particles, 3, device=device,
         )
-        self._attached = torch.zeros(num_envs, dtype=torch.bool, device=device)
+        self._attached = torch.zeros(
+            self.num_attach_slots, num_envs, dtype=torch.bool, device=device,
+        )
 
         # Grasp mechanics mode (WELD teleport vs ANCHOR solver-pin).  ANCHOR pins
         # grasped particles by raising their mass (inverse mass ≈ 0) — only
@@ -929,6 +941,29 @@ class ClothObject:
         self._pos_flat[env_ids] = positions
         self._set_positions(self._pos_flat, indices)
 
+    def write_nodal_state_to_sim(
+        self,
+        positions: torch.Tensor,
+        velocities: torch.Tensor,
+        env_ids: torch.Tensor,
+    ) -> None:
+        """Write particle positions AND velocities (cache-restore reset).
+
+        Used by the cached state banks (crumpled initial states, task-to-task
+        terminal states): restoring both halves of the particle state makes the
+        reset deterministic — positions alone leave stale solver velocities.
+
+        Args:
+            positions:  Flat tensor ``[len(env_ids), max_particles * 3]``.
+            velocities: Flat tensor ``[len(env_ids), max_particles * 3]``.
+            env_ids: Environment indices to write.
+        """
+        indices = env_ids.to(dtype=torch.int32, device=self.device)
+        self._pos_flat[env_ids] = positions
+        self._set_positions(self._pos_flat, indices)
+        self._vel_flat[env_ids] = velocities
+        self._set_velocities(self._vel_flat, indices)
+
     # ── Deterministic attachment grasp ────────────────────────────────────
     # Batched generalisation of the validated single-env weld in
     # ``run_shirt_validation.py`` (GarmentLab / DexGarmentLab AttachmentBlock
@@ -952,14 +987,46 @@ class ClothObject:
 
     @property
     def is_attached(self) -> torch.Tensor:
-        """Per-env bool ``[num_envs]``: True while a welded grasp is held."""
-        return self._attached
+        """Per-env bool ``[num_envs]``: True while the HAND grasp (slot 0) holds.
+
+        Kept slot-0-only for backward compatibility — all pre-multi-slot callers
+        (shirt_place, ClothSortingEnvBase) treat this as "the robot holds the
+        cloth".  Use :meth:`is_attached_slot` / :attr:`is_attached_any` for the
+        other slots.
+        """
+        return self._attached[0]
+
+    @property
+    def is_attached_any(self) -> torch.Tensor:
+        """Per-env bool ``[num_envs]``: True while ANY slot holds particles."""
+        return self._attached.any(dim=0)
+
+    def is_attached_slot(self, slot: int) -> torch.Tensor:
+        """Per-env bool ``[num_envs]`` for one attachment slot."""
+        return self._attached[slot]
+
+    def _rebuild_masses(self, env_ids: torch.Tensor) -> None:
+        """Recompute ANCHOR masses for *env_ids* from the union of slot masks.
+
+        Composing masses from the union (instead of per-slot deltas) keeps them
+        correct when slots overlap in time: detaching one slot must NOT restore
+        the default mass of a particle still pinned by another slot.
+        """
+        if self._grasp_mode is not GraspMode.ANCHOR or self._masses is None:
+            return
+        union = self._attach_mask[:, env_ids].any(dim=0)         # [k, P]
+        rows = self._default_masses[env_ids].clone()             # [k, P]
+        rows[union] = self._anchor_mass
+        self._masses[env_ids] = rows
+        # The particle-cloth backend rejects partial mass writes → push all envs.
+        self._cloth_view.set_masses(self._masses, self._ALL_INDICES)
 
     def attach(
         self,
         env_ids: torch.Tensor,
         grasp_centers: torch.Tensor,
         radius: float,
+        slot: int = 0,
     ) -> None:
         """Weld the small particle cluster within ``radius`` of the tip to it.
 
@@ -971,10 +1038,14 @@ class ClothObject:
         vertical float gap, while its small internal spread is preserved (so the
         mesh is not bunched to a point).
 
+        Particles already pinned by ANOTHER slot are excluded from capture, so
+        two grasps never fight over the same particles.
+
         Args:
             env_ids:       ``[k]`` env indices to (try to) attach.
             grasp_centers: ``[num_envs, 3]`` gripper-tip world positions.
             radius:        attachment capture radius (m).
+            slot:          attachment slot (0 = robot hand, 1 = second grasp).
         """
         env_ids = env_ids.to(device=self.device, dtype=torch.long)
         if env_ids.numel() == 0:
@@ -983,6 +1054,11 @@ class ClothObject:
         pts = self.nodal_pos_w[env_ids]                          # [k, P, 3]
         dist = torch.norm(pts - gc.unsqueeze(1), dim=2)          # [k, P]
         mask = dist < radius                                     # [k, P]
+        # Exclude particles held by any other slot.
+        others = [s for s in range(self.num_attach_slots) if s != slot]
+        if others:
+            other_mask = self._attach_mask[others][:, env_ids].any(dim=0)  # [k, P]
+            mask = mask & ~other_mask
         caught = mask.any(dim=1)                                 # [k]
         # Only weld envs that actually caught particles.
         mask = mask & caught.unsqueeze(1)
@@ -994,32 +1070,29 @@ class ClothObject:
         cnt = maskf.sum(dim=1).clamp(min=1.0)                    # [k, 1]
         grp = (raw * maskf).sum(dim=1) / cnt                     # [k, 3] welded centroid rel. tip
         offset = raw - grp.unsqueeze(1)                          # welded centroid → tip
-        self._attach_mask[env_ids] = mask
-        self._attach_offset[env_ids] = offset                    # masked use only
-        self._attached[env_ids] = caught
+        self._attach_mask[slot, env_ids] = mask
+        self._attach_offset[slot, env_ids] = offset              # masked use only
+        self._attached[slot, env_ids] = caught
 
         # ANCHOR mode: pin the welded particles as solver anchors (mass → large,
         # inverse mass ≈ 0) so the PBD constraint solve treats them as fixed each
         # iteration — the pipeline-safe equivalent of a PhysX particle attachment.
-        if self._grasp_mode is GraspMode.ANCHOR and self._masses is not None:
-            rows = self._default_masses[env_ids].clone()         # [k, P]
-            rows[mask] = self._anchor_mass
-            self._masses[env_ids] = rows
-            self._cloth_view.set_masses(self._masses, self._ALL_INDICES)
+        self._rebuild_masses(env_ids)
 
-    def hold(self, grasp_centers: torch.Tensor) -> None:
-        """Re-pin welded particles to ``grasp_centre + frozen_offset``.
+    def hold(self, grasp_centers: torch.Tensor, slot: int = 0) -> None:
+        """Re-pin one slot's welded particles to ``grasp_centre + frozen_offset``.
 
-        Call once per control step for all attached envs.  Non-welded particles
-        keep their simulated positions, so the rest of the shirt hangs from the
-        grasped patch via the PBD constraints.
+        Call once per control step per active slot.  Non-welded particles keep
+        their simulated positions, so the rest of the shirt hangs from the
+        grasped patch(es) via the PBD constraints.  Sequential holds for
+        different slots compose (each writes only its own particles).
         """
-        attached_ids = torch.nonzero(self._attached, as_tuple=False).squeeze(-1)
+        attached_ids = torch.nonzero(self._attached[slot], as_tuple=False).squeeze(-1)
         if attached_ids.numel() == 0:
             return
         gc = grasp_centers[attached_ids]                         # [m, 3]
-        mask = self._attach_mask[attached_ids]                   # [m, P]
-        target = gc.unsqueeze(1) + self._attach_offset[attached_ids]  # [m, P, 3]
+        mask = self._attach_mask[slot, attached_ids]             # [m, P]
+        target = gc.unsqueeze(1) + self._attach_offset[slot, attached_ids]  # [m, P, 3]
         pos = self.nodal_pos_w[attached_ids].clone()             # [m, P, 3]
         pos = torch.where(mask.unsqueeze(-1), target, pos)
         m = attached_ids.numel()
@@ -1030,19 +1103,24 @@ class ClothObject:
         self._vel_flat[attached_ids] = vel.reshape(m, -1)
         self._set_velocities(self._vel_flat, attached_ids.to(torch.int32))
 
-    def detach(self, env_ids: torch.Tensor) -> None:
-        """Release the grasp for ``env_ids`` (restores anchor masses if pinned)."""
+    def detach(self, env_ids: torch.Tensor, slot: int = 0) -> None:
+        """Release one slot's grasp for ``env_ids``.
+
+        ANCHOR masses are rebuilt from the remaining slots' union, so particles
+        still pinned by another slot keep their anchor mass.
+        """
         env_ids = env_ids.to(device=self.device, dtype=torch.long)
         if env_ids.numel() == 0:
             return
-        # ANCHOR mode: restore the released particles' original mass so the whole
-        # shirt falls/settles normally after the drop.
-        if self._grasp_mode is GraspMode.ANCHOR and self._masses is not None:
-            self._masses[env_ids] = self._default_masses[env_ids]
-            self._cloth_view.set_masses(self._masses, self._ALL_INDICES)
-        self._attached[env_ids] = False
-        self._attach_mask[env_ids] = False
+        self._attached[slot, env_ids] = False
+        self._attach_mask[slot, env_ids] = False
+        self._rebuild_masses(env_ids)
 
     def reset_attachment(self, env_ids: torch.Tensor) -> None:
-        """Clear attachment state on env reset (alias of :meth:`detach`)."""
-        self.detach(env_ids)
+        """Clear ALL attachment slots on env reset."""
+        env_ids = env_ids.to(device=self.device, dtype=torch.long)
+        if env_ids.numel() == 0:
+            return
+        self._attached[:, env_ids] = False
+        self._attach_mask[:, env_ids] = False
+        self._rebuild_masses(env_ids)
