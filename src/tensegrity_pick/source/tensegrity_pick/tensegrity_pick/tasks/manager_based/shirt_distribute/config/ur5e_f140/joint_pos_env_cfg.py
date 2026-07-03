@@ -37,11 +37,14 @@ class UR5eF140ShirtDistributeEnvCfg(ShirtDistributeEnvCfg):
             ),
         )
 
-        self.actions.arm_action = mdp.JointPositionActionCfg(
+        # Relative joint positions (target = current + scale·action): a zero
+        # action HOLDS the sampled far-from-default start pose — the
+        # offset-from-default term would yank the arm home on step 1 (see the
+        # action-space note in shirt_distribute_env_cfg.py).
+        self.actions.arm_action = mdp.RelativeJointPositionActionCfg(
             asset_name="robot",
             joint_names=list(CONTROLLED_JOINT_NAMES),
-            scale=0.5,
-            use_default_offset=True,
+            scale=0.05,
         )
 
         self._set_robot_params(
