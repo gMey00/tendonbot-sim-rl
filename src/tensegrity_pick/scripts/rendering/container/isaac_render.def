@@ -1,0 +1,79 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+# ============================================================================
+#  isaac_render.def  —  Apptainer image for rendering Isaac Sim 5.1 on Alex
+# ============================================================================
+#  The Alex rtxpro6k nodes run AlmaLinux 9.8 (glibc 2.34), but Isaac Sim 5.1's
+#  RTX/USD render libraries require glibc >= 2.35 and a working Vulkan loader —
+#  which is why head-less *rendering* (unlike PhysX-only training) fails on the
+#  bare host with `GLIBC_2.35 not found` + Vulkan `ERROR_INCOMPATIBLE_DRIVER`.
+#
+#  This is a THIN container: it provides only Ubuntu 22.04 (glibc 2.35), the
+#  Vulkan loader, and the system libraries the Isaac Sim binary links against.
+#  The Isaac Sim binary, the conda env (isaaclab + skrl + tensegrity_pick) and
+#  the trained checkpoints all stay on $HPCVAULT/$HOME and are bind-mounted at
+#  run time.  The NVIDIA driver + Vulkan ICD come from the host via `--nv`.
+#
+#  Build (on a login node, which has internet):
+#    bash build_container.sh
+#  Run (inside a GPU job):
+#    apptainer exec --nv --bind ... isaac_render.sif render_in_container.sh ...
+# ============================================================================
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        libvulkan1 \
+        vulkan-tools \
+        libglvnd0 \
+        libgl1 \
+        libglx0 \
+        libegl1 \
+        libgles2 \
+        libglu1-mesa \
+        libgomp1 \
+        libatomic1 \
+        libx11-6 \
+        libxext6 \
+        libxrender1 \
+        libxrandr2 \
+        libxinerama1 \
+        libxcursor1 \
+        libxi6 \
+        libxt6 \
+        libsm6 \
+        libice6 \
+        libxkbcommon0 \
+        libxcb1 \
+        libxcb-glx0 \
+        libxcb-keysyms1 \
+        libxcb-randr0 \
+        libglib2.0-0 \
+        libfreetype6 \
+        libfontconfig1 \
+        libnss3 \
+        libnspr4 \
+        libasound2 \
+        libdbus-1-3 \
+        bash
+    # Make sure the Vulkan loader can find the host NVIDIA ICD that --nv binds
+    # into /usr/share/vulkan/icd.d/ (apptainer's nvliblist.conf handles this).
+    rm -rf /var/lib/apt/lists/*
+
+%environment
+    export LANG=C.UTF-8
+    # Let the Vulkan loader pick up the host NVIDIA ICD bound in by `--nv`.
+    export VK_ICD_FILENAMES=${VK_ICD_FILENAMES:-/usr/share/vulkan/icd.d/nvidia_icd.json}
+
+%labels
+    Purpose IsaacSim-5.1-render
+    OS Ubuntu-22.04-glibc2.35
+
+%help
+    Thin Ubuntu 22.04 image to render Isaac Sim 5.1 checkpoints on the Alex
+    rtxpro6k (Blackwell) nodes, working around the host glibc 2.34 / missing
+    Vulkan userspace. Bind-mount the Isaac install, repo and logs; supply the
+    GPU driver + Vulkan ICD with `apptainer --nv`.
