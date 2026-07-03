@@ -2,10 +2,14 @@
 
 [← Back to project root](../README.md)
 
-Factual comparison of the collaborative robots and three Robotiq grippers
+Factual comparison of the (collaborative) robots and three Robotiq grippers
 relevant to this project, plus the FAPS tensegrity manipulator.
+The master-thesis comparison baselines are the **UR5e**, **UR10**, and
+**Kinova Gen3 (7 DOF)** arms and the **FAPS tensegrity manipulator**.
 All values are taken from official manufacturer datasheets: see [Sources](#sources)
-at the end of this document.
+at the end of this document. The underlying datasheets are catalogued in the
+project literature under
+[doc/Literatur/robot_hardware.md](Literatur/robot_hardware.md).
 
 ---
 
@@ -21,36 +25,37 @@ at the end of this document.
     - [Pre-configured Combinations](#pre-configured-combinations)
     - [Manual Integration Required](#manual-integration-required)
   - [Sources](#sources)
+    - [Local Literature \& Sources](#local-literature--sources)
 
 ---
 
 ## Robot Comparison
 
-| Property | UR10e | UR10 (CB3) | Kinova Gen3 (7 DOF) | FAPS Tensegrity Manipulator |
+| Property | UR5e | UR10 (CB3) | Kinova Gen3 (7 DOF) | FAPS Tensegrity Manipulator |
 |---|---|---|---|---|
 | **Manufacturer** | Universal Robots | Universal Robots | Kinova Robotics | FAPS, FAU Erlangen-Nürnberg |
 | **Type** | Industrial cobot (e-Series) | Industrial cobot (CB3-Series) | Lightweight research arm | Custom tendon-driven arm |
 | **Degrees of freedom** | 6 (revolute) | 6 (revolute) | 7 (revolute, infinite rotation) | 5 (2 prismatic + 1 revolute + 2 revolute) |
 | **Kinematic structure** | 6-DOF serial chain | 6-DOF serial chain | 7-DOF serial chain (redundant) | 2-DOF linear base (Y/Z prismatic) + 3-DOF tendon-driven arm (elbow + 2-DOF wrist) |
 | **Actuation** | Electric (geared) | Electric (geared) | Electric (smart actuators) | 5 steel cables via Bowden tubes; Maxon EC60 flat motors (150 W each) |
-| **Payload** | 12.5 kg [1] | 10 kg [2] | 4 kg (mid-range continuous) [3] | 1.1 kg (elbow) [7] |
-| **Maximum reach** | 1300 mm [1] | 1300 mm [2] | 902 mm [3] | ~560 mm (from elbow pivot; total depends on base travel) [7] |
-| **Arm weight** | 33.5 kg (incl. cable) [1] | 28.9 kg (incl. cable) [2] | 8.2 kg (no gripper) [3] | ~3 kg (arm only, excl. gantry and motors) [7] |
-| **Repeatability** | ±0.05 mm [1] | ±0.1 mm [2] | Not specified by manufacturer | Not specified (research prototype) |
-| **Max. TCP speed** | 4 m/s [1] | 1 m/s (typical) [2] | 0.4 m/s (low-level recommended) [3] | 1.06 m/s (wrist, measured) [7] |
-| **Joint speeds** | See datasheet [1] | Base/Shoulder: 120 °/s; Elbow/Wrists: 180 °/s [2] | See datasheet [3] | See Klein (2023) [7] |
-| **Joint torque sensors** | Built-in 6-axis F/T at wrist [1] | None (current sensing only) | All joints (integrated in actuators) [3] | None (IMU-based feedback) [7] |
+| **Payload** | 5 kg [1] | 10 kg [2] | 4 kg (mid-range continuous) / 2 kg (full-range) [3] | 1.1 kg (elbow) [7] |
+| **Maximum reach** | 850 mm [1] | 1300 mm [2] | 902 mm [3] | ~560 mm (from elbow pivot; total depends on base travel) [7] |
+| **Arm weight** | 20.6 kg (incl. cable) [1] | 28.9 kg (incl. cable) [2] | 8.2 kg (no gripper) [3] | ~3 kg (arm only, excl. gantry and motors) [7] |
+| **Repeatability** | ±0.03 mm [1] | ±0.1 mm [2] | Not specified by manufacturer | Not specified (research prototype) |
+| **Max. TCP speed** | 4 m/s [1] | 1 m/s (typical) [2] | 0.5 m/s (0.3 m/s high-level) [3] | 1.06 m/s (wrist, measured) [7] |
+| **Joint speeds** | All joints: 180 °/s [1] | Base/Shoulder: 120 °/s; Elbow/Wrists: 180 °/s [2] | See datasheet [3] | See Klein (2023) [7] |
+| **Joint torque sensors** | Built-in 6-axis F/T at wrist (±50 N, ±10 N·m) [1] | None (current sensing only) | All joints (integrated in actuators) [3] | None (IMU-based feedback) [7] |
 | **IP rating** | IP54 [1] | IP54 [2] | IP33 [3] | None (lab prototype) |
 | **Operating temperature** | 0–50 °C [1] | 0–50 °C [2] | −30–35 °C [3] | Lab conditions only |
-| **Power consumption (typ.)** | 350 W (max. 615 W) [1] | 350 W (typical program) [2] | 36 W (max. 155 W) [3] | ~350 W per motor at peak; 5 motors [7] |
+| **Power consumption (typ.)** | ~200 W (typical) [1] | 350 W (typical program) [2] | 36 W (max. 155 W) [3] | ~350 W per motor at peak; 5 motors [7] |
 | **Controller** | UR e-Series controller (PolyScope 5.x) [1] | CB3 controller (PolyScope 3.x) [2] | Embedded (KORTEX API at 1 kHz) [3] | Maxon EPOS4 70/15 per motor; ROS 2 [7] |
 | **Communication** | Modbus TCP, EtherNet/IP, PROFINET, ROS/ROS 2 [1] | TCP/IP (100 Mbit Ethernet), Modbus TCP [2] | Ethernet, Wi-Fi, USB, HDMI [3] | USB (EPOS4), ROS 2 Topics [7] |
-| **Safety certification** | ISO 13849-1 PLd Cat. 3, ISO 10218-1 [1] | EN ISO 13849-1 PLd, EN ISO 10218-1 [2] | CE (collaborative) [3] | None (research prototype) |
+| **Safety certification** | ISO 13849-1 PLd Cat. 3, ISO 10218-1; 17 safety functions [1] | EN ISO 13849-1 PLd, EN ISO 10218-1 [2] | CE (collaborative) [3] | None (research prototype) |
 | **Mounting** | Any orientation (floor, ceiling, wall) [1] | Any orientation (floor, ceiling, wall) [2] | Any orientation [3] | Ceiling-mounted (inverted gantry, 1840 mm height) [7] |
 | **Materials** | Aluminium, plastic, steel | Aluminium, ABS plastic, PP plastic [2] | Carbon fibre, aluminium | Aluminium profiles, PLA (3D-printed parts) [7] |
 | **Joint limits** | ±360° all joints [1] | ±360° all joints [2] | Infinite rotation (software-limited on joints 2, 4, 6) [3] | Elbow: ±70°; Wrist X/Y: ±50° (practical workspace, Klein 2023 §4.2 p.79) [7] |
-| **Footprint** | Ø190 mm [1] | Ø190 mm [2] | Ø154 mm [3] | N/A (ceiling gantry) [7] |
-| **Typical use case** | Machine tending, palletising, packaging | Machine tending, palletising, packaging | Mobile robotics, research, lightweight manipulation | Conveyor-based waste sorting (K3I Cycling project) |
+| **Footprint** | Ø149 mm [1] | Ø190 mm [2] | Ø154 mm [3] | N/A (ceiling gantry) [7] |
+| **Typical use case** | Machine tending, assembly, pick-and-place | Machine tending, palletising, packaging | Mobile robotics, research, lightweight manipulation | Conveyor-based waste sorting (K3I Cycling project) |
 
 ### Notes on the Tensegrity Manipulator
 
@@ -91,7 +96,7 @@ The preferred configuration for conveyor-based sorting (Py-Ry-U) achieved 55.6 %
 
 ### Notes on Gripper Selection for This Project
 
-The project uses the **Robotiq 2F-140** on both the tensegrity manipulator and the UR10e comparison arm.
+The project uses the **Robotiq 2F-140** on all arms.
 The 140 mm stroke accommodates grasping cubes, drum edges, and (in future work) bunched cloth.
 The 2F-85 would also be a viable alternative where smaller stroke suffices, offering nearly double the maximum grip force (235 N vs. 125 N).
 The Hand-E is better suited for precision assembly in harsh environments but its 50 mm parallel-only stroke limits versatility for large-object or encompassing grasps.
@@ -108,7 +113,8 @@ These can be used with a single import statement.
 
 | Combination | Isaac Sim USD | Isaac Lab Python Config | Notes |
 |---|---|---|---|
-| **UR10e + Robotiq 2F-140** | ✅ Separate USDs; can be assembled | ✅ `UR10E_ROBOTIQ_GRIPPER_CFG` | Pre-built compound config with actuator gains; the recommended comparison baseline for this project. |
+| **UR10e + Robotiq 2F-140** | ✅ Separate USDs; can be assembled | ✅ `UR10E_ROBOTIQ_GRIPPER_CFG` | Pre-built compound config with actuator gains (e-Series reference). |
+| **UR5e (arm only)** | ✅ Ships with Isaac Sim UR asset family | ❌ No pre-built config | USD is provided, but no tuned `isaaclab_assets` ArticulationCfg; primary master-thesis baseline, requires a custom config (see below). |
 | **UR10 (arm only)** | ✅ `Robots/UniversalRobots/UR10/ur10_instanceable.usd` | ✅ `UR10_CFG` | CB-series UR10 without gripper. |
 | **UR10e (arm only)** | ✅ Isaac Nucleus asset | ✅ `UR10e_CFG` | e-Series arm only, no gripper attached. |
 | **Kinova Gen3 (arm only)** | ✅ `Robots/Kinova/Gen3/gen3.usd` | ❌ No pre-built config | USD is provided, but no `isaaclab_assets` ArticulationCfg with tuned gains. |
@@ -124,6 +130,7 @@ in Isaac Lab. Steps are listed roughly in order of effort.
 
 | Combination | What You Need to Do |
 |---|---|
+| **UR5e + Robotiq 2F-140** | 1. Load the UR5e USD + gripper USD. 2. Attach via Fixed Joint or Robot Assembler to the tool flange. 3. Write an `ArticulationCfg` with arm + gripper actuator groups (no pre-built UR5e compound config exists). 4. Handle Robotiq mimic joints (use `BinaryJointPositionActionCfg` or custom wrapper). 5. Tune PD gains. This is the primary master-thesis comparison platform. |
 | **UR10e + Robotiq 2F-85** | 1. Load both USDs into Isaac Sim. 2. Remove Articulation Root from gripper. 3. Attach via Fixed Joint or Robot Assembler to `ee_link`. 4. Write an `ArticulationCfg` with arm + gripper actuator groups. 5. Handle Robotiq mimic joints (use `BinaryJointPositionActionCfg` or custom wrapper). 6. Tune PD gains. |
 | **UR10e + Robotiq Hand-E** | Same procedure as 2F-85 above. Simpler finger kinematics (parallel only, no mimic joints for encompassing mode). |
 | **Kinova Gen3 + any Robotiq gripper** | 1. Load Gen3 USD + gripper USD. 2. Assemble via Fixed Joint. 3. Write a full `ArticulationCfg` from scratch (no pre-built config exists). 4. Calibrate actuator gains for all 7 joints. 5. Validate inertia tensors (especially if ceiling-mounting, since Gen3 is calibrated for upright use). |
@@ -133,14 +140,14 @@ in Isaac Lab. Steps are listed roughly in order of effort.
 
 ## Sources
 
-1. **Universal Robots.** *UR10e Technical Specification.* Updated May 2025.
-   [https://www.universal-robots.com/manuals/EN/TechSheets/UR10e_techsheet_pdf_online/UR10e_techsheet_en.pdf](https://www.universal-robots.com/manuals/EN/TechSheets/UR10e_techsheet_pdf_online/UR10e_techsheet_en.pdf)
+1. **Universal Robots.** *UR5e Technical Specification.* Rev. 08/2023 (updated Dec. 2024).
+   [https://www.universal-robots.com/products/ur5e/](https://www.universal-robots.com/products/ur5e/)
 
 2. **Universal Robots.** *UR10 Technical Specifications (CB3-Series).* Item no. 110110, 2009–2016.
    [https://www.universal-robots.com/media/50895/ur10_en.pdf](https://www.universal-robots.com/media/50895/ur10_en.pdf)
 
-3. **Kinova Robotics.** *Gen3 Ultra Lightweight Robot 7 DoF Spherical — Technical Specifications.* TS-014, Rev. R01, 2018.
-   [https://www.roscomponents.com/wp-content/uploads/2024/11/TS-014_KINOVA_Gen3_Ultra_lightweight_robot_7DOF-Specifications_EN_R01.pdf](https://www.roscomponents.com/wp-content/uploads/2024/11/TS-014_KINOVA_Gen3_Ultra_lightweight_robot_7DOF-Specifications_EN_R01.pdf)
+3. **Kinova Robotics.** *Gen3 Ultra Lightweight Robot — Technical Specifications* (two-page datasheet) and *Gen3 Ultra Lightweight Robot — User Guide* (firmware 2.3.0, 2022; DH parameters, joint limits, actuator torques).
+   [https://www.kinovarobotics.com/product/gen3-robots](https://www.kinovarobotics.com/product/gen3-robots)
 
 4. **Robotiq.** *Adaptive Grippers Product Sheet (2F-85, 2F-140).* Updated May 2025.
    [https://robotiq.com/hubfs/Product-sheets/Adaptive%20Grippers/Product-sheet-Adaptive-Grippers-EN.pdf](https://robotiq.com/hubfs/Product-sheets/Adaptive%20Grippers/Product-sheet-Adaptive-Grippers-EN.pdf)
@@ -158,3 +165,22 @@ in Isaac Lab. Steps are listed roughly in order of effort.
 
 9. **NVIDIA.** *Isaac Lab — Adding a New Robot / isaaclab_assets.*
    [https://isaac-sim.github.io/IsaacLab/main/source/tutorials/01_assets/add_new_robot.html](https://isaac-sim.github.io/IsaacLab/main/source/tutorials/01_assets/add_new_robot.html)
+
+10. **Universal Robots.** *UR10e Technical Specification.* Rev. 08/2023 (updated Dec. 2024). (Referenced in the Isaac Sim availability section.)
+    [https://www.universal-robots.com/products/ur10e/](https://www.universal-robots.com/products/ur10e/)
+
+### Local Literature & Sources
+
+The manufacturer datasheets above are catalogued in the project literature.
+Overview: [doc/Literatur/robot_hardware.md](Literatur/robot_hardware.md).
+
+| Robot | Citation record | Local PDF |
+|---|---|---|
+| UR5e | [`UniversalRobotsUR5e`](Literatur/sources/Citations/UniversalRobotsUR5e.md) | `Literatur/sources/robot_hardware/Datasheets/UniversalRobotsUR5e.pdf` |
+| UR10 (CB3) | [`UniversalRobotsUR10`](Literatur/sources/Citations/UniversalRobotsUR10.md) | `Literatur/sources/robot_hardware/Datasheets/UniversalRobotsUR10.pdf` |
+| UR10e | [`UniversalRobotsUR10e`](Literatur/sources/Citations/UniversalRobotsUR10e.md) | `Literatur/sources/robot_hardware/Datasheets/UniversalRobotsUR10e.pdf` |
+| Kinova Gen3 (datasheet) | [`KinovaGen3Datasheet`](Literatur/sources/Citations/KinovaGen3Datasheet.md) | `Literatur/sources/robot_hardware/Datasheets/KinovaGen3Datasheet.pdf` |
+| Kinova Gen3 (user guide) | [`KinovaGen3UserGuide`](Literatur/sources/Citations/KinovaGen3UserGuide.md) | `Literatur/sources/robot_hardware/Manuals/KinovaGen3UserGuide.pdf` |
+| Kinova Gen3 (brochure) | [`KinovaGen3Brochure`](Literatur/sources/Citations/KinovaGen3Brochure.md) | `Literatur/sources/robot_hardware/Datasheets/KinovaGen3Brochure.pdf` |
+| Robotiq 2F-85 / 2F-140 | [`Robotiq2F140Datasheet`](Literatur/sources/Citations/Robotiq2F140Datasheet.md) | `Literatur/sources/simulation/Documentation/Robotiq2F140Datasheet.pdf` |
+| FAPS Tensegrity (Klein 2023) | [`Klein2023`](Literatur/sources/Citations/Klein2023.md) | `Literatur/sources/tendon_robots/Theses/Klein2023.pdf` |

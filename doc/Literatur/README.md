@@ -74,6 +74,10 @@ mindmap
       Manipulability Measures
       Workspace Density
       CDPM Workspace Methods
+    Robot Hardware and<br/>Datasheets
+      Collaborative Robot Arms
+      Research Robot Arms
+      Manufacturer Manuals
 ```
 
 ## Topic Files
@@ -91,6 +95,7 @@ mindmap
 | [sim_to_real.md](sim_to_real.md)                       | Sim-to-Real Transfer                        | 10         |
 | [control_kinematics.md](control_kinematics.md)         | Robot Control & Kinematics                  | 14         |
 | [workspace_analysis.md](workspace_analysis.md)         | Workspace Analysis                          | 11         |
+| [robot_hardware.md](robot_hardware.md)                 | Robot Hardware & Datasheets                 | 6          |
 
 ## Relevance Rating Legend
 
