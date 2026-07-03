@@ -1,0 +1,47 @@
+{
+  "agent": "checkpoint",
+  "task": "Template-Tensegrity-Cube-Place-Physical-Tendon-Play-v0",
+  "variant": "tensegrity_physical_tendon",
+  "seed": 3,
+  "num_episodes": 10,
+  "settle_steps": 10,
+  "n_envs": 50,
+  "n_episodes_total": 500,
+  "metrics": {
+    "success_rate": {
+      "mean": 0.996,
+      "std": 0.063118935352238,
+      "n": 500
+    },
+    "success_held": {
+      "mean": 0.996,
+      "std": 0.063118935352238,
+      "n": 500
+    },
+    "grasp_rate": {
+      "mean": 0.998,
+      "std": 0.044676615807377355,
+      "n": 500
+    },
+    "red_safe_rate": {
+      "mean": 0.898,
+      "std": 0.3026483107502832,
+      "n": 500
+    },
+    "place_xy_error": {
+      "mean": 0.13713613738678396,
+      "std": 0.07642974388762935,
+      "n": 500
+    },
+    "place_time_mean": {
+      "mean": 0.964979919678715,
+      "std": 0.12296577542592073,
+      "n": 498
+    },
+    "action_rate_mean": {
+      "mean": 6.541832386493683,
+      "std": 0.42296751705108465,
+      "n": 500
+    }
+  }
+}

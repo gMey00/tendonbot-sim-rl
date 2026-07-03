@@ -1,0 +1,47 @@
+{
+  "agent": "random",
+  "task": "Template-Tensegrity-Cube-Place-Tendon-Play-v0",
+  "variant": "tensegrity_tendon",
+  "seed": 2,
+  "num_episodes": 10,
+  "settle_steps": 10,
+  "n_envs": 50,
+  "n_episodes_total": 500,
+  "metrics": {
+    "success_rate": {
+      "mean": 0.0,
+      "std": 0.0,
+      "n": 500
+    },
+    "success_held": {
+      "mean": 0.0,
+      "std": 0.0,
+      "n": 500
+    },
+    "grasp_rate": {
+      "mean": 0.01,
+      "std": 0.09949874371066199,
+      "n": 500
+    },
+    "red_safe_rate": {
+      "mean": 0.978,
+      "std": 0.14668333238647124,
+      "n": 500
+    },
+    "place_xy_error": {
+      "mean": 0.8610024819374085,
+      "std": 0.10682818134561464,
+      "n": 500
+    },
+    "place_time_mean": {
+      "mean": NaN,
+      "std": NaN,
+      "n": 0
+    },
+    "action_rate_mean": {
+      "mean": 0.6663880099058151,
+      "std": 0.011457609105534491,
+      "n": 500
+    }
+  }
+}

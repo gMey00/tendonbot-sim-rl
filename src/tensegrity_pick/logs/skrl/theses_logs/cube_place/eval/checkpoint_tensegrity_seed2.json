@@ -1,0 +1,47 @@
+{
+  "agent": "checkpoint",
+  "task": "Template-Tensegrity-Cube-Place-Play-v0",
+  "variant": "tensegrity",
+  "seed": 2,
+  "num_episodes": 10,
+  "settle_steps": 10,
+  "n_envs": 50,
+  "n_episodes_total": 500,
+  "metrics": {
+    "success_rate": {
+      "mean": 0.986,
+      "std": 0.11749042514179611,
+      "n": 500
+    },
+    "success_held": {
+      "mean": 0.986,
+      "std": 0.11749042514179611,
+      "n": 500
+    },
+    "grasp_rate": {
+      "mean": 1.0,
+      "std": 0.0,
+      "n": 500
+    },
+    "red_safe_rate": {
+      "mean": 0.974,
+      "std": 0.15913516267626082,
+      "n": 500
+    },
+    "place_xy_error": {
+      "mean": 0.16051468699332327,
+      "std": 0.10387367417901001,
+      "n": 500
+    },
+    "place_time_mean": {
+      "mean": 1.106977687626775,
+      "std": 0.15483549311485884,
+      "n": 493
+    },
+    "action_rate_mean": {
+      "mean": 13.651007788181305,
+      "std": 1.187748617436159,
+      "n": 500
+    }
+  }
+}

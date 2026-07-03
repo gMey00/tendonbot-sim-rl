@@ -1,0 +1,47 @@
+{
+  "agent": "random",
+  "task": "Template-Tensegrity-Cube-Place-Play-v0",
+  "variant": "tensegrity",
+  "seed": 0,
+  "num_episodes": 10,
+  "settle_steps": 10,
+  "n_envs": 50,
+  "n_episodes_total": 500,
+  "metrics": {
+    "success_rate": {
+      "mean": 0.0,
+      "std": 0.0,
+      "n": 500
+    },
+    "success_held": {
+      "mean": 0.0,
+      "std": 0.0,
+      "n": 500
+    },
+    "grasp_rate": {
+      "mean": 0.022,
+      "std": 0.14668333238647124,
+      "n": 500
+    },
+    "red_safe_rate": {
+      "mean": 0.98,
+      "std": 0.13999999999999999,
+      "n": 500
+    },
+    "place_xy_error": {
+      "mean": 0.8624073479771615,
+      "std": 0.13084478480858874,
+      "n": 500
+    },
+    "place_time_mean": {
+      "mean": NaN,
+      "std": NaN,
+      "n": 0
+    },
+    "action_rate_mean": {
+      "mean": 0.6659819097518921,
+      "std": 0.013344394139460359,
+      "n": 500
+    }
+  }
+}
