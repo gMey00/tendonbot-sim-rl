@@ -3,9 +3,7 @@
 #import "../../../shared/formatting/acronyms.typ": *
 
 = Background <ch:background>
-//
-// #highlight(fill:red)[TODO: exchange "tensegrity manipulator" with actual name of Robot.]
-//
+
 This chapter provides an overview of the theoretical and technical background relevant to this thesis. It covers fundamental concepts in #ac("RL"), tendon-driven robotic mechanisms, workspace analysis, physics simulation, and the software architecture of Isaac Sim and Isaac Lab. The goal is to establish a common foundation for understanding the design choices and methodologies employed in the subsequent chapters.
 
 // §2.1 — #ac("RL") fundamentals: MDP/#ac("POMDP") formalism, policy gradients, #ac("PPO"), #ac("GAE")

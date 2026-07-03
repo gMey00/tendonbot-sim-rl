@@ -179,7 +179,7 @@ cd /home/robot/Isaac/IsaacLab
 
 | Thesis | Status | Overview | Guideline | Document |
 |--------|--------|----------|-----------|----------|
-| Project Thesis (PA) | 🔄 WIP | [project_thesis.md](doc/Theses/project_thesis.md) | [Guideline](doc/Theses/project_thesis/guideline/PA-Guideline.pdf) | [Thesis](doc/Theses/project_thesis/thesis/PA-Thesis.pdf) |
+| Project Thesis (PA) | ✅ Submitted | [project_thesis.md](doc/Theses/project_thesis.md) | [Guideline](doc/Theses/project_thesis/guideline/PA-Guideline.pdf) | [Thesis](doc/Theses/project_thesis/thesis/PA-Thesis.pdf) |
 | Master Thesis (MA) | 🔄 WIP | [master_thesis.md](doc/Theses/master_thesis.md) | [Guideline](doc/Theses/master_thesis/guideline/MA-Guideline.pdf) | [Thesis](doc/Theses/master_thesis/thesis/MA-Thesis.pdf) |
 
 ---

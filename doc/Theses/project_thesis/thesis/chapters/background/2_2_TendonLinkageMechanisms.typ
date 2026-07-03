@@ -39,7 +39,7 @@ The mechanical transmission through cables introduces modeling complexity beyond
 
 === Planar Four-Bar Linkages and the Antiparallelogram <sec:bg_four_bar>
 
-The elbow joint of the #highlight(fill:red)[tensegrity manipulator] uses an antiparallelogram four-bar linkage. This subsection introduces the relevant linkage theory. The specific kinematic closure equations for the elbow are derived in @subsec:antiparallelogram of the methodology.
+The elbow joint of the FAPS tensegrity manipulator uses an antiparallelogram four-bar linkage. This subsection introduces the relevant linkage theory. The specific kinematic closure equations for the elbow are derived in @subsec:antiparallelogram of the methodology.
 
 ==== Four-bar linkage fundamentals
  A planar four-bar linkage consists of four rigid bars connected by four revolute joints, forming a single closed loop with one #ac("DoF")~@McCarthy2011 @Uicker2017. One bar is conventionally designated as the _frame_ (grounded link). The remaining links are the _input crank_, _coupler_, and _output rocker_. The Grashof condition classifies four-bar mechanisms by the range of motion of each link: if the sum of the shortest and longest link lengths does not exceed the sum of the other two, at least one link can rotate fully, yielding crank--rocker, double-crank, or double-rocker configurations~@Uicker2017. The configuration is fully determined by a single input angle through the _loop-closure equation_, which can be expressed in complex-number form as
@@ -73,7 +73,7 @@ This migrating #ac("ICR") produces a _nonlinear, configuration-dependent transmi
 
 === #acp("CDPM") <sec:bg_cdpm>
 
-The wrist mechanism of the #highlight(fill:red)[tensegrity manipulator] is a #ac("CDPM") where three active cables, arranged symmetrically around a universal joint, control two rotational degrees of freedom. This subsection introduces the general framework. The specific structure matrix for the thesis robot's wrist is derived in @subsec:wrist_mechanism of the methodology.
+The wrist mechanism of the FAPS tensegrity manipulator is a #ac("CDPM") where three active cables, arranged symmetrically around a universal joint, control two rotational degrees of freedom. This subsection introduces the general framework. The specific structure matrix for the thesis robot's wrist is derived in @subsec:wrist_mechanism of the methodology.
 
 ==== Concept
 A #ac("CDPM") consists of a platform (end-effector) connected to a fixed base frame by $m$ cables, where platform motion is controlled by adjusting cable lengths~@Pott2018CDPR. Unlike rigid-link parallel robots, cables can only transmit tensile forces, which fundamentally constrains the feasible wrench (forces and/or torques) space~@Pott2018CDPR @Verhoeven2004TendonPlatforms. @fig:cdpm_concept illustrates the general concept of a #ac("CDPM"), showing a possible cable arrangement and the resulting platform wrench.
@@ -149,7 +149,7 @@ For manipulation specifically, Lessard _et al._~@Lessard2016TensegrityManipulato
 
 ==== Tensegrity-inspired design in the thesis robot 
 
-The FAPS #highlight(fill:red)[tensegrity manipulator]~@Klein2023 embodies the tensegrity principle through its cable-driven actuation. The antiparallelogram elbow is a class-2 tensegrity mechanism whose crossed links carry compressive loads while cables maintain the kinematic constraint. The cable-driven wrist similarly distributes actuation through a tension network, with three cables suspending the wrist platform in a configuration directly analogous to a small-scale cable-driven parallel robot. Walter _et al._ demonstrated that this wrist architecture achieves up to 83% impact force isolation in modal-hammer hardware experiments, confirming the compliance benefits predicted by tensegrity theory for the wrist module.~@Walter2023Tensegrity
+The FAPS tensegrity manipulator~@Klein2023 embodies the tensegrity principle through its cable-driven actuation. The antiparallelogram elbow is a class-2 tensegrity mechanism whose crossed links carry compressive loads while cables maintain the kinematic constraint. The cable-driven wrist similarly distributes actuation through a tension network, with three cables suspending the wrist platform in a configuration directly analogous to a small-scale cable-driven parallel robot. Walter _et al._ demonstrated that this wrist architecture achieves up to 83% impact force isolation in modal-hammer hardware experiments, confirming the compliance benefits predicted by tensegrity theory for the wrist module.~@Walter2023Tensegrity
 
 ==== Compliance and safety context 
 Bicchi and Tonietti~@Bicchi2004FastSoftArm established that mechanical compliance is essential for safe human--robot interaction, as passive compliance reacts faster than any control loop during fast impacts. The series elastic actuator concept introduces deliberate compliance in series with the actuator, trading bandwidth for shock tolerance and force control accuracy~@Pratt1995SEA.

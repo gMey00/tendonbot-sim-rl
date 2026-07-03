@@ -6,7 +6,7 @@
 
 == Simulation Model Construction <sec:sim_model_construction>
 
-Translating the #ac("CAD") assembly of the tensegrity manipulator into a physics-ready Isaac Sim asset requires a multi-stage pipeline that processes raw geometry, defines articulation topology, assigns physics properties, and assembles the final robot. This section describes each stage in detail.
+Translating the #ac("CAD") assembly of the FAPS tensegrity manipulator into a physics-ready Isaac Sim asset requires a multi-stage pipeline that processes raw geometry, defines articulation topology, assigns physics properties, and assembles the final robot. This section describes each stage in detail.
 
 #faps-figure(
   image("../../../assets/figures/simulation/tensegrity_variants.png", width: 100%),

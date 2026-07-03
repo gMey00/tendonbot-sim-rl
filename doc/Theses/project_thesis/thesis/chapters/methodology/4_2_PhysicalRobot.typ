@@ -13,7 +13,7 @@ This section describes the composite manipulator system used throughout this wor
 
 === Kinematic Chain and Degrees of Freedom <subsec:kinematic_chain>
 
-The tensegrity manipulator is a ceiling-mounted, 5-#ac("DoF") serial kinematic chain. It consists of three functional subsystems arranged in series: a 2-#ac("DoF") prismatic positioning base, a 3-#ac("DoF") tendon-driven arm, and a Robotiq 2F-140 parallel-jaw gripper. @fig:kinematic_chain_diagram shows the side-view kinematic schematic of the assembled 5-#ac("DoF") manipulator, and @tab:link_params and @tab:joint_ranges summarize the corresponding link and joint parameters used in simulation.
+The manipulator is a ceiling-mounted, 5-#ac("DoF") serial kinematic chain. It consists of three functional subsystems arranged in series: a 2-#ac("DoF") prismatic positioning base, the FAPS 3-#ac("DoF") tendon-driven tensegrity arm, and a Robotiq 2F-140 parallel-jaw gripper. @fig:kinematic_chain_diagram shows the side-view kinematic schematic of the assembled 5-#ac("DoF") manipulator, and @tab:link_params and @tab:joint_ranges summarize the corresponding link and joint parameters used in simulation.
 
 #faps-figure(
   image("../../../assets/figures/robot/tensegrity_kinematic_schematic.svg", width: 100%),
@@ -45,7 +45,7 @@ The tensegrity manipulator is a ceiling-mounted, 5-#ac("DoF") serial kinematic c
     [`wrist_x_joint`], [Revolute (roll)], [$plus.minus 50 degree$], [3.5],
     [`finger_joint`], [Revolute (gripper)], [$0$ to $0.7854$ rad], [200],
   ),
-  caption: [Actuated joints of the integrated 5-#ac("DoF") tensegrity manipulator. Joint ranges correspond to the practical workspace measured by Klein~@Klein2023. Effort limits are derived from the motor and tendon specifications (see @subsec:drive_system). The physical antiparallelogram variant additionally exposes the four passive linkage joints `rod_left_joint`, `rod_right_joint`, `coupler_left_joint` and `coupler_right_joint`, the last of which acts as the PhysX loop-closure constraint and is excluded from the articulation tree.],
+  caption: [Actuated joints of the integrated 5-#ac("DoF") FAPS tensegrity manipulator. Joint ranges correspond to the practical workspace measured by Klein~@Klein2023. Effort limits are derived from the motor and tendon specifications (see @subsec:drive_system). The physical antiparallelogram variant additionally exposes the four passive linkage joints `rod_left_joint`, `rod_right_joint`, `coupler_left_joint` and `coupler_right_joint`, the last of which acts as the PhysX loop-closure constraint and is excluded from the articulation tree.],
   short-caption: [Actuated joints],
 ) <tab:joint_ranges>
 

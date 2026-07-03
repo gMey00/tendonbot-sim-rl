@@ -6,7 +6,7 @@
 = Appendix: Kinematic Reference Data <appendix:kinematic_reference>
 
 This appendix lists the link origins (LO) and tendon/rod attachment
-reference points (RP) of the tensegrity manipulator, measured from the
+reference points (RP) of the FAPS tensegrity manipulator, measured from the
 Fusion 360 #ac("CAD") model. All coordinates are expressed in metres
 relative to the ceiling-mounted root frame, with the $z$-axis pointing
 downward. Reference points~1–4 are symmetric along the $z x$-plane.
@@ -16,8 +16,8 @@ downward. Reference points~1–4 are symmetric along the $z x$-plane.
     "../../../assets/figures/reference/tensegrity_cad_reference_points.png",
     width: 90%,
   ),
-  caption: [#ac("CAD") reference drawing of the tensegrity manipulator with annotated link origins (LO~0–4) and tendon/rod attachment reference points (RP~1–8). Dimensions are given in millimetres.],
-  short-caption: [#ac("CAD") reference points of the tensegrity manipulator],
+  caption: [#ac("CAD") reference drawing of the FAPS tensegrity manipulator with annotated link origins (LO~0–4) and tendon/rod attachment reference points (RP~1–8). Dimensions are given in millimetres.],
+  short-caption: [#ac("CAD") reference points of the FAPS tensegrity manipulator],
 ) <fig:cad_reference_points>
 
 == Link Origins <appendix:link_origins>
@@ -77,6 +77,6 @@ $z$-axis at the listed height.
       [centre $(0.0,thin 0.0,thin -0.912)$, $r = 0.0725$],
       [3 tendons, $120 degree$ spacing],
   ),
-  caption: [Tendon and rod attachment reference points (RP) of the tensegrity manipulator.],
+  caption: [Tendon and rod attachment reference points (RP) of the FAPS tensegrity manipulator.],
   short-caption: [Tensegrity arm reference points],
 ) <tab:reference_points>

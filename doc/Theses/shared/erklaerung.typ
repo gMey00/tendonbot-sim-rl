@@ -1,6 +1,32 @@
 // Declaration of Authenticity (Erklärung)
 // German legal declaration required for FAPS theses
 
+#import "formatting/colors.typ": fapsblau, mittelgrau
+
+// Checkbox for the AI-usage declaration.
+// Toggle an option directly in the source by editing the marker:
+//   "[ ]" → unchecked    "[X]" → checked
+#let ai-option(mark, body) = {
+  let checked = lower(mark).contains("x")
+  grid(
+    columns: (1.1em, 1fr),
+    column-gutter: 0.6em,
+    align: (left + top, left + top),
+    box(
+      width: 0.85em,
+      height: 0.85em,
+      radius: 1.5pt,
+      stroke: 0.8pt + (if checked { fapsblau } else { mittelgrau }),
+      inset: 0pt,
+      baseline: 0.12em,
+      align(center + horizon, if checked {
+        text(fill: fapsblau, weight: "bold", size: 0.8em)[✗]
+      }),
+    ),
+    body,
+  )
+}
+
 #let erklaerung(name: "") = {
   heading(numbering: none)[Erklärung]
 
@@ -18,18 +44,23 @@ Der Bearbeitende trägt die Verantwortung für eine eigenständige Leistungserbr
 
 Ich, Georg Meyer, erkläre hiermit, in welchem Umfang ich Künstliche Intelligenz (KI), einschließlich Tools wie ChatGPT, Co-Pilot, HAWKI, DeepL Write, Grammarly oder vergleichbare Werkzeuge, bei der Erstellung der vorliegenden Prüfungsleistung genutzt habe. Ich habe KI-gestützte Werkzeuge wie folgt eingesetzt (bitte alle zutreffenden Optionen ankreuzen):
 
--	Gar nicht – Die Arbeit wurde vollständig ohne den Einsatz von KI-Werkzeugen erstellt.
--	Zur Recherche & Ideengenerierung – KI wurde genutzt, um erste Anregungen, Konzepte oder Fragestellungen zu entwickeln (muss in der Arbeit dokumentiert werden).
--	Zur Erstellung von Gliederungen / Strukturierung von Texten – KI wurde als Hilfsmittel zur Strukturierung der Arbeit eingesetzt, eigene Anpassungen wurden vorgenommen.
--	Zur Formulierungshilfe (z. B. Verbesserung von Satzbau, Stil) – KI wurde zur Verbesserung von Stil und Lesbarkeit genutzt, jedoch nicht zur vollständigen Textgenerierung.
--	Zur Korrektur von Grammatik und Rechtschreibung – KI wurde zur sprachlichen Optimierung genutzt, jedoch nicht zur inhaltlichen Veränderung oder Textgenerierung.
--	Zur Übersetzung von Texten – KI wurde für Übersetzungen genutzt, wobei alle übersetzten Passagen überarbeitet und auf inhaltliche Richtigkeit geprüft wurden.
--	Zur Erstellung oder Optimierung von Grafiken, Diagrammen oder visuellen Darstellungen – KI wurde für bildliche Darstellungen genutzt, die in der Arbeit interpretiert und eingeordnet wurden.
--	Zur Programmierung / Code-Erstellung – KI wurde zur Generierung von Code verwendet, wobei alle generierten Inhalte überprüft und nachvollziehbar kommentiert wurden.
--	Zur Erstellung von KI-gestützten Zusammenfassungen wissenschaftlicher Texte KI-Tools wurden zur Erstellung von Zusammenfassungen genutzt, deren Inhalte nachvollziehbar kommentiert wurden.
+]
 
+  // KI-Nutzung ankreuzen: "[ ]" = nicht zutreffend, "[X]" = zutreffend.
+  block(spacing: 0.9em, {
+    set par(spacing: 0.9em)
+    ai-option("[ ]")[*Gar nicht* – Die Arbeit wurde vollständig ohne den Einsatz von KI-Werkzeugen erstellt.]
+    ai-option("[ ]")[*Zur Recherche & Ideengenerierung* – KI wurde genutzt, um erste Anregungen, Konzepte oder Fragestellungen zu entwickeln (muss in der Arbeit dokumentiert werden).]
+    ai-option("[ ]")[*Zur Erstellung von Gliederungen / Strukturierung von Texten* – KI wurde als Hilfsmittel zur Strukturierung der Arbeit eingesetzt, eigene Anpassungen wurden vorgenommen.]
+    ai-option("[x]")[*Zur Formulierungshilfe* (z. B. Verbesserung von Satzbau, Stil) – KI wurde zur Verbesserung von Stil und Lesbarkeit genutzt, jedoch nicht zur vollständigen Textgenerierung.]
+    ai-option("[x]")[*Zur Korrektur von Grammatik und Rechtschreibung* – KI wurde zur sprachlichen Optimierung genutzt, jedoch nicht zur inhaltlichen Veränderung oder Textgenerierung.]
+    ai-option("[ ]")[*Zur Übersetzung von Texten* – KI wurde für Übersetzungen genutzt, wobei alle übersetzten Passagen überarbeitet und auf inhaltliche Richtigkeit geprüft wurden.]
+    ai-option("[ ]")[*Zur Erstellung oder Optimierung von Grafiken, Diagrammen oder visuellen Darstellungen* – KI wurde für bildliche Darstellungen genutzt, die in der Arbeit interpretiert und eingeordnet wurden.]
+    ai-option("[x]")[*Zur Programmierung / Code-Erstellung* – KI wurde zur Generierung von Code verwendet, wobei alle generierten Inhalte überprüft und nachvollziehbar kommentiert wurden.]
+    ai-option("[x]")[*Zur Erstellung von KI-gestützten Zusammenfassungen wissenschaftlicher Texte* – KI-Tools wurden zur Erstellung von Zusammenfassungen genutzt, deren Inhalte nachvollziehbar kommentiert wurden.]
+  })
 
-Ich versichere, alle Nutzungen vollständig und wahrheitsgemäß angegeben zu haben. Mir ist bewusst, dass das Verschweigen oder falsche Angaben zur Nutzung von KI-Tools als Täuschungsversuch gewertet werden können und prüfungsrechtliche Konsequenzen haben.
+  [Ich versichere, alle Nutzungen vollständig und wahrheitsgemäß angegeben zu haben. Mir ist bewusst, dass das Verschweigen oder falsche Angaben zur Nutzung von KI-Tools als Täuschungsversuch gewertet werden können und prüfungsrechtliche Konsequenzen haben.
 ]
 
   

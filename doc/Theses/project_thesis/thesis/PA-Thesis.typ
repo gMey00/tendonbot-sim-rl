@@ -9,13 +9,13 @@
 #import "../../shared/erklaerung.typ": erklaerung
 
 // ── Metadata ──────────────────────────────────────────────────────
-#let thesis-title = "Simulative Construction and Verification of a Tendon-Driven Robot for Conveyor-Based Pick-and-Place Tasks Using Isaac Lab"
+#let thesis-title = "Reinforcement Learning for a Tendon-Driven Robot: Modeling and Verification in Simulation for Conveyor-Based Pick-and-Place Tasks"
 #let thesis-type = "Project Thesis"
 #let thesis-program = "Computational Engineering M. Sc."
 #let thesis-author = "Georg Meyer"
 #let thesis-student-id = "22791103"
 #let thesis-deadline = "01.07.2026"
-#let thesis-duration = "x"
+#let thesis-duration = "6"
 
 // ── Apply FAPS template ──────────────────────────────────────────
 #show: faps-thesis.with(

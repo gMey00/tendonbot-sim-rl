@@ -8,7 +8,7 @@
 
 == Joint Drive Parameters <appendix:drive_params>
 
-@tab:drive_params lists the `ImplicitActuator` #ac("PD") drive parameters configured for the tensegrity manipulator's joints. In the PD-driven actuation mode, these parameters apply to all joints. In the tendon-driven and physical tendon modes, the arm joints (elbow and wrist) are overridden by the tendon actuation model. Only the two prismatic base joints retain #ac("PD") drives in those modes (see @tab:actuation_modes).
+@tab:drive_params lists the `ImplicitActuator` #ac("PD") drive parameters configured for the FAPS tensegrity manipulator's joints. In the PD-driven actuation mode, these parameters apply to all joints. In the tendon-driven and physical tendon modes, the arm joints (elbow and wrist) are overridden by the tendon actuation model. Only the two prismatic base joints retain #ac("PD") drives in those modes (see @tab:actuation_modes).
 
 #faps-table(
   table(
@@ -20,7 +20,7 @@
     [`wrist_y_joint`], [400], [20], [3.5~N·m], [0.5~rad/s],
     [`wrist_x_joint`], [400], [20], [3.5~N·m], [0.5~rad/s],
   ),
-  caption: [`ImplicitActuator` #ac("PD") drive parameters for the tensegrity manipulator. Effort limits are derived from the motor and tendon specifications (@tab:motor_params, @eq:effort_elbow, @eq:effort_wrist). Base joint effort limits are configured conservatively for the prismatic slide mechanism. Arm joint parameters apply exclusively to the PD-driven actuation mode.],
+  caption: [`ImplicitActuator` #ac("PD") drive parameters for the FAPS tensegrity manipulator. Effort limits are derived from the motor and tendon specifications (@tab:motor_params, @eq:effort_elbow, @eq:effort_wrist). Base joint effort limits are configured conservatively for the prismatic slide mechanism. Arm joint parameters apply exclusively to the PD-driven actuation mode.],
   short-caption: [Tensegrity joint drive parameters],
 ) <tab:drive_params>
 
