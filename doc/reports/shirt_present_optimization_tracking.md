@@ -102,3 +102,68 @@ Per the staged plan ([doc/TODO.md](../TODO.md)):
    upper bound.  Calibrate the tautness cap against measured strain — the
    straight-line rest distance underestimates the fabric path (Stage-0 finding).
 5. Snapshot stretched terminal states → shirt_distribute initial-state bank.
+
+---
+
+## Phase 1: Full regrasp-and-stretch MDP (Alex agent)
+
+**Date:** 2026-07-04 · **Branch:** `project/shirt-present` (isolated git worktree, see ops note)
+**Hardware:** Alex `rtxpro6k` (1× RTX PRO 6000 per job)
+
+### Goal
+Implement the naive two-grasp presentation heuristic as a trainable MDP (§1 of the agent
+prompt): deterministic second grasp at the lowest hanging point (slot 0), stretch between the
+grasps, honest silhouette-coverage success, windowed latch ≥ 0.9 deterministic.
+
+### Changes (commit `a7e5c97`)
+- **`shirt_present_env.py`** — `enable_hand_grasp = True`; `shirt_grasp_point_w` →
+  `shirt_lowest_point_w` (the intended base-env hook — `_update_grasp` is NOT copied, the
+  override calls `super()._update_grasp()` then re-pins the slot-1 holder anchor).  New
+  per-step task-state buffers (recomputed after the physics step, consumed with the usual
+  one-step delay):
+  - **stretch ratio** = ‖patch-centroid₀ − patch-centroid₁‖ / ‖flat-rest separation‖ — the
+    exact definition `test_two_attachments.py` validated stable through **1.15**;
+  - **coverage** = `silhouette_coverage(nodal_pos_w, flat_silhouette_area(flat_rest), view_axis=1)`
+    (camera XZ plane, folds count once).
+  - Success predicate `presented_now`: `grasp_active ∧ holder_attached ∧
+    stretch ∈ [0.90, 1.10] ∧ coverage ≥ 0.55 (placeholder, see calibration) ∧
+    cloth-centroid speed < 0.20`.  Windowed latch ≥ 80 % of the last 60 steps
+    (shirt_pick Phase-3 lesson: consecutive latches are brittle; EE speed gates
+    unharvestable at raised postures — 0.24–0.27 m/s residual sway vs 0.06–0.20 on the cloth).
+  - `drop_event` one-shot + `was_dropped`; `Metrics/{present_rate, drop_rate,
+    final_coverage, final_stretch_ratio}` logged in `_reset_idx`;
+    `snapshot_terminal_states` (both grasp states) for the Task-2→3 bank.
+- **`mdp/rewards.py`** — sequential rewards (weights × dt = 1/60 s, one-shots ~60× per-step):
+  | Term | w | Notes |
+  |---|---|---|
+  | reaching_lowest_point (tanh, std 0.25, dyn. finger tip) | 2 | saturates to 1 while grasped (lowest point migrates post-grasp — chasing it would fight the stretch) |
+  | grasp_hold | 5 | slot-0 attached |
+  | stretch_progress (lo 0.50 → hi 0.98, clamped) | 8 | gated on BOTH attachments |
+  | coverage_reward | 10 | gated on both attachments (anti-fling/bunch) |
+  | presented (full predicate) | 30 | dominant per-step success term |
+  | overstretch (ratio − 1.10, proportional) | −40 | safety margin under the validated 1.15 |
+  | drop one-shot | −120 | ≈ −2 after dt-scaling |
+  | action_rate / joint_vel | −1e-4 → curriculum −3e-3 / −2e-3 @ 2000 steps | shirt_place profile |
+- **`mdp/__init__.py`** — `from .rewards import *` (NOT `from . import rewards` — silently
+  keeps isaaclab's own `rewards` bound; lesson 5).
+- **`shirt_present_env_cfg.py`** — obs add: lowest point rel DYNAMIC finger tip (the attach
+  trigger's own geometry), both grasp flags, stretch ratio, coverage (all camera-derivable in
+  principle); episode 8.0 s (reach ~1.5 s + grasp + stretch + 1 s latch window + swing slack);
+  curriculum added.  Action space: stub's `JointPositionActionCfg` (scale 0.5,
+  default-offset) per the prompt's decision — EMA variant is the registered fallback.
+- **`scripts/model_validation/baseline_shirt_present.py`** — scripted two-grasp baseline:
+  FD **action-space** Jacobian (columns = tip m / action unit, re-estimated every 200
+  approach steps — stale-J lesson), P-servo to the lowest point → close → pull along the
+  anchor→grasp ray with live tautness-ratio stop feedback → hold.  Measures raw-hang vs
+  stretched coverage/tautness distributions (threshold calibration) and per-env reachability.
+
+### Ops note: sibling-agent collision → isolated worktree
+The shirt_distribute agent works in the SAME `$HOME/studentische-arbeiten` checkout; its
+`git checkout -b project/shirt-distribute` (between this agent's branch creation and first
+commit) put commit `a7e5c97` on the wrong branch, and any later branch switch would have
+rewritten the other agent's files mid-job.  Fixed: branches repointed
+(`shirt-present → a7e5c97`, `shirt-distribute → 14b6278`, sibling's uncommitted files
+untouched), and ALL shirt_present work now runs from an isolated **git worktree**
+`$HOME/studentische-arbeiten-present` with `PYTHONPATH` pinning imports to the worktree
+(the conda env's PEP-660 editable finder is `sys.meta_path.append`ed, so `PathFinder` +
+`PYTHONPATH` wins — verified).  ⚠️ Slurm jobs of the two agents are otherwise independent.

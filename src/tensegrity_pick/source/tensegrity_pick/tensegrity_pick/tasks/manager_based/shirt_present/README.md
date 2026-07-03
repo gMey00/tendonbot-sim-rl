@@ -8,16 +8,16 @@ inspection cameras can assess the garment's condition (reusable / recyclable
 / trash).  Classification itself is a black box — this task only has to make
 the cloth *inspectable*.
 
-> **Status: stub, physics de-risked (2026-07-03).** The environment
-> constructs and runs (zero/random agents verified for both robot variants).
-> The shirt hangs from a **static slot-1 solver anchor** at the presentation
-> pose — an idealized stand-in for the shirt_pick terminal state — and the
-> passive retriever (`holder_robot`) is visual scenery.  **Two simultaneous
-> attachments are now supported and validated** (multi-slot `ClothObject`,
-> stable through tautness ratio 1.15 — see the
-> [Stage-0 report](../../../../../../../../doc/reports/cloth_stage0_physics_derisk.md) §2);
-> the learning arm's slot-0 grasp stays off only until the Task-2 regrasp MDP
-> is implemented — see [Planned Work](#planned-work-stub--trainable-task).
+> **Status: full regrasp-and-stretch MDP implemented (2026-07-04, Phase 1).**
+> The shirt hangs pinned at ONE RANDOM particle patch (356-state hanging bank,
+> slot-1 solver anchor at the presentation pose); the learning arm's slot-0
+> deterministic grasp is ENABLED and targets the **lowest hanging point**.
+> Success = windowed presented latch (both grasps ∧ taut ∧ silhouette
+> coverage ∧ cloth still).  Two simultaneous attachments are validated stable
+> through tautness ratio 1.15
+> ([Stage-0 report](../../../../../../../../doc/reports/cloth_stage0_physics_derisk.md) §2).
+> Training/eval results: see the
+> [tracking report](../../../../../../../../doc/reports/shirt_present_optimization_tracking.md).
 
 ## Table of Contents
 
@@ -47,12 +47,28 @@ Train an RL agent (the second arm) to maximize garment inspectability:
 3. **Stretch** the cloth taut-but-not-overstretched so front and back cameras
    see a maximal spanned area.
 
-Success metric (planned): **projected coverage** of the cloth onto the
-inspection-camera image planes (front `INSPECTION_CAMERA_POS = (0.15, 2.0, 1.25)`
-looking −Y, plus a back view), with a tautness bonus and an overstretch
-penalty.  Reference band: ICRA-2024 cloth-competition top-three coverage
-≈ 0.55–0.60.  Current stub metric: `Metrics/grasp_rate` (reflects the holder
-anchor, ≈ 1.0 by construction — placeholder).
+**Success predicate** (`presented_now`, latched over a window — ≥ 80 % of the
+last 60 steps): `grasp_active(slot 0) ∧ holder_attached(slot 1) ∧
+stretch_ratio ∈ [0.90, 1.10] ∧ silhouette_coverage ≥ 0.55 ∧ cloth-centroid
+speed < 0.20 m/s`.  Rationale (measured decisions):
+
+- **Silhouette coverage** = rasterized projection of all particles onto the
+  camera (world-XZ) plane / flat one-sided rest area
+  (`shared/cloth_metrics.py`) — folds count once, so bunching/hiding cannot
+  score.  A front+back inspection sees the SAME occluding silhouette, so one
+  area serves both viewpoints.  Reference band: ICRA-2024 cloth-competition
+  top-three coverage ≈ 0.55–0.60.
+- **Stretch ratio** = ‖patch-centroid₀ − patch-centroid₁‖ / their
+  `flat_rest_pos` separation — the exact definition validated stable through
+  1.15 by the Stage-0 two-attachment test; the 1.10 upper edge keeps a
+  safety margin.
+- **Speed gate on the cloth centroid, never the EE** (shirt_pick Phase-3
+  lesson: residual PD sway at raised postures is 0.24–0.27 m/s while the
+  hanging garment low-pass filters to 0.06–0.20; the camera inspects the
+  cloth anyway).
+
+Logged metrics: `Metrics/{present_rate, grasp_rate, drop_rate,
+final_coverage, final_stretch_ratio}`.
 
 Terminal states (stretched shirt) form the **initial-state bank of
 shirt_distribute**.
@@ -131,32 +147,37 @@ Total: **8 dims (Kinova) / 7 dims (UR5e)**.
 | `joint_vel_rel` | 8 / 7 | Controlled joint velocities |
 | `ee_pos_w` | 3 | Grasp-centre position (env-local) |
 | `shirt_rel` | 3 | Shirt centroid relative to grasp centre |
-| `lowest_point_rel` | 3 | **Lowest cloth particle** relative to grasp centre — the regrasp target |
+| `lowest_point_rel` | 3 | **Lowest cloth particle** relative to the DYNAMIC finger tip — the exact geometry the deterministic attach trigger uses |
 | `shirt_vel` | 3 | Shirt centroid velocity |
+| `grasp_active` | 1 | Hand grasp (slot 0) attached |
+| `holder_attached` | 1 | Holder anchor (slot 1) still pinned |
+| `stretch_ratio` | 1 | Inter-grasp tautness (0 until both attached) |
+| `coverage` | 1 | Camera-plane silhouette coverage |
 | `gripper_closure` | 1 | Normalized closure |
 | `actions` | 8 / 7 | Previous action |
 
-Planned (camera-realistic, report §6): inter-grasp distance, tautness proxy
-(inter-grasp distance / rest geodesic distance), projected coverage estimate,
-shoulder keypoints **with visibility flags**; privileged particle field in a
-critic-only group.
+All task-state terms are camera-derivable in principle (both grasp points
+visible, garment flat geometry known a priori, coverage = segmentation-mask
+area ratio).  Still open (report §6): shoulder keypoints with visibility
+flags; privileged particle field in a critic-only group.
 
-## Rewards (stub)
+## Rewards
+
+Sequential shirt_pick pattern.  dt-scaling: per-step weight *w* earns
+≈ *w* × episode-seconds; one-shots earn *w*/60 → the drop penalty is sized
+~60× the per-step terms.
 
 | Term | Weight | Description |
 |---|---|---|
-| `reaching_shirt` | 2.0 | `1 − tanh(‖EE − shirt‖ / 0.3)` — approach the regrasp region |
-| `action_rate` | −1e-4 | Action-rate L2 |
-| `joint_vel` | −1e-4 | Joint-velocity L2 |
-
-Planned reward structure (with known hack modes to guard against):
-
-- **Projected coverage** from the actual front/back camera viewpoints — NOT
-  top-down (top-down coverage is gamed by bunching/hiding the shirt).
-- **Taut-but-not-overstretched bonus**: cap reward when the tautness ratio
-  exceeds ~1.0 (PBD mass-spring overstretch inflates area artificially).
-- **Strain penalty** on particle-spring stretch.
-- Both grasps must remain attached for coverage to pay.
+| `reaching` | 2.0 | `1 − tanh(‖tip − lowest point‖ / 0.25)`; **saturates to 1 while grasped** (the lowest point migrates post-grasp — chasing it would fight the stretch) |
+| `grasp_hold` | 5.0 | Per-step while the slot-0 attachment holds |
+| `stretch` | 8.0 | Clamped tautness progress (ratio 0.50 → 0.98), gated on BOTH attachments |
+| `coverage` | 10.0 | Camera-plane silhouette coverage, gated on both attachments (anti-fling/bunch) |
+| `presented` | 30.0 | Full success predicate per step — dominant term; no anti-hover fade needed (holding IS the task) |
+| `overstretch` | −40.0 | Proportional above ratio 1.10 (validated stability ends at 1.15) |
+| `drop` | −120.0 | One-shot when an established hand grasp is lost (≈ −2 after dt) |
+| `action_rate` | −1e-4 → −3e-3 | Curriculum ramp at 2000 trainer steps (shirt_place profile) |
+| `joint_vel` | −1e-4 → −2e-3 | 〃 |
 
 ## Terminations
 
