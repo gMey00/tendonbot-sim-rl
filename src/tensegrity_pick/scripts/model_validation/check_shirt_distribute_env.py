@@ -128,6 +128,23 @@ def main() -> None:
     results.append(("release_drops", ok_rel,
                     f"released {int(released.sum())}/{n}, fell {int(fell.sum())}/{n}"))
 
+    # ── 4b. home-pose fingertip (diagnostic, no PASS/FAIL) ────────────
+    # return_to_neutral drives the arm to the DEFAULT pose post-success; if
+    # that pose's tip sits below the belt_collision threshold (belt − 0.12 =
+    # 0.68 m), every success is followed by a forced termination.
+    robot = u.scene["robot"]
+    dq = robot.data.default_joint_pos[:, u._arm_joint_ids]
+    robot.write_joint_state_to_sim(dq, torch.zeros_like(dq),
+                                   joint_ids=u._arm_joint_ids)
+    robot.set_joint_position_target(dq, joint_ids=u._arm_joint_ids)
+    with torch.inference_mode():
+        for _ in range(30):
+            env.step(act(OPEN))
+    home_tip = (u._finger_tip_pos() - u.scene.env_origins)[0]
+    print(f"  [info] home-pose fingertip (env-local): "
+          f"({home_tip[0]:.3f}, {home_tip[1]:.3f}, {home_tip[2]:.3f}) m "
+          f"— belt_collision threshold z 0.68")
+
     # ── 5. reset diversity ────────────────────────────────────────────
     tip_list, bins = [], []
     with torch.inference_mode():
