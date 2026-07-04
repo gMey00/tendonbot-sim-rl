@@ -183,13 +183,47 @@ Stub set + `target_bin_rel_ee` (the carry is EE-centric), `shirt_lowest_rel`
 `release_rate`, `max_target_fraction`, `grasp_rate` (base); exact per-episode
 batch stash (`last_finished_batch`) for the eval script's per-bin accounting.
 
-### Verification
+### Verification (job 3809918, RTX PRO 6000, 2026-07-04)
 
 Scripts (usage headers in each): `scripts/model_validation/check_shirt_distribute_env.py`
 (pose bank / reset integrity / 120-step hold / release / diversity),
 `scripts/model_validation/baseline_shirt_distribute.py` (DLS-IK carry→release per drum
 THROUGH the training action path), `scripts/skrl/evaluate_shirt_distribute.py`
-(deterministic, per-bin).  Results: see Phase-1 results below (job logs
-`$WORK/slurm_logs/sd_validate_*.out`).
+(deterministic, per-bin).
 
-*(results being filled in as jobs complete)*
+**Env check (8 envs):**
+
+| Check | Result |
+|---|---|
+| pose_bank | **FAIL first run** — 6 poses / 1600 samples (0.4 % blind acceptance); the exploit phase gated on 8 seeds never engaged → fixed: exploit from the FIRST seed, mixed 50/50 explore/exploit rounds (±0.25 rad), 300-round cap; re-check pending (job 3810091) |
+| reset_attached | PASS 8/8 |
+| reset_at_tip | PASS — grasp-point↔tip max 0.077 m |
+| reset_drape_clear | PASS — drape ≤ pose's allowed (max 0.759 m vs allowed min 0.574), bottom min 0.523 m over free space |
+| hold_120_steps | PASS — 0/8 drops, tip dist max 0.034 m, p95 particle speed 0.165 m/s |
+| release_drops | PASS — 8/8 released and fell |
+| reset_diversity | PASS — tip std (0.14, 0.15, 0.12) m, bins [8, 9, 15] |
+
+**Zero/random agents (4 envs, 420 s each):** PASS — obs `(4, 42)`, act `(4, 7)`,
+stepped to timeout, no traceback.  (They RELEASE immediately — binary gripper
+action ≥ 0 ⇒ open — which is expected, and is why `bad_release` exists.)
+
+**Scripted baseline (8 envs, 6-pose bank):**
+
+| Commanded bin | Success | Fraction (mean/min) | Carry time (mean/max) | Held@arrival |
+|---|---|---|---|---|
+| 0 `drum_reusable` (0.15, 1.0) | **8/8** | 0.83 / 0.18 | 0.65 s / 0.82 s | 8/8 |
+| 1 `drum_recyclable` (1.35, 1.0) | **5/8** | 0.54 / 0.00 | 0.43 s / 0.55 s | 8/8 |
+| 2 `drum_trash` (0.75, 1.6) | **8/8** | 0.86 / 0.34 | 0.35 s / 0.45 s | 8/8 |
+| **overall** | **21/24 (0.88)** | | | |
+
+All three drums are reachable through the training action path (final xy err
+≤ 0.06 m, grasp held everywhere) — **no TossingBot throw needed**.  Carry times
+≤ 0.82 s ⇒ the 8 s episode has ample headroom.  The recyclable misses are
+release-quality misses (fraction 0.00 — draped outside), not reachability:
+exactly what the graded release event should teach the policy to avoid.
+
+### Next
+
+Re-check pose-bank yield (fixed sweep) + RTX PRO 6000 env-count benchmark
+(job 3810091); first PPO run 64 envs (job 3810092, `sd_train1`); deterministic
+per-bin eval ≥ 2 seeds × ≥ 48 episodes.
