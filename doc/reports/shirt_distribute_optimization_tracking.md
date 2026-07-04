@@ -222,8 +222,53 @@ All three drums are reachable through the training action path (final xy err
 release-quality misses (fraction 0.00 — draped outside), not reachability:
 exactly what the graded release event should teach the policy to avoid.
 
-### Next
+### Re-check + RTX PRO 6000 env-count benchmark (job 3810091, 2026-07-04)
 
-Re-check pose-bank yield (fixed sweep) + RTX PRO 6000 env-count benchmark
-(job 3810091); first PPO run 64 envs (job 3810092, `sd_train1`); deterministic
-per-bin eval ≥ 2 seeds × ≥ 48 episodes.
+**Fixed pose sweep: 7/7 PASS** — 256 poses (target met), tips
+x [0.38, 0.98], y [0.65, 1.30], z [1.34, 1.66]; reset integrity, 120-step
+hold (0/16 drops, p95 particle speed 0.088 m/s), release, diversity all PASS.
+Note the presentation-side corner (x < 0.38) stays unpopulated: it lies within
+0.55 m of `drum_reusable`, so it needs tip z ≥ 1.47 with fingers down —
+reachable but rare; acceptable width for now (the Task-2 bank will define the
+true distribution at the seam).
+
+**Env-count benchmark (`bench_cloth_env_count.py --task Template-Shirt-Distribute-UR5e-F140-v0`),
+RTX PRO 6000 (driver 610.43), 0 PhysX overflow warnings:**
+
+| N envs | construct (s) | steps/s | env·steps/s | CUDA reserved (GB) | driver used (GB) |
+|---|---|---|---|---|---|
+| 32 | 19.8 | 9.79 | 313 | 0.17 | 4.87 |
+| **64** | 44.0 | 5.58 | **357** | 0.23 | 6.04 |
+| 128 | 101.5 | 1.37 | 175 | 0.33 | 8.31 |
+
+The A6000 lesson holds on the RTX PRO 6000: throughput peaks at N = 64 and
+FALLS at 128 (−51 %).  **Train at 64 envs.**
+
+### Training run 1 (`sd_train1`, job 3810092, seed 42, 64 envs, 20 000 timesteps)
+
+Completed in 1 h 07 (93 % GPU util, ≈ 5.1 steps/s — matches the benchmark).
+**Metrics bug found:** all `Metrics/distribute_*` writes were wiped — they were
+written BEFORE `super()._reset_idx()`, which rebuilds `extras["log"]`
+(only the base class's `grasp_rate`, written after its super(), survived).
+Fixed; run 1 is otherwise interpretable through the reward components:
+
+| Episode_Reward (mean) | start | 25 % | 50 % | 75 % | end |
+|---|---|---|---|---|---|
+| `in_target_bin` (w 120) | 0.0 | 35.4 | 15.7 | 39.5 | 17.6 |
+| `return_to_neutral` (w 200) | 0.0 | 58.4 | 24.0 | 51.3 | 37.2 |
+| `release_event` (w 240, ≤ 4 max) | 0.0 | 0.30 | 0.10 | 0.10 | 0.08 |
+| `bad_release` (w −120) | −0.01 | −0.29 | −0.32 | −0.11 | −0.19 |
+| `in_wrong_bin` (w −60) | 0.0 | 0.0 | −0.52 | −0.03 | −2.06 |
+| `grasp_rate` | 0.05 | 1.0 | 1.0 | 1.0 | 1.0 |
+| Policy std | 0.61 | 0.59 | 0.58 | 0.58 | 0.58 |
+| mean episode steps (of 480) | 192 | 457 | 322 | 315 | 319 |
+
+Reading: correct-bin drops ARE learned (`in_target_bin` + `return_to_neutral`
+positive and large), but release QUALITY is poor (`release_event` ≈ 2 % of
+max — releases are rim-grazes, not centred cleared drops), wrong-bin landings
+grow late, the policy std barely anneals (0.61 → 0.58 — the shirt_place
+determinism watch-item), and mean episode length ~319/480 suggests a
+termination firing early (diagnose: joint_vel vs belt_collision — termination
+tags did not reach TB either).  Deterministic per-bin eval of run-1
+checkpoints running (job 3810140); 2-seed retrain with fixed metrics queued
+(`sd_train2`, job 3810141, seeds 1/2).
