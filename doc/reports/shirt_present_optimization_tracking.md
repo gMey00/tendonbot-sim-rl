@@ -319,3 +319,41 @@ Monotone progress across iterations (0.625 → 0.750 → 0.792 → 0.833); the s
 ~5 % non-grasp episodes + latch margins.  → Run 6: same cfg, 96 k steps, seed 43
 (job 3811137) — s42 was still climbing at cap; watching for the run-3-style late collapse
 (checkpoint selection handles it either way).
+
+### Run 6 — SUCCESS (96 k steps, seed 43, job 3811137)
+
+Same config as run 5 (drop −240, coverage 14, overstretch onset 1.05).  Stochastic
+present_rate holds 0.87–1.00 over the whole back half (48–96 k) with drop_rate 0.00 and
+grasp_rate 1.00 — no run-3-style collapse.  **Deterministic checkpoint selection**
+(mean actions, 96 episodes each):
+
+| Checkpoint | eval seed | present_rate | grasp | drop | final coverage |
+|---|---|---|---|---|---|
+| agent_96000 | 7 | **0.927** | 0.990 | 0.000 | 0.682 |
+| agent_96000 | 11 | **0.927** | 0.990 | 0.000 | 0.682 |
+| agent_90000 | 7 | 0.917 | 0.990 | 0.000 | 0.664 |
+| agent_90000 | 11 | 0.927 | 0.990 | 0.000 | 0.669 |
+
+**SELECTED: `2026-07-04_15-21-09_ppo_torch_seed43/checkpoints/agent_96000.pt`** —
+windowed present latch ≥ 0.9 across 2 eval seeds × 96 episodes ✓ (§2 success criterion).
+Final coverage 0.66–0.68 sits ABOVE the ICRA-2024 reference band (0.55–0.60) and far above
+both the raw hang (0.44) and the scripted baseline's holds (≤ 0.51): the policy learned an
+oriented stretch the blind ray-pull cannot do.  Mean coverage of presented terminal states:
+0.71–0.72 (snapshot job 3811352).
+
+Iteration ladder (deterministic present_rate): 0.625 (run 1, 20 k) → 0.708 (run 2, 60 k)
+→ 0.750 (run 3, drop −240) → 0.792 (run 4 sweep) → 0.833 (run 5, coverage 14 +
+overstretch moat) → **0.927** (run 6, 96 k).
+
+### Task-2 → Task-3 terminal bank hook — VALIDATED (job 3811352)
+
+`snapshot_terminal_states` field shapes/finiteness/attachment invariants all pass on live
+rollouts of the selected checkpoint (2 rounds × 32 envs: presented 30/32, 28/32; holder
+anchor never lost).  Sample bank: 58 presented states (pos+vel + BOTH grasp masks +
+stretch/coverage metadata) → `scripts/model_validation/snapshot_shirt_present_terminal.py`
+regenerates at any size for shirt_distribute.
+
+### Figures
+
+`shirt_present/figures/ur5e_f140/01–06` (run 6, plotted via
+`scripts/plot_shirt_present_training_results.py`).
