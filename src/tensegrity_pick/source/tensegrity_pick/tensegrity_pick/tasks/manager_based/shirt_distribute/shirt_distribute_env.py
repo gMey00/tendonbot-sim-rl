@@ -540,11 +540,22 @@ class ShirtDistributeEnv(ClothSortingEnvBase):
             else env_ids
         )
         fin_dist = fin_rel = fin_bin = fin_frac = None
+        term_stats: dict[str, torch.Tensor] = {}
         if len(env_ids_t) > 0:
             fin_dist = self._was_distributed[env_ids_t].float()
             fin_rel = self._was_released[env_ids_t].float()
             fin_bin = self._target_bin[env_ids_t]
             fin_frac = self._max_target_fraction[env_ids_t].mean()
+            # Termination-cause fractions of the finishing batch, logged as
+            # TENSORS: the manager's own Episode_Termination floats are
+            # dropped by the skrl wrapper (only tensors reach TensorBoard).
+            term_stats["Metrics/mean_episode_length"] = (
+                self.episode_length_buf[env_ids_t].float().mean()
+            )
+            for name in self.termination_manager.active_terms:
+                term_stats[f"Metrics/term_{name}"] = (
+                    self.termination_manager.get_term(name)[env_ids_t].float().mean()
+                )
             # Exact per-episode outcomes of the batch that just finished —
             # consumed by scripts/skrl/evaluate_shirt_distribute.py for the
             # per-bin breakdown (extras log only carries batch means).
@@ -563,6 +574,7 @@ class ShirtDistributeEnv(ClothSortingEnvBase):
         # rebuilds extras["log"] in there — writes made before are silently
         # wiped (found in run 1: distribute_success_rate never reached TB).
         if fin_dist is not None:
+            self.extras["log"].update(term_stats)
             self.extras["log"]["Metrics/distribute_success_rate"] = fin_dist.mean()
             self.extras["log"]["Metrics/release_rate"] = fin_rel.mean()
             self.extras["log"]["Metrics/max_target_fraction"] = fin_frac

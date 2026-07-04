@@ -17,7 +17,12 @@ models:
     # deterministic mean absorbs the behaviour (deployment plays the mean).
     min_log_std: -3.0
     max_log_std: 0.5
-    initial_log_std: -0.5
+    # -1.0 (was -0.5): the arm actions are RELATIVE joint positions
+    # (velocity-like), so exploration noise integrates into a position
+    # random-walk — at sigma 0.6 the noise itself solved the task
+    # stochastically (run 1: stochastic in_target_bin >> 0, deterministic
+    # success 0.01, mean|action| 0.84) and the mean never sharpened.
+    initial_log_std: -1.0
     network:
       - name: net
         input: OBSERVATIONS
@@ -89,5 +94,5 @@ agent:
 # extend if the policy is still improving at the cap.
 trainer:
   class: SequentialTrainer
-  timesteps: 20000
+  timesteps: 48000
   environment_info: log

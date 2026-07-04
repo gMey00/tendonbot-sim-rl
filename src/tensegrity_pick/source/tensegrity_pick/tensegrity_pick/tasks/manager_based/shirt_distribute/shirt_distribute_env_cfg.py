@@ -244,7 +244,14 @@ class RewardsCfg:
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=MISSING), "std": 0.40},
     )
 
-    # ── Regularisation (curriculum ramps at 2000 steps) ─────────────
+    # ── Regularisation (curriculum ramps, see CurriculumCfg) ────────
+    # action_l2 (MAGNITUDE, not rate): with RELATIVE joint actions a constant
+    # saturated action is a constant-velocity command with ZERO action-rate
+    # penalty — run 1's deterministic policy parked at ±0.84 mean |action|
+    # (joints pinned at limits) and landed 1 % while the stochastic policy
+    # scored via noise.  Penalizing magnitude pulls the mean toward "hold
+    # still" unless motion pays.
+    action_l2 = RewTerm(func=mdp.action_l2, weight=-0.1)
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-3e-4)
     joint_vel = RewTerm(
         func=mdp.joint_vel_l2_controlled,
@@ -275,6 +282,13 @@ class CurriculumCfg:
     joint_vel = CurrTerm(
         func=mdp.modify_reward_weight,
         params={"term_name": "joint_vel", "weight": -2e-3, "num_steps": 2000},
+    )
+    # Ramp the magnitude penalty after behaviour discovery (−0.4 ≈ −9/episode
+    # at run-1's saturated |a| ≈ 0.7 — decisive against limit-parking, small
+    # against a deliberate ~1 s carry).
+    action_l2 = CurrTerm(
+        func=mdp.modify_reward_weight,
+        params={"term_name": "action_l2", "weight": -0.4, "num_steps": 4000},
     )
 
 
