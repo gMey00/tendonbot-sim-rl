@@ -408,11 +408,13 @@ class ShirtPresentEnv(ClothSortingEnvBase):
         drop_rate = torch.tensor(0.0, device=self.device)
         final_cov = torch.tensor(0.0, device=self.device)
         final_stretch = torch.tensor(0.0, device=self.device)
+        final_norm = torch.tensor(0.0, device=self.device)
         if len(env_ids_t) > 0:
             present_rate = self._was_presented[env_ids_t].float().mean()
             drop_rate = self._was_dropped[env_ids_t].float().mean()
             final_cov = self._coverage_buf[env_ids_t].mean()
             final_stretch = self._stretch_buf[env_ids_t].mean()
+            final_norm = (self._stretch_buf[env_ids_t] / self._r0[env_ids_t]).mean()
 
         result = super()._reset_idx(env_ids)
 
@@ -431,9 +433,7 @@ class ShirtPresentEnv(ClothSortingEnvBase):
         self.extras["log"]["Metrics/drop_rate"] = drop_rate
         self.extras["log"]["Metrics/final_coverage"] = final_cov
         self.extras["log"]["Metrics/final_stretch_ratio"] = final_stretch
-        if len(env_ids_t) > 0:
-            self.extras["log"]["Metrics/final_stretch_norm"] = (
-                self._stretch_buf[env_ids_t] / self._r0[env_ids_t]).mean()
+        self.extras["log"]["Metrics/final_stretch_norm"] = final_norm
         return result
 
     # ------------------------------------------------------------------
