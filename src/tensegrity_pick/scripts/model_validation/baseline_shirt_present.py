@@ -46,6 +46,9 @@ parser.add_argument("--target_ratio", type=float, default=1.00,
                     help="tautness ratio the stretch phase servos to")
 parser.add_argument("--jac_every", type=int, default=200,
                     help="re-estimate the FD Jacobian every N approach steps")
+parser.add_argument("--act_clamp", type=float, default=2.5,
+                    help="absolute arm-action clamp (JointPositionAction scale 0.5 -> "
+                         "rad from default = 0.5x this; v1's 1.0 saturated 0/16 reached)")
 parser.add_argument("--seed", type=int, default=0)
 AppLauncher.add_app_launcher_args(parser)
 args_cli, _ = parser.parse_known_args()
@@ -77,8 +80,8 @@ CLOSE_STEPS = 50
 STRETCH_MAX_STEPS = 300
 HOLD_STEPS = 120
 
-K_SERVO = 0.12            # fraction of the Cartesian error commanded per step
-MAX_DA = 0.04             # per-step action-delta clamp (action units)
+K_SERVO = 0.15            # fraction of the Cartesian error commanded per step
+MAX_DA = 0.05             # per-step action-delta clamp (action units)
 
 
 def pct(t: torch.Tensor, q: float) -> float:
@@ -132,7 +135,8 @@ def main() -> None:
         err = (target - tip()) * K_SERVO
         da = torch.bmm(J_pinv, err.unsqueeze(-1)).squeeze(-1)
         da = torch.clamp(da, -MAX_DA, MAX_DA) * active.float().unsqueeze(-1)
-        a[:, :N_ARM] = torch.clamp(a[:, :N_ARM] + da, -1.0, 1.0)
+        c = args_cli.act_clamp
+        a[:, :N_ARM] = torch.clamp(a[:, :N_ARM] + da, -c, c)
 
     # ── Phase 0: settle the restored hang, measure the RAW distributions ─
     for _ in range(SETTLE_STEPS):
@@ -168,9 +172,16 @@ def main() -> None:
             break
         servo_to(J_pinv, target, active=~reached)
         step_once()
+        if (it + 1) % 120 == 0:
+            sat = (a[:, :N_ARM].abs() > 0.98 * args_cli.act_clamp).float().mean()
+            print(f"[approach] step {it + 1}: mean dist {d.mean():.3f} m, "
+                  f"reached {int(reached.sum())}/{n}, action-sat {sat:.2f}")
     d = (tip() - u.shirt_lowest_point_w).norm(dim=-1)
+    sat = (a[:, :N_ARM].abs() > 0.98 * args_cli.act_clamp).float().mean()
+    max_act = a[:, :N_ARM].abs().max()
     print(f"\n[approach] reached (<7 cm): {int(reached.sum())}/{n} "
-          f"after {it + 1} steps")
+          f"after {it + 1} steps (action-sat {sat:.2f}, max |a| {max_act:.2f} "
+          f"of clamp {args_cli.act_clamp})")
     print(stats("[approach] final tip→lowest dist (m)", d))
     print(stats("[approach] min tip→lowest dist (m)", min_d))
 
