@@ -189,11 +189,17 @@ class RewardsCfg:
     # 3. Stretch: clamped tautness progress (gated on both attachments)
     stretch = RewTerm(func=task_rew.stretch_progress, weight=8.0, params={"lo": 0.50, "hi": 0.98})
     # 4. Coverage: camera-plane silhouette coverage (gated on both attachments)
-    coverage = RewTerm(func=task_rew.coverage_reward, weight=10.0)
+    # 10 → 14 after run 3/4 diags: coverage was the weakest presented gate
+    # (0.47–0.55 in-gate fraction while holding; some episodes hover just
+    # under the 0.50 threshold).
+    coverage = RewTerm(func=task_rew.coverage_reward, weight=14.0)
     # 5. Success: full presentation predicate — dominant per-step term
     presented = RewTerm(func=task_rew.presented, weight=30.0)
-    # 6. Safety: tautness beyond the validated band (per-step, proportional)
-    overstretch = RewTerm(func=task_rew.overstretch_penalty, weight=-40.0, params={"limit": 1.10})
+    # 6. Safety: tautness beyond the validated band (per-step, proportional).
+    # Penalty onset 1.10 → 1.05: the reward plateau 0.97–1.10 had no gradient,
+    # and diag'd failures held at ratio ~1.13 just past the predicate band
+    # edge — starting the penalty at 1.05 creates a moat under it.
+    overstretch = RewTerm(func=task_rew.overstretch_penalty, weight=-40.0, params={"limit": 1.05})
     # 7. Failure: one-shot when an established hand grasp is lost (dt-scaled
     # ≈ −4).  −120 → −240 after run-2 evals: grasp_rate 1.00 but drop_rate
     # 0.135–0.229 capped deterministic present_rate at 0.65–0.71 (the policy
