@@ -358,3 +358,28 @@ Two mechanisms identified from the new `Metrics/term_*` channels:
 
 (Iteration 2's `action_l2` + σ₀ = e⁻¹ + 48 k budget retained; sd_train3 runs
 to completion for attribution and gets the same deterministic eval.)
+
+### Iteration-3 readouts (mid-run)
+
+**Cliff fixed (seed 1, TB @ 18.6 k):** `term_belt_collision` 0.405 → **0.020**,
+mean episode length 475/480, `settle_after_success` pays 39/ep, stochastic
+success 0.66–0.79, release 1.0.  Seed 2 shows the release-collapse again even
+at −60 (release_rate 0.002 until ~13 k, recovered to 0.47) — the penalty
+needs a discovery curriculum, not just a smaller weight.
+
+**Deterministic eval of seed 1 @ 18 k (96 eps, seed 7):**
+
+```
+distribute_success_rate = 0.094   bin0 0.057 | bin1 0.226 | bin2 0.000
+release_rate = 0.885   mean|act| = 0.226
+```
+
+`action_l2` cured the saturation (mean|act| 0.836 → 0.226 — the mean now
+moves deliberately and releases), and bin 1 (recyclable — 0.000 in every
+earlier eval) is learned first by the MEAN.  Remaining gap: placement
+precision.  σ is state-independent and anneals glacially (0.368 → 0.342 over
+18 k) — with σ·scale ≈ 1.4 cm/step of joint-space noise the sampled policy is
+as precise as the drum tolerance, so PPO feels little pressure to sharpen
+the mean beyond it.  Next levers: σ-anneal time (longer budget), release
+penalty curriculum (seed variance), and evaluating the FINAL checkpoints
+(σ falling, success still climbing at the cap).
