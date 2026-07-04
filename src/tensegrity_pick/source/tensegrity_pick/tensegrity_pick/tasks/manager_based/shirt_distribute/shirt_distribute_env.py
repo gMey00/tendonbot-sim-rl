@@ -78,31 +78,44 @@ DRUM_TOP = DRUM_HEIGHT_M          # 0.88 m
 # ── Holding-pose sweep (initial-state distribution) ───────────────────────
 # Env-local box the closed-gripper finger tip must land in.  Spans the
 # presentation area (0.15, 0.90, 1.60) and the region between it and the
-# robot's home posture (base at (0.75, 1.0, 0.75)).  Z floor 1.55 guarantees
-# allowed drape ≥ 0.63 m below the tip before the hang would touch a drum top
-# (0.88 + 0.04 margin) — the hanging bank's drape ranges 0.47–0.95 m
-# (mean 0.74), so ≥ 60/356 states remain available at the lowest tips.
-TIP_BOX_X = (0.10, 0.95)
-TIP_BOX_Y = (0.65, 1.15)
-TIP_BOX_Z = (1.55, 1.80)
+# robot's home posture (base at (0.75, 1.0, 0.75)).  Z floor 1.20: the tip
+# with fingers down needs the flange ≥ ~0.1–0.24 m higher, and the UR5e's
+# flange tops out ≈ 1.83 m — the first sweep with a 1.55 floor found ZERO
+# poses in 120 rounds (the acceptance volume sat at the workspace edge).
+TIP_BOX_X = (0.10, 1.00)
+TIP_BOX_Y = (0.65, 1.30)
+TIP_BOX_Z = (1.20, 1.75)
 # Fingers must point downward: world-z drop from the EE frame origin to the
-# dynamic finger tip ≤ −0.12 m (of the ~0.235 m closed-tip offset ⇒ ≤ ~60°
+# dynamic finger tip ≥ 0.10 m (of the ~0.235 m closed-tip offset ⇒ ≤ ~65°
 # from vertical) — end-of-Task-2 the gripper holds the shirt hanging.
-TIP_DOWN_MIN_DROP = 0.12
+TIP_DOWN_MIN_DROP = 0.10
 # Guided rejection sampling: explore rounds sample uniform half-range widths
 # (capped) around the default pose; once ≥ EXPLOIT_MIN_SEEDS poses are found,
 # further rounds perturb random accepted poses by ±EXPLOIT_NOISE to densify.
-POSE_SWEEP_MAX_ROUNDS = 120
+POSE_SWEEP_MAX_ROUNDS = 200
 POSE_SWEEP_SETTLE_STEPS = 2
 POSE_BANK_TARGET = 256
 POSE_BANK_MIN = 32
 EXPLORE_WIDTH_CAP = 3.1416        # rad, per-joint half-range cap
 EXPLOIT_MIN_SEEDS = 8
 EXPLOIT_NOISE = 0.30              # rad
-# Drape headroom: hang must clear the drum tops from the sampled tip height.
+# ── Pose-dependent drape limit ─────────────────────────────────────────────
+# The restored hang must clear whatever is BELOW the sampled tip, not a blunt
+# global bound: over a drum footprint (xy within DRUM_AVOID_RADIUS = drum
+# radius 0.27 + cloth xy half-extent ~0.25) the bottom must clear the drum
+# top (0.88 + margin); near the belt (tip y such that the ~±0.25 m cloth
+# reaches the collider's y ≤ 0.45) it must clear the belt surface (0.80);
+# elsewhere only the floor is below and the full bank is admissible.  Poses
+# whose allowed drape is below the shortest bank level are REJECTED at sweep
+# time (the bank's drape spans 0.47–0.95 m, mean 0.74 — a relaxed one-point
+# hang of this garment cannot be shorter).
 DRAPE_MARGIN = 0.04
-# max_drape quantization levels for the bucketed bank restore (ascending).
-DRAPE_LEVELS = (0.62, 0.72, 0.82)
+DRUM_AVOID_RADIUS = 0.55
+BELT_AVOID_Y = 0.72
+BELT_TOP = 0.80                   # CONVEYOR_SURFACE_HEIGHT_M
+# max_drape quantization levels for the bucketed bank restore (ascending);
+# 0.55 admits the ~9 shortest bank states (× yaw/mirror augmentation).
+DRAPE_LEVELS = (0.55, 0.62, 0.72, 0.82, 0.95)
 
 
 class ShirtDistributeEnv(ClothSortingEnvBase):
@@ -218,6 +231,29 @@ class ShirtDistributeEnv(ClothSortingEnvBase):
     # Holding-pose bank (initial-state distribution over arm configs)
     # ------------------------------------------------------------------
 
+    def _allowed_drape(self, tip_local: torch.Tensor) -> torch.Tensor:
+        """Max admissible hang length below each env-local tip ``[K]``.
+
+        Pose-dependent: constrained by the drum tops only when the tip is
+        over/near a drum footprint, by the belt surface only near the belt,
+        otherwise unconstrained (floor is far below all sampled tips).
+        """
+        dev = tip_local.device
+        allowed = torch.full((tip_local.shape[0],), 10.0, device=dev)
+        near_belt = tip_local[:, 1] < BELT_AVOID_Y
+        allowed = torch.where(
+            near_belt, tip_local[:, 2] - BELT_TOP - DRAPE_MARGIN, allowed
+        )
+        for pos in DRUM_POSITIONS:
+            center = torch.tensor(pos[:2], device=dev, dtype=torch.float32)
+            near = torch.norm(tip_local[:, :2] - center, dim=-1) < DRUM_AVOID_RADIUS
+            allowed = torch.where(
+                near,
+                torch.minimum(allowed, tip_local[:, 2] - DRUM_TOP - DRAPE_MARGIN),
+                allowed,
+            )
+        return allowed
+
     def _build_holding_pose_bank(self) -> None:
         """Sample end-of-Task-2-like holding poses by guided rejection FK.
 
@@ -249,8 +285,12 @@ class ShirtDistributeEnv(ClothSortingEnvBase):
 
         bank_q: list[torch.Tensor] = []
         bank_tip: list[torch.Tensor] = []
+        bank_drape: list[torch.Tensor] = []
         n_accepted = 0
         zeros_vel = torch.zeros(n, a, device=dev)
+        # Failure diagnostics: where DID the sampled tips land?
+        seen_min = torch.full((3,), float("inf"), device=dev)
+        seen_max = torch.full((3,), float("-inf"), device=dev)
 
         for rnd in range(POSE_SWEEP_MAX_ROUNDS):
             if n_accepted >= POSE_BANK_TARGET:
@@ -274,6 +314,8 @@ class ShirtDistributeEnv(ClothSortingEnvBase):
 
             tip = self._finger_tip_pos()                               # [N, 3]
             tip_local = tip - self.scene.env_origins
+            seen_min = torch.minimum(seen_min, tip_local.min(dim=0).values)
+            seen_max = torch.maximum(seen_max, tip_local.max(dim=0).values)
             ee_z = robot.data.body_pos_w[:, self._ee_body_idx, 2]
             in_box = (
                 (tip_local[:, 0] > TIP_BOX_X[0]) & (tip_local[:, 0] < TIP_BOX_X[1])
@@ -281,23 +323,33 @@ class ShirtDistributeEnv(ClothSortingEnvBase):
                 & (tip_local[:, 2] > TIP_BOX_Z[0]) & (tip_local[:, 2] < TIP_BOX_Z[1])
             )
             down = (ee_z - tip[:, 2]) > TIP_DOWN_MIN_DROP
+            # A pose is only useful if at least the shortest bank states fit
+            # below its tip (pose-dependent drape limit).
+            allowed = self._allowed_drape(tip_local)
+            fits = allowed >= DRAPE_LEVELS[0]
             # Read back actual joint positions (PD equilibrium ≈ q, but store
             # the truth so reset writes reproduce the recorded tip).
-            ok = in_box & down
+            ok = in_box & down & fits
             if ok.any():
                 q_now = robot.data.joint_pos[:, arm_ids]
                 bank_q.append(q_now[ok].clone())
                 bank_tip.append(tip_local[ok].clone())
+                bank_drape.append(allowed[ok].clone())
                 n_accepted += int(ok.sum())
 
         if n_accepted == 0:
             raise RuntimeError(
                 "Holding-pose sweep found NO pose with the finger tip inside "
                 f"TIP_BOX x{TIP_BOX_X} y{TIP_BOX_Y} z{TIP_BOX_Z} after "
-                f"{POSE_SWEEP_MAX_ROUNDS} rounds — check the robot mount/box."
+                f"{POSE_SWEEP_MAX_ROUNDS} rounds — sampled tips spanned "
+                f"x[{seen_min[0]:.2f},{seen_max[0]:.2f}] "
+                f"y[{seen_min[1]:.2f},{seen_max[1]:.2f}] "
+                f"z[{seen_min[2]:.2f},{seen_max[2]:.2f}]; "
+                "check the robot mount/box."
             )
         self._pose_bank_q = torch.cat(bank_q, dim=0)[:POSE_BANK_TARGET]
         self._pose_bank_tip = torch.cat(bank_tip, dim=0)[:POSE_BANK_TARGET]
+        self._pose_bank_drape = torch.cat(bank_drape, dim=0)[:POSE_BANK_TARGET]
         if n_accepted < POSE_BANK_MIN:
             log.warning(
                 "Holding-pose bank has only %d poses (< %d) — initial-state "
@@ -341,13 +393,14 @@ class ShirtDistributeEnv(ClothSortingEnvBase):
         anchors = torch.zeros(self.num_envs, 3, device=dev)
         anchors[env_ids] = self.scene.env_origins[env_ids] + tip_local
 
-        # Bucket by per-env allowed drape (tip height − drum top − margin) so
-        # every restored hang clears the drum tops; quantize down to the
-        # nearest DRAPE_LEVEL (the restore helper takes one max_drape/call).
-        allowed = tip_local[:, 2] - DRUM_TOP - DRAPE_MARGIN
+        # Bucket by the pose's admissible drape (pose-dependent: drum tops /
+        # belt / free space — computed at sweep time) quantized DOWN to the
+        # nearest DRAPE_LEVEL (the restore helper takes one max_drape/call);
+        # sweep acceptance guarantees allowed ≥ DRAPE_LEVELS[0].
+        allowed = self._pose_bank_drape[idx]
         restored = torch.zeros(k, dtype=torch.bool, device=dev)
         levels = torch.tensor(DRAPE_LEVELS, device=dev)
-        assigned = torch.bucketize(allowed, levels, right=True) - 1   # [k] index into levels, -1 if below
+        assigned = (torch.bucketize(allowed, levels, right=True) - 1).clamp(min=0)
         for li in range(len(DRAPE_LEVELS)):
             sel = assigned == li
             if not sel.any():
@@ -358,18 +411,15 @@ class ShirtDistributeEnv(ClothSortingEnvBase):
             restored |= sel & ok
         leftover = ~restored
         if leftover.any():
-            # Tips below the lowest drape level (shouldn't happen with
-            # TIP_BOX_Z ≥ 1.55) or no bank: idealized centre-pin fallback.
+            # No hanging bank loaded: idealized centre-pin fallback (NOT
+            # settled — only for smoke runs without the bank asset).
             ids = env_ids[leftover]
-            if not self._reset_cloth_hanging_from_bank(
-                ids, anchors, slot=0, max_drape=float(DRAPE_LEVELS[0]),
-            ):
-                origins = self.scene.env_origins[ids]
-                centroids = anchors[ids].clone()
-                yaw = torch.zeros(ids.numel(), device=dev)
-                self._cloth.reset_randomized(ids, centroids, yaw)
-                self._cloth.update()
-                self._cloth.attach(ids, anchors, 0.07, slot=0)
+            origins = self.scene.env_origins[ids]
+            centroids = anchors[ids].clone()
+            yaw = torch.zeros(ids.numel(), device=dev)
+            self._cloth.reset_randomized(ids, centroids, yaw)
+            self._cloth.update()
+            self._cloth.attach(ids, anchors, 0.07, slot=0)
 
         # The restored attachment IS a grasp: latch was_grasped so the
         # release/success gates are armed from step 0.

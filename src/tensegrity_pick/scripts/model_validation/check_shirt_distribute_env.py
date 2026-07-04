@@ -86,17 +86,23 @@ def main() -> None:
     # ── 2. reset integrity ────────────────────────────────────────────
     attached = u.grasp_active
     tip = u._finger_tip_pos()
+    tip_local = tip - u.scene.env_origins
     gp = u.shirt_grasp_point_w
     d_tip = torch.norm(gp - tip, dim=-1)
     bottom = u.shirt_min_z_w - u.scene.env_origins[:, 2]
+    # Pose-dependent clearance: the hang below the tip must not exceed the
+    # pose's admissible drape (drum tops / belt / free space).
+    drape = tip_local[:, 2] - bottom
+    allowed = u._allowed_drape(tip_local)
     ok_att = bool(attached.all())
     ok_tip = bool((d_tip < 0.15).all())
-    ok_clear = bool((bottom > DRUM_HEIGHT_M).all())
+    ok_clear = bool((drape <= allowed + 0.05).all())
     results.append(("reset_attached", ok_att, f"{int(attached.sum())}/{n} attached"))
     results.append(("reset_at_tip", ok_tip,
                     f"grasp-point↔tip dist max {d_tip.max():.3f} m"))
     results.append(("reset_drape_clear", ok_clear,
-                    f"cloth bottom min {bottom.min():.3f} m (drum top {DRUM_HEIGHT_M})"))
+                    f"drape max {drape.max():.3f} m, allowed min {allowed.min():.3f} m, "
+                    f"bottom min {bottom.min():.3f} m (drum top {DRUM_HEIGHT_M})"))
 
     # ── 3. hold persistence ───────────────────────────────────────────
     drops = torch.zeros(n, dtype=torch.bool, device=dev)

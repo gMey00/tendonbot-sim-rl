@@ -62,7 +62,11 @@ from tensegrity_pick.tasks.manager_based.shared.proj_base_scene_cfg import (  # 
 
 CLOSE, OPEN = -1.0, 1.0        # binary gripper term: action < 0 ⇒ close
 ACTION_SCALE = 0.05            # must match RelativeJointPositionActionCfg.scale
-CARRY_Z = 1.60                 # fingertip height during the carry (hang clears drums)
+# Fingertip height during the carry: all three drums are 0.6 m lateral from
+# the base (0.75, 1.0, 0.75) — 1.45 keeps the flange comfortably inside the
+# UR5e envelope while the grasp point stays above the 0.88 m drum top for
+# the release; long-drape hangs may brush the rims en route (acceptable).
+CARRY_Z = 1.45
 RIM_TARGET = DRUM_HEIGHT_M + 0.06   # lower until cloth bottom reaches this
 CARRY_STEPS = 360              # 6 s cap
 LOWER_STEPS = 120              # 2 s cap
