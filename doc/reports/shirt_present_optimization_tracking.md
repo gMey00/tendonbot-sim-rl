@@ -283,3 +283,19 @@ over 36–50 k, then **collapses after 52 k** (0.25 → 0.04 → 0.00; stretch_n
 1.20) — late-run policy collapse, textbook case for eval-based checkpoint selection
 (shirt_place rule).  Candidates: agent_38000, agent_48000 → deterministic evals jobs
 3810659/3810660.
+
+### Run-3 checkpoint evals + failure taxonomy (jobs 3810659/3810660/3810664)
+
+| Checkpoint | present | grasp | drop | final coverage |
+|---|---|---|---|---|
+| agent_38000 | 0.740 | 1.000 | 0.000 | 0.591 |
+| agent_48000 | **0.750** | 0.958 | 0.000 | 0.647 |
+
+Diag (agent_48000, 8 envs): 5/8 latched.  The three failures are three DIFFERENT
+marginal-gate modes: (1) reach-miss — tip stalled 0.103 m, attach trigger (0.10) never
+fired; (2) overstretch — held at ratio 1.134, just above the 1.10 band edge (the reward
+plateau 0.97–1.10 has no gradient); (3) coverage 0.445 < 0.50.  No structural failure —
+consistent with "more training + checkpoint selection", so next step is a 2-seed sweep at
+the identical config capped at 48 k (jobs 3810665/3810666, seeds 1/2) before any further
+weight surgery.  If no checkpoint reaches 0.9: overstretch-limit param 1.10 → 1.05 (creates
+a gradient moat under the predicate band edge) + coverage weight bump are the queued levers.
