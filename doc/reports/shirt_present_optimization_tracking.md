@@ -186,3 +186,30 @@ train at 64 envs** — 8 % below peak throughput for 2× the PPO batch.
 | Check | Result |
 |---|---|
 | `zero_agent` UR5e, 4 envs headless (job 3809913) | **PASS** — obs `(4, 38)` (+4 task-state dims vs stub), act `(4, 7)`, ~4 min stepping, no traceback |
+
+### Scripted-baseline iterations & the three measured MDP corrections (2026-07-04)
+
+| Run | Controller / change | reached <7 cm | grasped | Key finding |
+|---|---|---|---|---|
+| v1 (3809926) | FD action-space Jacobian, act clamp ±1 | 0/16 | 0/16 | min≈final dist 0.66 m — **action space saturated**: `JointPositionActionCfg` scale 0.5 gives only ±0.5 rad from the ready pose |
+| v2 (3809927) | act clamp ±2.5 (=±1.25 rad) | 5/16 | 4/16 | reaches, but max \|a\| pinned at 2.5; **at-grasp stretch ratio read 1.01–1.58 on slack cloth** → flat-Euclidean rest normalisation over-reads wrap-around grasp pairs |
+| v3 (3810090) | + geodesics from render-mesh faces | — | — | **CUDA device-side assert**: the render mesh has more vertices than the welded particle set; OOB index poisoned the context → job hung to timeout (carb traps signals) |
+| v3.1 (3810135) | + EMA to-limits actions; springs still wrong path | 3/16 | 3/16 | FD servo saturates at joint limits over the full range; **frozen saturated actions after grasp dragged the cloth** (ratio 2.9, coverage 0.86) — hold must command the current posture |
+| v4 | analytic PhysX Jacobian (fresh every step) + posture-hold via inverted to-limits mapping + geodesics from `physxParticle:springIndices/RestLengths` | *pending* | | |
+
+**MDP changes locked in from these measurements** (commits `77b9ae1..`):
+1. **Action space → `EMAJointPositionToLimitsActionCfg(α=0.2)`** (both variants) — the
+   reach-grid joint-space winner.  Justification: reaching the lowest hanging point needs
+   joint targets ±1.25 rad from the ready pose (v2), far outside the stub action's ±0.5 rad
+   and outside the ±1 band a Gaussian policy explores well; to-limits puts every reachable
+   posture inside [-1, 1] by construction.
+2. **Stretch ratio normalised by the GEODESIC rest distance** from the holder patch
+   (vectorised multi-source Bellman-Ford over the authored PBD spring graph
+   `physxParticle:springIndices`/`springRestLengths`, refreshed per reset on GPU; scipy is
+   not installed in the cluster env).  Flat-Euclidean read 1.31–1.58 on slack wrap-around
+   pairs (v2) — a taut straight span should read ≤ 1.0.
+   ⚠️ Do NOT derive the graph from the render mesh's face-vertex indices (v3 crash).
+3. **Coverage threshold 0.55 → 0.50.**  Measured raw-hang coverage over the bank
+   (16 hangs): mean 0.441, p50 0.425, p90 0.530; naive ray-pull stretched holds reach
+   ≤ 0.512.  0.50 exceeds the raw median while remaining achievable; the ICRA-2024
+   band (0.55–0.60) stays the aspirational reference — revisit after training.
