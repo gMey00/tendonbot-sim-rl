@@ -539,10 +539,12 @@ class ShirtDistributeEnv(ClothSortingEnvBase):
             if not isinstance(env_ids, torch.Tensor)
             else env_ids
         )
+        fin_dist = fin_rel = fin_bin = fin_frac = None
         if len(env_ids_t) > 0:
             fin_dist = self._was_distributed[env_ids_t].float()
             fin_rel = self._was_released[env_ids_t].float()
             fin_bin = self._target_bin[env_ids_t]
+            fin_frac = self._max_target_fraction[env_ids_t].mean()
             # Exact per-episode outcomes of the batch that just finished —
             # consumed by scripts/skrl/evaluate_shirt_distribute.py for the
             # per-bin breakdown (extras log only carries batch means).
@@ -551,12 +553,19 @@ class ShirtDistributeEnv(ClothSortingEnvBase):
                 "success": fin_dist.clone(),
                 "released": fin_rel.clone(),
             }
-            self.extras.setdefault("log", {})
+            # Resample the commanded bin BEFORE the parent reset so reset-step
+            # observations already see the new goal.
+            self._target_bin[env_ids_t] = torch.randint(
+                len(DRUM_POSITIONS), (len(env_ids_t),), device=self.device
+            )
+        result = super()._reset_idx(env_ids)
+        # Metric writes must come AFTER super()._reset_idx(): the manager
+        # rebuilds extras["log"] in there — writes made before are silently
+        # wiped (found in run 1: distribute_success_rate never reached TB).
+        if fin_dist is not None:
             self.extras["log"]["Metrics/distribute_success_rate"] = fin_dist.mean()
             self.extras["log"]["Metrics/release_rate"] = fin_rel.mean()
-            self.extras["log"]["Metrics/max_target_fraction"] = (
-                self._max_target_fraction[env_ids_t].mean()
-            )
+            self.extras["log"]["Metrics/max_target_fraction"] = fin_frac
             # Per-bin success (only when the batch contains that bin — the
             # scalar means over exactly the envs that just finished).
             for b in range(len(DRUM_POSITIONS)):
@@ -565,12 +574,6 @@ class ShirtDistributeEnv(ClothSortingEnvBase):
                     self.extras["log"][f"Metrics/distribute_success_bin{b}"] = (
                         fin_dist[m].mean()
                     )
-            # Resample the commanded bin BEFORE the parent reset so reset-step
-            # observations already see the new goal.
-            self._target_bin[env_ids_t] = torch.randint(
-                len(DRUM_POSITIONS), (len(env_ids_t),), device=self.device
-            )
-        result = super()._reset_idx(env_ids)
         self._was_distributed[env_ids_t] = False
         self._was_released[env_ids_t] = False
         self._release_event[env_ids_t] = 0.0
