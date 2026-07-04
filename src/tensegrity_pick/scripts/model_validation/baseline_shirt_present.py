@@ -7,20 +7,22 @@ Three purposes (research-report + shirt_pick-lesson recommendations):
   2. MEASURE the coverage / tautness distributions of (a) the raw hang and
      (b) the scripted stretch — the empirical basis for the success
      thresholds (``COVERAGE_THRESHOLD``, ``STRETCH_BAND`` in
-     shirt_present_env.py);
+     shirt_present_env.py), plus a geodesic sanity check (straight vertical
+     hang ⇒ anchor→lowest Euclidean ≈ geodesic);
   3. catch kinematic-reach problems of the UR5e around the hanging cloth
      early (shirt_place lesson: gate every goal predicate on reachable
      geometry).
 
-Controller: the UR5e variant uses joint-space actions, so the Cartesian
-servo runs through a finite-difference Jacobian estimated IN ACTION SPACE
-(columns = tip displacement per action unit).  Per the shirt_pick lesson,
-the Jacobian is re-estimated every ``--jac_every`` steps during the approach
-— NEVER trust an "unreachable" verdict from a stale-Jacobian servo.
-
-Phases: settle → estimate J → approach the lowest point → close (the
-deterministic attach fires within 0.10 m) → stretch along the anchor→grasp
-line, feedback-stopped on the live tautness ratio → hold + measure.
+Controller history (tracking report Phase 1):
+  * v1/v2 — finite-difference action-space Jacobian: saturated the stub's
+    delta-from-default action space (the measured justification for the
+    EMA to-limits switch) and went stale between re-estimates (3–5/16
+    reached).
+  * v4 (this) — resolved-rate servo on the ANALYTIC PhysX Jacobian, fresh
+    every step (the DifferentialIK data path), acting in joint space and
+    converted to to-limits actions by inverting the normalisation; while a
+    grasp holds, the arm is commanded to its CURRENT posture (v3 lesson:
+    frozen saturated actions dragged the grasped cloth to ratio 2.9).
 
 Usage::
 
@@ -29,7 +31,7 @@ Usage::
     PYTHONUNBUFFERED=1 python scripts/model_validation/baseline_shirt_present.py \
         --headless --num_envs 16
 
-    # different stretch target / pull direction study:
+    # different stretch target:
     ... baseline_shirt_present.py --headless --num_envs 16 --target_ratio 1.05
 """
 
@@ -44,14 +46,6 @@ parser.add_argument("--task", type=str, default="Template-Shirt-Present-UR5e-F14
 parser.add_argument("--num_envs", type=int, default=16)
 parser.add_argument("--target_ratio", type=float, default=1.00,
                     help="tautness ratio the stretch phase servos to")
-parser.add_argument("--jac_every", type=int, default=200,
-                    help="re-estimate the FD Jacobian every N approach steps")
-parser.add_argument("--act_clamp", type=float, default=1.0,
-                    help="absolute arm-action clamp.  v3: the task uses EMA "
-                         "joint-position-to-limits actions, so the full joint range "
-                         "lives inside [-1, 1] (v1/v2 history: delta-from-default "
-                         "scale 0.5 saturated at every clamp tried - the measured "
-                         "justification for the action-space switch)")
 parser.add_argument("--seed", type=int, default=0)
 AppLauncher.add_app_launcher_args(parser)
 args_cli, _ = parser.parse_known_args()
@@ -66,6 +60,7 @@ import isaaclab_tasks  # noqa: F401, E402
 from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
 
 import tensegrity_pick.tasks  # noqa: F401, E402
+from tensegrity_pick.robots.ur5e_robot_cfg import CONTROLLED_JOINT_NAMES  # noqa: E402
 from tensegrity_pick.tasks.manager_based.shirt_present.shirt_present_env import (  # noqa: E402
     COVERAGE_THRESHOLD,
     PRESENT_VEL_THRESHOLD,
@@ -76,15 +71,14 @@ N_ARM = 6                 # UR5e arm action dims (gripper binary is the last dim
 OPEN, CLOSE = 1.0, -1.0   # BinaryJointPositionAction: positive = open
 
 SETTLE_STEPS = 90
-JAC_NUDGE = 0.10          # action-units nudge per joint for the FD Jacobian
-JAC_STEPS = 18            # sim steps for the nudge to settle into the PD arm
-APPROACH_MAX_STEPS = 480
+APPROACH_MAX_STEPS = 420
 CLOSE_STEPS = 50
 STRETCH_MAX_STEPS = 300
 HOLD_STEPS = 120
 
-K_SERVO = 0.15            # fraction of the Cartesian error commanded per step
-MAX_DA = 0.05             # per-step action-delta clamp (action units)
+K_SERVO = 3.0             # Cartesian error gain (1/s): dx = K * err * dt
+DQ_MAX = 0.04             # per-step joint-target step clamp (rad)
+A_LIM = 0.98              # keep commanded normalised targets off the exact limits
 
 
 def pct(t: torch.Tensor, q: float) -> float:
@@ -106,43 +100,52 @@ def main() -> None:
     u = env.unwrapped
     dev = u.device
     n = u.num_envs
+    dt = u.cfg.sim.dt
+
+    robot = u.scene["robot"]
+    arm_ids = [robot.joint_names.index(j) for j in CONTROLLED_JOINT_NAMES]
+    limits = robot.data.joint_pos_limits[:, arm_ids, :]          # [N, 6, 2]
+    lo, hi = limits[..., 0], limits[..., 1]
 
     a = torch.zeros(n, u.action_manager.total_action_dim, device=dev)
     a[:, N_ARM] = OPEN
+    ALL = torch.ones(n, dtype=torch.bool, device=dev)
+
+    def q_arm() -> torch.Tensor:
+        return robot.data.joint_pos[:, arm_ids]
+
+    def to_action(q_des: torch.Tensor) -> torch.Tensor:
+        """Invert the to-limits normalisation: joint targets → actions [-1, 1]."""
+        return torch.clamp(2.0 * (q_des - lo) / (hi - lo) - 1.0, -A_LIM, A_LIM)
+
+    def hold_current(mask: torch.Tensor) -> None:
+        """Command the CURRENT posture for envs in *mask* (stationary hold)."""
+        if mask.any():
+            a[mask, :N_ARM] = to_action(q_arm())[mask]
+
+    def arm_jacobian() -> torch.Tensor:
+        """Positional analytic Jacobian of the EE body wrt the arm joints [N, 3, 6]."""
+        jac = robot.root_physx_view.get_jacobians()              # [N, B-1, 6, D]
+        return jac[:, u._ee_body_idx - 1, :3, :][:, :, arm_ids]
+
+    def tip() -> torch.Tensor:
+        return u._finger_tip_pos()
+
+    def servo_to(target: torch.Tensor, active: torch.Tensor) -> None:
+        """One resolved-rate update toward *target* (fresh analytic Jacobian)."""
+        v = K_SERVO * (target - tip()) * dt                      # desired dx this step (m)
+        J = arm_jacobian()
+        dq = torch.linalg.lstsq(J, v.unsqueeze(-1)).solution.squeeze(-1)
+        dq = torch.clamp(dq, -DQ_MAX, DQ_MAX) * active.float().unsqueeze(-1)
+        a[:, :N_ARM] = to_action(q_arm() + dq)
 
     def step_once() -> None:
         with torch.inference_mode():
             env.step(a)
 
-    def tip() -> torch.Tensor:
-        return u._finger_tip_pos()
-
-    # ── FD Jacobian in action space: J[e, :, j] = d tip / d action_j ─────
-    def estimate_jacobian() -> torch.Tensor:
-        J = torch.zeros(n, 3, N_ARM, device=dev)
-        for _ in range(10):
-            step_once()
-        base = tip().clone()
-        for j in range(N_ARM):
-            a[:, j] += JAC_NUDGE
-            for _ in range(JAC_STEPS):
-                step_once()
-            J[:, :, j] = (tip() - base) / JAC_NUDGE
-            a[:, j] -= JAC_NUDGE
-            for _ in range(JAC_STEPS):
-                step_once()
-        return J
-
-    def servo_to(J_pinv: torch.Tensor, target: torch.Tensor, active: torch.Tensor) -> None:
-        """One resolved-rate update of the arm actions toward *target*."""
-        err = (target - tip()) * K_SERVO
-        da = torch.bmm(J_pinv, err.unsqueeze(-1)).squeeze(-1)
-        da = torch.clamp(da, -MAX_DA, MAX_DA) * active.float().unsqueeze(-1)
-        c = args_cli.act_clamp
-        a[:, :N_ARM] = torch.clamp(a[:, :N_ARM] + da, -c, c)
-
     # ── Phase 0: settle the restored hang, measure the RAW distributions ─
     for _ in range(SETTLE_STEPS):
+        hold_current(ALL)
         step_once()
     raw_cov = u.coverage.clone()
     raw_low = u.shirt_lowest_point_w.clone()
@@ -152,21 +155,26 @@ def main() -> None:
     print(stats("[raw] cloth speed (m/s)", cloth_speed))
     print(stats("[raw] lowest-point z (m)", raw_low[:, 2] - u.scene.env_origins[:, 2]))
 
-    # ── Phase 1: Jacobian + approach the lowest hanging point ────────────
-    print("\n[jac] estimating FD action-space Jacobian "
-          f"({N_ARM} joints × {2 * JAC_STEPS} steps)...")
-    J = estimate_jacobian()
-    J_pinv = torch.linalg.pinv(J)
-    print(f"[jac] column norms (m/action-unit): "
-          f"{[f'{x:.3f}' for x in J.norm(dim=1).mean(dim=0).tolist()]}")
+    # Geodesic sanity: on a gravity-straightened hang the anchor→lowest
+    # Euclidean distance ≈ the fabric path (geodesic), so euclid/geodesic
+    # should sit at or just below 1 (folded sleeves → lower).  Values > ~1.05
+    # break the metric (index-space mismatch — tracking report Phase 1).
+    if u._geo_edges is not None:
+        pts = u.cloth.nodal_pos_w
+        low_idx = pts[:, :, 2].argmin(dim=1)
+        geo_low = u._geo_dist.gather(1, low_idx.unsqueeze(1)).squeeze(1)
+        euc_low = (raw_low - u._anchor_pos).norm(dim=-1)
+        print(stats("[geo] anchor→lowest euclid (m)", euc_low))
+        print(stats("[geo] anchor→lowest geodesic (m)", geo_low))
+        print(stats("[geo] euclid/geodesic (expect ≤ ~1)", euc_low / geo_low.clamp(min=1e-6)))
+    else:
+        print("[geo] WARNING: no spring graph — flat-Euclidean fallback in use")
 
+    # ── Phase 1: approach the lowest hanging point ────────────────────────
     reached = torch.zeros(n, dtype=torch.bool, device=dev)
     min_d = torch.full((n,), float("inf"), device=dev)
+    it = 0
     for it in range(APPROACH_MAX_STEPS):
-        if it > 0 and it % args_cli.jac_every == 0 and not reached.all():
-            J = estimate_jacobian()
-            J_pinv = torch.linalg.pinv(J)
-            print(f"[jac] re-estimated at approach step {it}")
         low = u.shirt_lowest_point_w
         d = (tip() - low).norm(dim=-1)
         min_d = torch.minimum(min_d, d)
@@ -177,46 +185,39 @@ def main() -> None:
         # above disturbs the hang less), then the true target.
         stage_off = torch.zeros_like(low)
         stage_off[:, 2] = torch.where(d > 0.15, 0.12, 0.0)
-        servo_to(J_pinv, low + stage_off, active=~reached)
+        servo_to(low + stage_off, active=~reached)
+        hold_current(reached)
         step_once()
         if (it + 1) % 120 == 0:
-            sat = (a[:, :N_ARM].abs() > 0.98 * args_cli.act_clamp).float().mean()
             print(f"[approach] step {it + 1}: mean dist {d.mean():.3f} m, "
-                  f"reached {int(reached.sum())}/{n}, action-sat {sat:.2f}")
+                  f"reached {int(reached.sum())}/{n}")
     d = (tip() - u.shirt_lowest_point_w).norm(dim=-1)
-    sat = (a[:, :N_ARM].abs() > 0.98 * args_cli.act_clamp).float().mean()
-    max_act = a[:, :N_ARM].abs().max()
-    print(f"\n[approach] reached (<7 cm): {int(reached.sum())}/{n} "
-          f"after {it + 1} steps (action-sat {sat:.2f}, max |a| {max_act:.2f} "
-          f"of clamp {args_cli.act_clamp})")
+    print(f"\n[approach] reached (<7 cm): {int(reached.sum())}/{n} after {it + 1} steps")
     print(stats("[approach] final tip→lowest dist (m)", d))
     print(stats("[approach] min tip→lowest dist (m)", min_d))
 
     # ── Phase 2: close → deterministic attach at the lowest point ────────
     a[:, N_ARM] = CLOSE
     for _ in range(CLOSE_STEPS):
-        target = u.shirt_lowest_point_w
-        servo_to(J_pinv, target, active=~u.grasp_active)
+        servo_to(u.shirt_lowest_point_w, active=~u.grasp_active)
+        hold_current(u.grasp_active)
         step_once()
     grasped = u.grasp_active.clone()
     print(f"\n[grasp] attached after close: {int(grasped.sum())}/{n}")
+    if grasped.any():
+        print(stats("[grasp] at-grasp stretch ratio (held envs)",
+                    u.stretch_ratio[grasped]))
 
     # ── Phase 3: stretch along the anchor→grasp direction ────────────────
-    # Fixed Cartesian pull target on the anchor→tip ray; the live tautness
-    # ratio gives the stop feedback (freeze when ratio ≥ target).
     anchor = u._anchor_pos
     dvec = tip() - anchor
     dhat = dvec / dvec.norm(dim=-1, keepdim=True).clamp(min=1e-6)
-    ratio_hist, cov_hist = [], []
     for it in range(STRETCH_MAX_STEPS):
         ratio = u.stretch_ratio
         need_pull = grasped & u.grasp_active & (ratio < args_cli.target_ratio)
-        # pull target: current tip pushed outward along the ray
-        target = tip() + dhat * 0.05
-        servo_to(J_pinv, target, active=need_pull)
+        servo_to(tip() + dhat * 0.05, active=need_pull)
+        hold_current(~need_pull)
         step_once()
-        ratio_hist.append(u.stretch_ratio.clone())
-        cov_hist.append(u.coverage.clone())
         if not bool(need_pull.any()):
             break
     print(f"\n[stretch] pull phase ended after {it + 1} steps "
@@ -226,6 +227,7 @@ def main() -> None:
     pres_frac = torch.zeros(n, device=dev)
     hold_cov, hold_ratio, hold_speed = [], [], []
     for _ in range(HOLD_STEPS):
+        hold_current(ALL)
         step_once()
         hold_cov.append(u.coverage.clone())
         hold_ratio.append(u.stretch_ratio.clone())
@@ -240,8 +242,8 @@ def main() -> None:
     print("\n── stretched hold (last "
           f"{HOLD_STEPS} steps ≈ {HOLD_STEPS / 60:.1f} s) ────────────────")
     print(stats("[hold] coverage", hold_cov_t))
-    print(stats("[hold] coverage (still-held only)",
-                hold_cov_t[still_held]) if still_held.any() else "[hold] no held envs")
+    if still_held.any():
+        print(stats("[hold] coverage (still-held only)", hold_cov_t[still_held]))
     print(stats("[hold] stretch ratio", hold_ratio_t))
     print(stats("[hold] cloth speed (m/s)", hold_speed_t))
     print(stats("[hold] presented_now fraction", pres_frac))
