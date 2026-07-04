@@ -44,8 +44,8 @@ from isaaclab.app import AppLauncher
 parser = argparse.ArgumentParser(description="Scripted shirt_present baseline + calibration.")
 parser.add_argument("--task", type=str, default="Template-Shirt-Present-UR5e-F140-v0")
 parser.add_argument("--num_envs", type=int, default=16)
-parser.add_argument("--target_ratio", type=float, default=1.00,
-                    help="tautness ratio the stretch phase servos to")
+parser.add_argument("--target_ratio", type=float, default=1.02,
+                    help="AT-GRASP-NORMALISED tautness the stretch phase servos to")
 parser.add_argument("--seed", type=int, default=0)
 AppLauncher.add_app_launcher_args(parser)
 args_cli, _ = parser.parse_known_args()
@@ -205,7 +205,7 @@ def main() -> None:
     grasped = u.grasp_active.clone()
     print(f"\n[grasp] attached after close: {int(grasped.sum())}/{n}")
     if grasped.any():
-        print(stats("[grasp] at-grasp stretch ratio (held envs)",
+        print(stats("[grasp] at-grasp RAW stretch ratio (= r0, held envs)",
                     u.stretch_ratio[grasped]))
 
     # ── Phase 3: stretch along the anchor→grasp direction ────────────────
@@ -213,7 +213,7 @@ def main() -> None:
     dvec = tip() - anchor
     dhat = dvec / dvec.norm(dim=-1, keepdim=True).clamp(min=1e-6)
     for it in range(STRETCH_MAX_STEPS):
-        ratio = u.stretch_ratio
+        ratio = u.stretch_ratio_norm
         need_pull = grasped & u.grasp_active & (ratio < args_cli.target_ratio)
         servo_to(tip() + dhat * 0.05, active=need_pull)
         hold_current(~need_pull)
@@ -230,7 +230,7 @@ def main() -> None:
         hold_current(ALL)
         step_once()
         hold_cov.append(u.coverage.clone())
-        hold_ratio.append(u.stretch_ratio.clone())
+        hold_ratio.append(u.stretch_ratio_norm.clone())
         hold_speed.append(u.cloth.centroid_vel_w.norm(dim=-1).clone())
         pres_frac += u.presented_now.float()
     pres_frac /= HOLD_STEPS
@@ -244,7 +244,7 @@ def main() -> None:
     print(stats("[hold] coverage", hold_cov_t))
     if still_held.any():
         print(stats("[hold] coverage (still-held only)", hold_cov_t[still_held]))
-    print(stats("[hold] stretch ratio", hold_ratio_t))
+    print(stats("[hold] stretch ratio (at-grasp-normalised)", hold_ratio_t))
     print(stats("[hold] cloth speed (m/s)", hold_speed_t))
     print(stats("[hold] presented_now fraction", pres_frac))
 
@@ -264,7 +264,7 @@ def main() -> None:
     print(stats("[calib] raw-hang coverage", raw_cov))
     if still_held.any():
         print(stats("[calib] held stretched coverage", hold_cov_t[still_held]))
-        print(stats("[calib] held stretch ratio", hold_ratio_t[still_held]))
+        print(stats("[calib] held stretch ratio (normalised)", hold_ratio_t[still_held]))
     print(stats("[calib] coverage gain (hold − raw)", cov_gain))
     print(f"\nRESULT: baseline present rate {int(ok.sum())}/{n} "
           f"(grasped {int(grasped.sum())}/{n}, still-held {int(still_held.sum())}/{n}, "

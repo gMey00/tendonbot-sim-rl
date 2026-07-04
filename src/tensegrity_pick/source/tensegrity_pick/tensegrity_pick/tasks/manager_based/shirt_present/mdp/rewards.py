@@ -77,14 +77,16 @@ def holder_attached_obs(env: "ManagerBasedRLEnv") -> torch.Tensor:
 
 
 def stretch_ratio_obs(env: "ManagerBasedRLEnv") -> torch.Tensor:
-    """Inter-grasp tautness ratio, 0 until both attachments hold (N, 1).
+    """At-grasp-normalised tautness, 0 until both attachments hold (N, 1).
 
-    Camera-derivable in principle: both grasp points are visible to the
-    inspection camera and the garment's flat geometry is known a priori.
+    1.0 = as taut as at the moment of the grasp (gravity-taut vertical
+    path); < 1 = the span went slack.  Camera-derivable in principle: both
+    grasp points are visible to the inspection camera and the garment's
+    geometry is known a priori.
     """
     if not _ready(env):
         return torch.zeros(env.num_envs, 1, device=env.device)
-    return env.stretch_ratio.unsqueeze(-1)
+    return env.stretch_ratio_norm.unsqueeze(-1)
 
 
 def coverage_obs(env: "ManagerBasedRLEnv") -> torch.Tensor:
@@ -124,29 +126,30 @@ def grasp_hold(env: "ManagerBasedRLEnv") -> torch.Tensor:
 
 
 def stretch_progress(
-    env: "ManagerBasedRLEnv", lo: float = 0.50, hi: float = 0.98,
+    env: "ManagerBasedRLEnv", lo: float = 0.80, hi: float = 0.97,
 ) -> torch.Tensor:
-    """Clamped tautness progress in [0, 1], gated on both attachments.
+    """Clamped MAINTAIN-TAUTNESS term in [0, 1], gated on both attachments.
 
-    Linear ramp from ``lo`` (typical slack span right after the second grasp)
-    to ``hi`` (taut); saturates there so pulling past taut earns nothing extra
-    (the overstretch penalty takes over above the validated band).
+    Works on the at-grasp-normalised ratio: 1.0 right after the grasp
+    (gravity-taut), dropping toward ``lo`` as the span droops.  Saturates at
+    ``hi`` so pulling past taut earns nothing extra (the overstretch penalty
+    takes over above the band).
     """
     if not _ready(env):
         return _zeros(env)
-    prog = torch.clamp((env.stretch_ratio - lo) / (hi - lo), 0.0, 1.0)
+    prog = torch.clamp((env.stretch_ratio_norm - lo) / (hi - lo), 0.0, 1.0)
     return prog * _both_attached(env).float()
 
 
 def overstretch_penalty(env: "ManagerBasedRLEnv", limit: float = 1.10) -> torch.Tensor:
     """Tautness excess above ``limit`` (positive; use a negative weight).
 
-    The two-attachment stretch is validated stable only through ratio 1.15
-    (Stage-0 de-risk) — penalise before entering untested territory.
+    Works on the at-grasp-normalised ratio; the Stage-0 two-attachment test
+    validated stability through +15 % — penalise before untested territory.
     """
     if not _ready(env):
         return _zeros(env)
-    excess = torch.clamp(env.stretch_ratio - limit, min=0.0)
+    excess = torch.clamp(env.stretch_ratio_norm - limit, min=0.0)
     return excess * _both_attached(env).float()
 
 

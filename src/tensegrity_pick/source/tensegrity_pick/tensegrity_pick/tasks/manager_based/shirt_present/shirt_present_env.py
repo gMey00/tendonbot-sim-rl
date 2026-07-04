@@ -51,14 +51,17 @@ HOLDER_ANCHOR_RADIUS = 0.07
 MAX_HANG_DRAPE = PRESENTATION_POS[2] - DRUM_HEIGHT_M - 0.04
 
 # ── Success predicate ────────────────────────────────────────────────
-# Tautness band: taut but not overstretched, with the ratio normalised by
-# the GEODESIC rest distance between the two grasped patches (baseline v2
-# finding, job 3809927: the flat-rest EUCLIDEAN separation underestimates
-# the fabric path for random grasp pairs — front/back-layer and wrap-around
-# pairs read 1.31–1.58 with visibly slack cloth).  Under the geodesic
-# normalisation a straight (taut) span reads ≤ 1.0.  Upper edge 1.10 keeps
-# a safety margin below the Stage-0-validated stretch limit (1.15).
-STRETCH_BAND = (0.90, 1.10)
+# Tautness band on the AT-GRASP-NORMALISED ratio: raw ratio = patch
+# separation / geodesic rest distance (spring graph); normalised ratio =
+# raw / r0, where r0 is recorded at the attach rising edge.  Rationale
+# (baseline v4, job 3810139): grabbing the LOWEST point of a hanging
+# garment meets a path that is ALREADY gravity-taut, and the raw ratio
+# reads 1.10-1.43 there (holder patch spread up to 7 cm from the anchor
+# point + real PBD gravity strain) — so "taut" is per-env relative to the
+# at-grasp state: < 0.92 = the span went slack (drooping), > 1.10 = pulled
+# ~10 % beyond the gravity-taut length (safety margin under the Stage-0
+# stretch validation, which showed stability through +15 %).
+STRETCH_BAND = (0.92, 1.10)
 # Fraction of the flat one-sided area the camera-plane silhouette must
 # recover.  Calibrated 2026-07-04 (baseline job 3809927, 16 bank hangs):
 # raw hang mean 0.441, p50 0.425, p90 0.530; naive scripted ray-pull holds
@@ -115,6 +118,10 @@ class ShirtPresentEnv(ClothSortingEnvBase):
         self._stretch_buf = torch.zeros(n, device=dev)
         self._coverage_buf = torch.zeros(n, device=dev)
 
+        # At-grasp tautness reference r0 (recorded on the attach rising
+        # edge — the gravity-taut vertical path at the lowest point).
+        self._r0 = torch.ones(n, device=dev)
+
         # Windowed presented latch + drop bookkeeping (shirt_pick pattern).
         self._present_ring = torch.zeros(n, PRESENT_WINDOW, dtype=torch.bool, device=dev)
         self._ring_idx = 0
@@ -143,8 +150,13 @@ class ShirtPresentEnv(ClothSortingEnvBase):
 
     @property
     def stretch_ratio(self) -> torch.Tensor:
-        """Inter-grasp tautness ``[N]`` — 0.0 until both attachments hold."""
+        """Raw inter-grasp tautness ``[N]`` — 0.0 until both attachments hold."""
         return self._stretch_buf
+
+    @property
+    def stretch_ratio_norm(self) -> torch.Tensor:
+        """At-grasp-normalised tautness ``[N]`` (1.0 = as taut as at grasp)."""
+        return self._stretch_buf / self._r0
 
     @property
     def coverage(self) -> torch.Tensor:
@@ -168,10 +180,8 @@ class ShirtPresentEnv(ClothSortingEnvBase):
         above threshold ∧ cloth centroid still.
         """
         cloth_speed = self._cloth.centroid_vel_w.norm(dim=-1)
-        stretch_ok = (
-            (self._stretch_buf >= STRETCH_BAND[0])
-            & (self._stretch_buf <= STRETCH_BAND[1])
-        )
+        norm = self.stretch_ratio_norm
+        stretch_ok = (norm >= STRETCH_BAND[0]) & (norm <= STRETCH_BAND[1])
         return (
             self.grasp_active
             & self.holder_attached
@@ -366,6 +376,12 @@ class ShirtPresentEnv(ClothSortingEnvBase):
 
         self._update_task_state()
 
+        # Record the at-grasp tautness reference on the attach rising edge
+        # (the tip is at the lowest point, the span is gravity-taut).
+        newly = self.grasp_active & ~self._prev_attached
+        if newly.any():
+            self._r0[newly] = self._stretch_buf[newly].clamp(0.8, 1.6)
+
         # Drop detection: the hand grasp existed after the previous step but
         # is gone now (the task never legitimately releases).
         released = self._prev_attached & ~self.grasp_active
@@ -401,6 +417,7 @@ class ShirtPresentEnv(ClothSortingEnvBase):
         result = super()._reset_idx(env_ids)
 
         self._was_presented[env_ids_t] = False
+        self._r0[env_ids_t] = 1.0
         self._present_ring[env_ids_t] = False
         self._drop_event[env_ids_t] = 0.0
         self._was_dropped[env_ids_t] = False
@@ -414,6 +431,9 @@ class ShirtPresentEnv(ClothSortingEnvBase):
         self.extras["log"]["Metrics/drop_rate"] = drop_rate
         self.extras["log"]["Metrics/final_coverage"] = final_cov
         self.extras["log"]["Metrics/final_stretch_ratio"] = final_stretch
+        if len(env_ids_t) > 0:
+            self.extras["log"]["Metrics/final_stretch_norm"] = (
+                self._stretch_buf[env_ids_t] / self._r0[env_ids_t]).mean()
         return result
 
     # ------------------------------------------------------------------
