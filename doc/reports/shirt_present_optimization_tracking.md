@@ -229,3 +229,19 @@ span droops); COVERAGE is the term that drives the actual opening/orienting of t
 Under the corrected predicate the naive ray-pull baseline passes coverage ≥ 0.50 in
 ~3/11 held envs — a genuine nonzero scripted baseline for RL to beat with oriented
 stretches.
+
+### Baseline v4.1 — MDP VALIDATED (job 3810144, 16 bank hangs)
+
+| Metric | Value |
+|---|---|
+| reached < 7 cm / grasped / held through 2-s hold | 8/16 / **11/16** / 11/11 |
+| at-grasp raw ratio r0 (held) | 1.10–1.43 (mean 1.30) — as analysed |
+| held normalised ratio | 0.98–1.03 (pull target 1.02) — normalisation behaves as designed |
+| held cloth speed | ≤ 0.052 m/s (gate 0.20 — comfortably passable) |
+| held coverage | 0.36–0.59 (mean 0.44); envs ≥ 0.50: presented_frac 1.00 |
+| **scripted present rate** | **2/16** (fails split: 5 approach-reach, 9 coverage < 0.50) |
+
+Every gate is reachable, the naive scripted heuristic scores nonzero, and coverage is the
+axis RL must improve (oriented stretch vs the baseline's blind ray-pull).  → Training
+authorised per the workflow; run 1: `train.py --num_envs 64`, PPO profile from the yaml
+(20 k trainer steps), job 3810160.
