@@ -213,3 +213,19 @@ train at 64 envs** — 8 % below peak throughput for 2× the PPO batch.
    (16 hangs): mean 0.441, p50 0.425, p90 0.530; naive ray-pull stretched holds reach
    ≤ 0.512.  0.50 exceeds the raw median while remaining achievable; the ICRA-2024
    band (0.55–0.60) stays the aspirational reference — revisit after training.
+
+### Baseline v4 (job 3810139) + the at-grasp-normalised tautness fix
+
+Analytic-Jacobian servo: **8/16 reached < 7 cm, 11/16 grasped, 11/11 held** through the
+2-s measurement hold (cloth speed ≤ 0.053 m/s — the stillness gate is comfortably passable).
+The geodesic sanity check then exposed the LAST metric flaw: on the raw hang,
+anchor→lowest Euclid/geodesic = 1.11–1.37 (mean 1.29) — the lowest-point span is ALREADY
+gravity-taut at grasp (raw at-grasp ratio 1.10–1.43, mean 1.30; contributions: holder-patch
+spread ≤ 7 cm from the anchor point + real PBD gravity strain).  An absolute [0.9, 1.1]
+band can therefore never pass.  **Fix:** normalise per env by the at-grasp ratio r0
+(recorded at the attach rising edge): slack < 0.92·r0, overstretch > 1.10·r0 (Stage-0
+margin).  The stretch reward becomes maintain-tautness (1.0 at grasp, decaying when the
+span droops); COVERAGE is the term that drives the actual opening/orienting of the garment.
+Under the corrected predicate the naive ray-pull baseline passes coverage ≥ 0.50 in
+~3/11 held envs — a genuine nonzero scripted baseline for RL to beat with oriented
+stretches.

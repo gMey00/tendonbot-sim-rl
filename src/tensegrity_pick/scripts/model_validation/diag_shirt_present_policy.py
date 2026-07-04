@@ -78,7 +78,7 @@ def main() -> None:
         logs["d"].append((u._finger_tip_pos() - u.shirt_lowest_point_w).norm(dim=-1).clone())
         logs["g0"].append(u.grasp_active.clone())
         logs["g1"].append(u.holder_attached.clone())
-        logs["ratio"].append(u.stretch_ratio.clone())
+        logs["ratio"].append(u.stretch_ratio_norm.clone())
         logs["cov"].append(u.coverage.clone())
         logs["cvel"].append(u.cloth.centroid_vel_w.norm(dim=-1).clone())
 
