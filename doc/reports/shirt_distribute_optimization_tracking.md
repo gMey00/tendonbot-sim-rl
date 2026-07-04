@@ -312,3 +312,49 @@ Considered and rejected: `EMAJointPositionToLimitsAction` (reach winner) —
 its EMA buffer resets to the pre-reset joint positions (action-manager reset
 runs before the env writes the holding pose), so it would re-introduce a
 smoothed version of the reset yank; revisit only if action_l2 fails.
+
+### Iteration-2 mid-run readout + control eval → the belt-collision cliff
+
+**Control (sd_train2, old config, fixed metrics, 20 k):** stochastic
+`distribute_success_rate` reached **0.618 (seed 1) / 0.480 (seed 2)** — but
+deterministic eval of seed 1's best checkpoint (96 eps, seed 7) gave
+**0.073** (bin0 0.077 / bin1 0.000 / bin2 0.135), release 0.844,
+mean|act| 0.542.  The determinism gap is structural, not budget.
+
+**Iteration 2 mid-run (sd_train3 @ ~17 k of 48 k):**
+
+| | seed 1 | seed 2 |
+|---|---|---|
+| stochastic success | 0.28 (peak 0.73 @ 14 k) | 0.13 |
+| release_rate | 1.00 | **collapsed to 0.003 @ 9 k**, recovered 0.35 |
+| term_belt_collision | **0.29–0.48** | 0.25–0.43 |
+| term_joint_vel | 0.00 | 0.00 |
+| mean episode length | 360–404 / 480 | 386–406 |
+| policy std | 0.37 → 0.35 | 0.37 → 0.34 |
+
+Two mechanisms identified from the new `Metrics/term_*` channels:
+
+1. **Post-success belt-collision cliff:** collisions end episodes LATE
+   (mean length ~400) in runs whose success is ~0.6 — `return_to_neutral`
+   pulls toward the UR5e DEFAULT pose, which sits low from the pedestal
+   mount, so after nearly every success the arm dives into the tip < 0.68 m
+   termination — truncating exactly the post-drop reward stream that is
+   supposed to make releasing strictly dominant (the anti-hover design's
+   backbone).  And because `belt_collision` was a bootstrapped truncation
+   (`time_out=True`), entering the cliff was nearly FREE for PPO.
+2. **Release-discovery collapse (seed 2):** with σ = e⁻¹, early
+   `bad_release` (−120) hits pushed the gripper-action mean negative and
+   releases stopped being sampled — a one-shot penalty can extinguish the
+   very exploration it is supposed to shape.
+
+### Iteration 3 (`sd_train4`, job 3810226, seeds 1/2, 64 envs, 48 k)
+
+| Change | Rationale |
+|---|---|
+| `settle_after_success` replaces `return_to_neutral` (calm joints × tip > 0.95 m, w 200) | any calm high pose is a valid terminal posture here; removes the post-success dive |
+| `belt_collision` → true termination (`time_out=False`) | lost return teaches avoidance instead of free bootstrap |
+| `belt_contact` margin 0.05 | penalty gradient starts at 0.85 m, before the 0.68 m cliff |
+| `bad_release` −120 → −60 | keep release exploration alive at σ = e⁻¹ |
+
+(Iteration 2's `action_l2` + σ₀ = e⁻¹ + 48 k budget retained; sd_train3 runs
+to completion for attribution and gets the same deterministic eval.)
