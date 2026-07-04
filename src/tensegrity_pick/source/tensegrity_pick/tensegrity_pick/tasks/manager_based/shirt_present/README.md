@@ -24,7 +24,7 @@ the cloth *inspectable*.
 - [Goal](#goal)
 - [Variants](#variants)
 - [Scene](#scene)
-- [Stub Mechanics: the Hanging Anchor](#stub-mechanics-the-hanging-anchor)
+- [Reset Mechanics: the Hanging Bank](#reset-mechanics-the-hanging-bank)
 - [Controlled Joints](#controlled-joints)
 - [Actions](#actions)
 - [Observations (policy group)](#observations-policy-group)
@@ -69,7 +69,7 @@ speed < 0.20 m/s`.  Rationale (measured decisions):
   cloth anyway).
 
 Logged metrics: `Metrics/{present_rate, grasp_rate, drop_rate,
-final_coverage, final_stretch_ratio}`.
+final_coverage, final_stretch_ratio, final_stretch_norm}`.
 
 Terminal states (stretched shirt) form the **initial-state bank of
 shirt_distribute**.
@@ -100,27 +100,24 @@ entity table).  Task-specific additions:
 | `holder_robot` | Passive 5-DOF tensegrity at its hanging mount `(0.15, 0.0, 2.30)` — visual scenery in the stub (the actual hold is the solver anchor); planned: posed from the shirt_pick terminal bank |
 | shirt | Hangs from the anchor at `PRESENTATION_POS = (0.15, 0.50, 1.10)` |
 
-## Stub Mechanics: the Hanging Anchor
+## Reset Mechanics: the Hanging Bank
 
 At each reset ([shirt_present_env.py](shirt_present_env.py)):
 
-1. The flat rest-shape shirt is teleported so its centroid sits at
-   `PRESENTATION_POS`.
-2. The particle cluster within **0.07 m** of the anchor is pinned as PBD
-   solver anchors (`ClothObject.attach`, same mechanism as the validated
-   shirt_place grasp).
-3. Each control step re-pins the cluster at the static anchor
-   (`ClothObject.hold`), so the sheet drapes under gravity into a
-   **centre-hung garment** — an idealized "held at the former highest point"
-   state.
+1. A relaxed random-particle hang is restored from the 356-state bank
+   (`res/Props/Cloth/banks/tshirt_hanging_bank.pt`, yaw+mirror augmented,
+   `max_drape` filtered to clear the drum under the pose); the pinned patch
+   is re-attached at the anchor on **slot 1** (`ClothObject.attach`, radius
+   0.07 m).  Missing bank → idealized centre-hang fallback.
+2. Each control step re-pins the holder patch (`ClothObject.hold`, slot 1)
+   while the base env runs the learning arm's deterministic attach/hold/
+   detach on **slot 0**, retargeted to the lowest hanging point.
+3. Per reset, the holder-patch **geodesic distance field** over the PBD
+   spring graph is recomputed (GPU multi-source Bellman-Ford) — the rest
+   normaliser of the stretch ratio.
 
-The anchor uses **attachment slot 1**; slot 0 is reserved for the learning
-arm's own grasp.  The two-simultaneous-attachments physics risk flagged by
-the research report is **retired**: the Stage-0 stretch test holds both
-grasps stable through tautness ratio 1.15 with no solver instability
-(`scripts/model_validation/test_two_attachments.py`).  `enable_hand_grasp`
-stays `False` only until the Task-2 regrasp/stretch MDP (rewards, lowest-point
-targeting) is implemented.
+Two simultaneous attachments are Stage-0 validated (stable through +15 %
+tautness, `scripts/model_validation/test_two_attachments.py`).
 
 ## Controlled Joints
 
@@ -133,14 +130,14 @@ targeting) is implemented.
 
 | Term | Dims (Kinova / UR5e) | Type | Scale |
 |---|---|---|---|
-| `arm_action` | 7 / 6 | JointPositionAction (delta from default) | 0.5 |
+| `arm_action` | 7 / 6 | **EMAJointPositionToLimits** (α = 0.2 — the reach-grid joint-space winner; the stub's delta-from-default scale 0.5 saturated: reaching the hang needs ±1.25 rad, measured job 3809927) | to-limits |
 | `gripper_action` | 1 | BinaryJointPositionAction | open 0.0 / close 0.7854 |
 
 Total: **8 dims (Kinova) / 7 dims (UR5e)**.
 
 ## Observations (policy group)
 
-**37 dims (Kinova) / 34 dims (UR5e)**, no noise corruption:
+**41 dims (Kinova) / 38 dims (UR5e)**, no noise corruption:
 
 | Term | Dims (Kinova / UR5e) | Description |
 |---|---|---|
