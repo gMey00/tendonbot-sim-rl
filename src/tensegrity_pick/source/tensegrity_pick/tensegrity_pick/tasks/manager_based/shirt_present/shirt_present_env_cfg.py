@@ -194,8 +194,11 @@ class RewardsCfg:
     presented = RewTerm(func=task_rew.presented, weight=30.0)
     # 6. Safety: tautness beyond the validated band (per-step, proportional)
     overstretch = RewTerm(func=task_rew.overstretch_penalty, weight=-40.0, params={"limit": 1.10})
-    # 7. Failure: one-shot when an established hand grasp is lost (dt-scaled ≈ −2)
-    drop = RewTerm(func=task_rew.drop_event, weight=-120.0)
+    # 7. Failure: one-shot when an established hand grasp is lost (dt-scaled
+    # ≈ −4).  −120 → −240 after run-2 evals: grasp_rate 1.00 but drop_rate
+    # 0.135–0.229 capped deterministic present_rate at 0.65–0.71 (the policy
+    # kept flirting with the gripper-open threshold mid-hold).
+    drop = RewTerm(func=task_rew.drop_event, weight=-240.0)
 
     # Regularisation (curriculum ramps these up, shirt_place profile)
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
