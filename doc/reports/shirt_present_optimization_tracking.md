@@ -299,3 +299,23 @@ consistent with "more training + checkpoint selection", so next step is a 2-seed
 the identical config capped at 48 k (jobs 3810665/3810666, seeds 1/2) before any further
 weight surgery.  If no checkpoint reaches 0.9: overstretch-limit param 1.10 → 1.05 (creates
 a gradient moat under the predicate band edge) + coverage weight bump are the queued levers.
+
+### Run 4 (2-seed sweep, identical cfg, cap 48 k — jobs 3810665/3810666)
+
+Deterministic (seed 7 × 96): s1/agent_28000 0.781 (grasp 0.979), s1/agent_40000 **0.792**
+(grasp 1.000, drop 0.010), s2/agent_44000 0.635.  Confirms run-3 level; no seed luck ≥ 0.9.
+
+### Run 5 (coverage 14, overstretch onset 1.05 — jobs 3811009/3811010)
+
+Stochastic: s42 climbs to 0.84 at the 48 k cap and is STILL RISING (drop 0.00 at cap);
+s1 peaks 0.81 @ 32 k then declines.  Deterministic (seed 7 × 96):
+
+| Checkpoint | present | grasp | drop | coverage |
+|---|---|---|---|---|
+| s42/agent_48000 | **0.833** | 0.948 | 0.010 | 0.560 |
+| s1/agent_32000 | 0.719 | 0.771 | 0.000 | 0.549 |
+
+Monotone progress across iterations (0.625 → 0.750 → 0.792 → 0.833); the s42 leak is now
+~5 % non-grasp episodes + latch margins.  → Run 6: same cfg, 96 k steps, seed 43
+(job 3811137) — s42 was still climbing at cap; watching for the run-3-style late collapse
+(checkpoint selection handles it either way).
