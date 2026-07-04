@@ -266,3 +266,20 @@ non-grasps (0.073).  Coverage at 0.574 already exceeds the 0.50 gate and sits in
 ICRA reference band.  → Run 2: same config, 60 k trainer steps (job 3810212) — run 1 was
 still improving at cap; revisit the drop penalty only if run 2's drop_rate stays > ~0.1
 (diagnose gates first, lesson: don't touch weights blindly).
+
+### Run 2 (60 k, job 3810212) + gate diagnosis (job 3810430)
+
+Deterministic evals (seed 7 × 96 eps): agent_60000 present **0.708** / drop 0.229;
+best_agent 0.646 / drop 0.135 — grasp_rate 1.000 both.  Gate fractions on agent_60000
+(8 envs × 480 steps, both-grasped-conditioned): stretch-in-band 0.858, **coverage 0.546
+(weakest gate — the policy hovers at the 0.50 threshold)**, stillness 0.963; reach superb
+(min 0.7–1.8 cm).  Drops (grasp_frac ~0.93 with re-grasp slack episodes) are the other leak
+→ **Run 3 = drop one-shot −120 → −240**, otherwise identical (job 3810431).
+
+### Run 3 (drop −240, 60 k, job 3810431)
+
+drop_rate → 0.00 from ~24 k (penalty worked); stochastic present_rate plateaus 0.70–0.86
+over 36–50 k, then **collapses after 52 k** (0.25 → 0.04 → 0.00; stretch_norm drifting to
+1.20) — late-run policy collapse, textbook case for eval-based checkpoint selection
+(shirt_place rule).  Candidates: agent_38000, agent_48000 → deterministic evals jobs
+3810659/3810660.
