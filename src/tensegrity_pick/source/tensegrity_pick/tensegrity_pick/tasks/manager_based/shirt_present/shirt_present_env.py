@@ -185,48 +185,52 @@ class ShirtPresentEnv(ClothSortingEnvBase):
     # ------------------------------------------------------------------
 
     def _extract_mesh_edges(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None:
-        """Unique mesh edges of the garment as ``(src, dst, weight)`` (bidirectional).
+        """The garment's PBD spring graph as ``(src, dst, weight)`` (bidirectional).
 
-        Topology from the live env-0 cloth mesh prim (its point order IS the
-        particle order the cloth view drives); weights = edge lengths in the
-        settled rest shape.  Returns None (with a warning) if the prim cannot
-        be read — the stretch ratio then falls back to the flat-Euclidean
-        normalisation (known to over-read on wrap-around pairs).
+        Reads ``physxParticle:springIndices`` / ``springRestLengths`` authored
+        on the env-0 cloth prim by ``particleUtils.add_physx_particle_cloth``
+        — the springs are indexed over the WELDED particle set (the cloth
+        view's index space) with the true PBD rest lengths as weights.  The
+        render mesh's face-vertex indices must NOT be used here: the render
+        mesh has more vertices than the welded particle set, and indexing
+        GPU tensors with them raises a device-side assert that poisons the
+        whole CUDA context (baseline v3, job 3810090).  All index validation
+        happens on CPU before any GPU tensor is touched; on any failure the
+        stretch ratio falls back to the flat-Euclidean normalisation (known
+        to over-read wrap-around pairs).
         """
         import logging
         try:
-            from pxr import Sdf, UsdGeom
             import numpy as np
+            from pxr import Sdf
             mesh_path = self._cloth._cloth_pattern.replace("env_*", "env_0")
-            mesh = UsdGeom.Mesh(self.sim.stage.GetPrimAtPath(Sdf.Path(mesh_path)))
-            counts = np.asarray(mesh.GetFaceVertexCountsAttr().Get(), dtype=np.int64)
-            idx = np.asarray(mesh.GetFaceVertexIndicesAttr().Get(), dtype=np.int64)
-            # Consecutive-vertex (cyclic) edges of every face polygon.
-            pairs = []
-            off = 0
-            for c in counts:
-                face = idx[off:off + c]
-                pairs.append(np.stack([face, np.roll(face, -1)], axis=1))
-                off += c
-            e = np.concatenate(pairs)
-            e.sort(axis=1)
-            e = np.unique(e, axis=0)                             # [E, 2]
+            prim = self.sim.stage.GetPrimAtPath(Sdf.Path(mesh_path))
+            e = np.asarray(prim.GetAttribute("physxParticle:springIndices").Get(),
+                           dtype=np.int64)                       # [S, 2]
+            w_np = np.asarray(prim.GetAttribute("physxParticle:springRestLengths").Get(),
+                              dtype=np.float32)                  # [S]
+            p = self._cloth.num_particles
+            if e.ndim != 2 or e.shape[1] != 2 or e.shape[0] != w_np.shape[0]:
+                raise ValueError(f"unexpected spring attribute shapes {e.shape}/{w_np.shape}")
+            if e.min() < 0 or e.max() >= p:
+                raise ValueError(
+                    f"spring indices [{e.min()}, {e.max()}] outside the "
+                    f"{p}-particle view — index spaces do not match")
             src = torch.as_tensor(e[:, 0], device=self.device)
             dst = torch.as_tensor(e[:, 1], device=self.device)
-            rest = self._cloth.flat_rest_pos
-            w = torch.norm(rest[src] - rest[dst], dim=-1)
+            w = torch.as_tensor(w_np, device=self.device)
             # Both directions for the relaxation sweeps.
             src_b = torch.cat([src, dst])
             dst_b = torch.cat([dst, src])
             w_b = torch.cat([w, w])
             logging.getLogger(__name__).info(
-                "shirt_present geodesics: %d unique mesh edges, mean length %.4f m",
-                e.shape[0], float(w.mean()),
+                "shirt_present geodesics: %d springs over %d particles, "
+                "mean rest length %.4f m", e.shape[0], p, float(w.mean()),
             )
             return src_b, dst_b, w_b
         except Exception as exc:  # pragma: no cover - fallback path
             logging.getLogger(__name__).warning(
-                "shirt_present: mesh-edge extraction failed (%s) — stretch "
+                "shirt_present: spring-graph extraction failed (%s) — stretch "
                 "ratio falls back to flat-Euclidean normalisation.", exc,
             )
             return None
