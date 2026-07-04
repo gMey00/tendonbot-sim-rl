@@ -8,7 +8,13 @@ inspection cameras can assess the garment's condition (reusable / recyclable
 / trash).  Classification itself is a black box — this task only has to make
 the cloth *inspectable*.
 
-> **Status: full regrasp-and-stretch MDP implemented (2026-07-04, Phase 1).**
+> **Status: TRAINED & VALIDATED (2026-07-04).**  Selected checkpoint
+> `logs/skrl/shirt_present/2026-07-04_15-21-09_ppo_torch_seed43/checkpoints/agent_96000.pt`
+> (UR5e-F140): deterministic windowed present latch **0.927** on both eval
+> seeds (7 & 11, 96 episodes each), grasp 0.990, drop 0.000, final coverage
+> 0.68 — above the ICRA-2024 reference band.  Scripted baseline: 0.125.
+> Full iteration history in the tracking report.
+>
 > The shirt hangs pinned at ONE RANDOM particle patch (356-state hanging bank,
 > slot-1 solver anchor at the presentation pose); the learning arm's slot-0
 > deterministic grasp is ENABLED and targets the **lowest hanging point**.
@@ -217,17 +223,44 @@ Headlines:
    pairs) for an upper bound and second-grasp region labels.
 6. Decide: does the retriever keep holding throughout (open question #2)?
 
+## Results (UR5e-F140, RTX PRO 6000, 2026-07-04)
+
+| Stage | det. present_rate | Notes |
+|---|---|---|
+| Scripted baseline (v4.1) | 0.125 | 11/16 grasped; coverage is what the blind ray-pull cannot raise |
+| Run 1 (20 k) | 0.625 | still climbing at cap |
+| Run 3 (drop −240) | 0.750 | drops 0.23 → 0.00 |
+| Run 5 (coverage 14, overstretch moat 1.05) | 0.833 | |
+| **Run 6 (96 k, seed 43) — agent_96000** | **0.927 / 0.927** (eval seeds 7 / 11) | grasp 0.990, drop 0.000, coverage 0.682 |
+
+Figures: [figures/ur5e_f140/](figures/ur5e_f140/) (total reward, task metrics,
+cloth metrics, reward decomposition, penalties, episode length).
+Terminal-state bank hook validated:
+`scripts/model_validation/snapshot_shirt_present_terminal.py` (58-state sample,
+presented-filtered, both grasp masks included).
+
 ## Running
 
 ```bash
-# from src/tensegrity_pick, conda env env_isaaclab
+# from src/tensegrity_pick, conda env env_isaaclab (GPU via Slurm on Alex)
 
-# Smoke tests (verified 2026-07-03)
-python scripts/zero_agent.py   --task=Template-Shirt-Present-Kinova-F140-v0 --num_envs 4 --headless
-python scripts/random_agent.py --task=Template-Shirt-Present-UR5e-F140-v0   --num_envs 4 --headless
+# Smoke tests
+python scripts/zero_agent.py   --task=Template-Shirt-Present-UR5e-F140-v0 --num_envs 4 --headless
 
-# Train (once the real MDP is implemented)
-python scripts/skrl/train.py --task=Template-Shirt-Present-Kinova-F140-v0 --num_envs 128 --headless
+# Scripted baseline + threshold calibration
+python scripts/model_validation/baseline_shirt_present.py --headless --num_envs 16
+
+# Train (64 envs = measured RTX PRO 6000 sweet spot, see tracking report)
+python scripts/skrl/train.py --task=Template-Shirt-Present-UR5e-F140-v0 \
+    --algorithm=PPO --num_envs 64 --headless --max_iterations 2000
+
+# Deterministic evaluation / gate diagnosis / terminal-state bank
+python scripts/skrl/evaluate_shirt_present.py --headless --num_envs 32 \
+    --num_episodes 96 --seed 7 --checkpoint <ckpt.pt>
+python scripts/model_validation/diag_shirt_present_policy.py --headless \
+    --num_envs 8 --checkpoint <ckpt.pt>
+python scripts/model_validation/snapshot_shirt_present_terminal.py --headless \
+    --num_envs 32 --rounds 2 --checkpoint <ckpt.pt> --out <bank.pt>
 ```
 
 ## Related
