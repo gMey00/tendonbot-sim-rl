@@ -160,13 +160,20 @@ Progress log: [shirt_pick_optimization_tracking.md](reports/shirt_pick_optimizat
   [shared/cloth_metrics.py](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shared/cloth_metrics.py)
   — rasterized `silhouette_coverage` in the camera plane, `stretch_ratio`/`rest_distance`
   tautness (offline-tested: `scripts/model_validation/test_cloth_metrics.py`).
-- 🔴 **Naive lowest-point second grab + stretch MDP** (rewards, success latch, second attachment
-  on slot 0 via `shirt_grasp_point_w` override) — *delegated: Alex agent, UR5e-F140, joint
-  actions; see the prompt for the decided metrics starting points.*
-- 🔴 **Reward:** projected coverage measured from the *camera viewpoints* (top-down coverage is
-  hackable by bunching/hiding), taut-but-not-overstretched bonus using the tautness proxy
-  (inter-grasp distance / rest distance, `cloth_metrics.stretch_ratio` ≤ 1.15), cloth-centroid
-  speed gate — *delegated (same agent)*.
+- ✅ ~~**Naive lowest-point second grab + stretch MDP**~~ **DONE (2026-07-04, Alex agent,
+  branch `project/shirt-present`):** slot-0 grasp via `shirt_grasp_point_w` override,
+  windowed present latch, at-grasp-normalised geodesic tautness, EMA to-limits actions
+  (measured: delta-from-default saturated).  Trained UR5e-F140 to deterministic
+  present **0.927** on 2 eval seeds × 96 episodes (`agent_96000`, run 6) vs scripted
+  baseline 0.125 — see
+  [shirt_present_optimization_tracking.md](reports/shirt_present_optimization_tracking.md).
+- ✅ ~~**Reward:** projected coverage from camera viewpoints, tautness bonus, centroid speed
+  gate~~ **DONE:** silhouette coverage (camera XZ plane, gated on both grasps), maintain-taut
+  band on the GEODESIC at-grasp-normalised ratio (flat-Euclidean over-reads wrap-around pairs
+  1.3–1.6 — measured), overstretch moat from 1.05, drop one-shot −240; final coverage 0.68
+  (above the ICRA 0.55–0.60 band).  NB: the RL run's coverage gate (0.50) is below the FAPS
+  study's recommended 0.65 — a candidate re-threshold now that both are merged (`final_coverage`
+  is logged, so re-scoreable).
 - ✅ **Brute-force grasp-pair oracle + 2-grasp/3-grasp heuristic comparison** (2026-07-04,
   FAPS heuristic-study agent): [present_heuristics_study.md](reports/present_heuristics_study.md)
   — horizontal presentation stretch (2nd grasp raised to the holder's height, pulled along the
@@ -178,6 +185,9 @@ Progress log: [shirt_pick_optimization_tracking.md](reports/shirt_pick_optimizat
   grasp 0.713 ([policy JSON](reports/data/present_oracle_policy.json)). Recommended success
   threshold **0.65** (0.75 stretch goal); reward tautness gently up to 1.05.
   Scripts: `scripts/model_validation/present_heuristics/`.
+- 🟡 Task-2→3 terminal bank: hook + validation script DONE
+  (`snapshot_shirt_present_terminal.py`, 58-state presented-filtered sample with both grasp
+  masks) — Task-3 agent regenerates at the size it needs from `agent_96000`.
 - 🟡 Later: reset from the REAL Task-1 terminal-state bank
   (`ShirtPickEnv.snapshot_terminal_states` hook exists; decide agent_12000 vs agent_8000 —
   post-present grasp slips 5–7 % vs 1–2 %) — skill-chaining distribution shift is the report's
