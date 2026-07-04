@@ -167,3 +167,22 @@ untouched), and ALL shirt_present work now runs from an isolated **git worktree*
 `$HOME/studentische-arbeiten-present` with `PYTHONPATH` pinning imports to the worktree
 (the conda env's PEP-660 editable finder is `sys.meta_path.append`ed, so `PathFinder` +
 `PYTHONPATH` wins — verified).  ⚠️ Slurm jobs of the two agents are otherwise independent.
+
+### Validation (2026-07-04)
+
+**Cloth env-count re-benchmark on the RTX PRO 6000** (`bench_cloth_env_count.py
+--task Template-Shirt-Present-UR5e-F140-v0`, zero actions, job 3809914):
+
+| N envs | construct (s) | steps/s | env·steps/s | driver GPU (GB) | sane |
+|---|---|---|---|---|---|
+| 32 | 19.8 | 36.3 | **1162** | 4.9 | ✓ |
+| 64 | 39.5 | 16.7 | 1066 | 6.0 | ✓ |
+| 128 | 96.6 | 6.4 | 819 | 8.4 | ✓ |
+
+Same qualitative shape as the A6000 Stage-0 result (throughput peaks at
+N = 32–64 and FALLS above), ~2.8× faster in absolute terms.  **Decision:
+train at 64 envs** — 8 % below peak throughput for 2× the PPO batch.
+
+| Check | Result |
+|---|---|
+| `zero_agent` UR5e, 4 envs headless (job 3809913) | **PASS** — obs `(4, 38)` (+4 task-state dims vs stub), act `(4, 7)`, ~4 min stepping, no traceback |
