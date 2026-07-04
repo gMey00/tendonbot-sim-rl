@@ -46,9 +46,12 @@ parser.add_argument("--target_ratio", type=float, default=1.00,
                     help="tautness ratio the stretch phase servos to")
 parser.add_argument("--jac_every", type=int, default=200,
                     help="re-estimate the FD Jacobian every N approach steps")
-parser.add_argument("--act_clamp", type=float, default=2.5,
-                    help="absolute arm-action clamp (JointPositionAction scale 0.5 -> "
-                         "rad from default = 0.5x this; v1's 1.0 saturated 0/16 reached)")
+parser.add_argument("--act_clamp", type=float, default=1.0,
+                    help="absolute arm-action clamp.  v3: the task uses EMA "
+                         "joint-position-to-limits actions, so the full joint range "
+                         "lives inside [-1, 1] (v1/v2 history: delta-from-default "
+                         "scale 0.5 saturated at every clamp tried - the measured "
+                         "justification for the action-space switch)")
 parser.add_argument("--seed", type=int, default=0)
 AppLauncher.add_app_launcher_args(parser)
 args_cli, _ = parser.parse_known_args()
@@ -164,13 +167,17 @@ def main() -> None:
             J = estimate_jacobian()
             J_pinv = torch.linalg.pinv(J)
             print(f"[jac] re-estimated at approach step {it}")
-        target = u.shirt_lowest_point_w
-        d = (tip() - target).norm(dim=-1)
+        low = u.shirt_lowest_point_w
+        d = (tip() - low).norm(dim=-1)
         min_d = torch.minimum(min_d, d)
         reached |= d < 0.07
         if reached.all():
             break
-        servo_to(J_pinv, target, active=~reached)
+        # Staged: aim 12 cm above the lowest point until close (approach from
+        # above disturbs the hang less), then the true target.
+        stage_off = torch.zeros_like(low)
+        stage_off[:, 2] = torch.where(d > 0.15, 0.12, 0.0)
+        servo_to(J_pinv, low + stage_off, active=~reached)
         step_once()
         if (it + 1) % 120 == 0:
             sat = (a[:, :N_ARM].abs() > 0.98 * args_cli.act_clamp).float().mean()
@@ -205,7 +212,7 @@ def main() -> None:
         ratio = u.stretch_ratio
         need_pull = grasped & u.grasp_active & (ratio < args_cli.target_ratio)
         # pull target: current tip pushed outward along the ray
-        target = tip() + dhat * 0.08
+        target = tip() + dhat * 0.05
         servo_to(J_pinv, target, active=need_pull)
         step_once()
         ratio_hist.append(u.stretch_ratio.clone())

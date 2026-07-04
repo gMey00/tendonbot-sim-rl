@@ -16,7 +16,8 @@
 #     (``shirt_grasp_point_w`` override — the literature-standard second
 #     grasp: Maitin-Shepard 2010, Doumanoglou 2014)
 #   * per-step task state: inter-grasp tautness ratio (patch-centroid
-#     separation / flat-rest separation, the Stage-0-validated definition)
+#     separation / GEODESIC rest distance on the mesh-edge graph — the
+#     flat-Euclidean normalisation over-reads wrap-around grasp pairs)
 #     and projected-silhouette coverage in the inspection-camera plane
 #     (``shared/cloth_metrics.py``)
 #   * windowed presented latch (>= PRESENT_WINDOW_FRAC of the last
@@ -50,16 +51,27 @@ HOLDER_ANCHOR_RADIUS = 0.07
 MAX_HANG_DRAPE = PRESENTATION_POS[2] - DRUM_HEIGHT_M - 0.04
 
 # ── Success predicate ────────────────────────────────────────────────
-# Tautness band: taut but not overstretched.  Lower edge / coverage threshold
-# are CALIBRATED from measured distributions (raw hang vs scripted stretch,
-# scripts/model_validation/baseline_shirt_present.py) — see the tracking
-# report before changing.  Upper edge 1.10 keeps a safety margin below the
-# Stage-0-validated stretch limit (stable through 1.15, untested beyond).
+# Tautness band: taut but not overstretched, with the ratio normalised by
+# the GEODESIC rest distance between the two grasped patches (baseline v2
+# finding, job 3809927: the flat-rest EUCLIDEAN separation underestimates
+# the fabric path for random grasp pairs — front/back-layer and wrap-around
+# pairs read 1.31–1.58 with visibly slack cloth).  Under the geodesic
+# normalisation a straight (taut) span reads ≤ 1.0.  Upper edge 1.10 keeps
+# a safety margin below the Stage-0-validated stretch limit (1.15).
 STRETCH_BAND = (0.90, 1.10)
 # Fraction of the flat one-sided area the camera-plane silhouette must
-# recover.  Placeholder until the baseline calibration (raw hang expected
-# ~0.3-0.5; scripted stretches measure the achievable ceiling).
-COVERAGE_THRESHOLD = 0.55
+# recover.  Calibrated 2026-07-04 (baseline job 3809927, 16 bank hangs):
+# raw hang mean 0.441, p50 0.425, p90 0.530; naive scripted ray-pull holds
+# reach ≤ 0.512.  0.50 sits above the raw median (bunched cloth cannot
+# score) while staying achievable; the taut+still+both-grasps gates carry
+# the rest of the honesty.  Revisit once trained policies show what an
+# oriented stretch achieves (ICRA-2024 competition band: 0.55–0.60).
+COVERAGE_THRESHOLD = 0.50
+# Geodesic propagation: min-plus relaxation sweeps over the mesh-edge graph
+# (vectorised Bellman-Ford, pure torch on GPU; the ~11 k-vertex garment
+# needs < ~350 hops end-to-end).
+GEO_MAX_ITERS = 400
+GEO_CHECK_EVERY = 50
 # Cloth-centroid speed gate (NOT the EE — see the class docstring note).
 PRESENT_VEL_THRESHOLD = 0.20   # m/s
 PRESENT_WINDOW = 60            # steps (1 s @ 60 Hz)
@@ -87,6 +99,15 @@ class ShirtPresentEnv(ClothSortingEnvBase):
 
         # Reference area for silhouette coverage (flat one-sided rest shape).
         self._ref_area = flat_silhouette_area(self._cloth.flat_rest_pos)
+
+        # Mesh-edge graph for geodesic rest distances (src/dst/weight, both
+        # directions).  Weights = edge lengths in the settled rest shape
+        # (≈ PBD spring rest lengths).  ``_geo_dist[e, p]`` = geodesic from
+        # the holder patch of env e to particle p, refreshed per reset.
+        self._geo_edges = self._extract_mesh_edges()
+        self._geo_dist = torch.full(
+            (n, self._cloth.num_particles), 10.0, device=dev,
+        )
 
         # Per-step task-state buffers (recomputed after every physics step —
         # rewards/observations consume the values from the END of the
@@ -160,6 +181,87 @@ class ShirtPresentEnv(ClothSortingEnvBase):
         )
 
     # ------------------------------------------------------------------
+    # Geodesic rest distances (mesh-edge graph, GPU min-plus relaxation)
+    # ------------------------------------------------------------------
+
+    def _extract_mesh_edges(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None:
+        """Unique mesh edges of the garment as ``(src, dst, weight)`` (bidirectional).
+
+        Topology from the live env-0 cloth mesh prim (its point order IS the
+        particle order the cloth view drives); weights = edge lengths in the
+        settled rest shape.  Returns None (with a warning) if the prim cannot
+        be read — the stretch ratio then falls back to the flat-Euclidean
+        normalisation (known to over-read on wrap-around pairs).
+        """
+        import logging
+        try:
+            from pxr import Sdf, UsdGeom
+            import numpy as np
+            mesh_path = self._cloth._cloth_pattern.replace("env_*", "env_0")
+            mesh = UsdGeom.Mesh(self.sim.stage.GetPrimAtPath(Sdf.Path(mesh_path)))
+            counts = np.asarray(mesh.GetFaceVertexCountsAttr().Get(), dtype=np.int64)
+            idx = np.asarray(mesh.GetFaceVertexIndicesAttr().Get(), dtype=np.int64)
+            # Consecutive-vertex (cyclic) edges of every face polygon.
+            pairs = []
+            off = 0
+            for c in counts:
+                face = idx[off:off + c]
+                pairs.append(np.stack([face, np.roll(face, -1)], axis=1))
+                off += c
+            e = np.concatenate(pairs)
+            e.sort(axis=1)
+            e = np.unique(e, axis=0)                             # [E, 2]
+            src = torch.as_tensor(e[:, 0], device=self.device)
+            dst = torch.as_tensor(e[:, 1], device=self.device)
+            rest = self._cloth.flat_rest_pos
+            w = torch.norm(rest[src] - rest[dst], dim=-1)
+            # Both directions for the relaxation sweeps.
+            src_b = torch.cat([src, dst])
+            dst_b = torch.cat([dst, src])
+            w_b = torch.cat([w, w])
+            logging.getLogger(__name__).info(
+                "shirt_present geodesics: %d unique mesh edges, mean length %.4f m",
+                e.shape[0], float(w.mean()),
+            )
+            return src_b, dst_b, w_b
+        except Exception as exc:  # pragma: no cover - fallback path
+            logging.getLogger(__name__).warning(
+                "shirt_present: mesh-edge extraction failed (%s) — stretch "
+                "ratio falls back to flat-Euclidean normalisation.", exc,
+            )
+            return None
+
+    def _update_holder_geodesics(self, env_ids: torch.Tensor) -> None:
+        """Refresh ``_geo_dist`` for *env_ids* from their slot-1 patch masks.
+
+        Vectorised multi-source Bellman-Ford: distances start at 0 on the
+        pinned holder patch and relax along mesh edges (min-plus) until
+        converged — pure torch, all envs in parallel (scipy is not available
+        in the cluster env, and CPU Dijkstra would sync per reset anyway).
+        """
+        if self._geo_edges is None or env_ids.numel() == 0:
+            return
+        src, dst, w = self._geo_edges
+        k = env_ids.numel()
+        mask = self._cloth._attach_mask[1, env_ids]              # [k, P]
+        dist = torch.full(
+            (k, self._cloth.num_particles), float("inf"), device=self.device,
+        )
+        dist[mask] = 0.0
+        dst_exp = dst.unsqueeze(0).expand(k, -1)
+        prev_check = dist.clone()
+        for it in range(1, GEO_MAX_ITERS + 1):
+            cand = dist.gather(1, src.unsqueeze(0).expand(k, -1)) + w
+            dist.scatter_reduce_(1, dst_exp, cand, reduce="amin", include_self=True)
+            if it % GEO_CHECK_EVERY == 0:
+                if bool((dist == prev_check).all()):
+                    break
+                prev_check = dist.clone()
+        # Unreachable particles (shouldn't exist on a connected garment) →
+        # large finite value so downstream math stays finite.
+        self._geo_dist[env_ids] = torch.nan_to_num(dist, posinf=10.0)
+
+    # ------------------------------------------------------------------
     # Task-state computation
     # ------------------------------------------------------------------
 
@@ -179,8 +281,11 @@ class ShirtPresentEnv(ClothSortingEnvBase):
         """Recompute the stretch/coverage buffers from the current cloth state.
 
         Stretch ratio: separation of the two attached patch centroids over
-        their separation in ``flat_rest_pos`` — exactly the definition the
-        Stage-0 two-attachment stretch test validated stable through 1.15.
+        the GEODESIC rest distance from the holder patch to the hand patch
+        (mesh-edge graph).  A straight taut span reads ≤ 1.0 regardless of
+        which particle pair was grabbed; the flat-Euclidean fallback (graph
+        unavailable) over-reads wrap-around pairs (baseline v2: 1.31–1.58
+        on slack cloth).
         """
         self._coverage_buf = silhouette_coverage(
             self._cloth.nodal_pos_w, self._ref_area, view_axis=1,
@@ -190,9 +295,14 @@ class ShirtPresentEnv(ClothSortingEnvBase):
             cur0, rest0 = self._slot_patch_centroids(0)
             cur1, rest1 = self._slot_patch_centroids(1)
             dist = torch.norm(cur0 - cur1, dim=-1)
-            rest = torch.norm(rest0 - rest1, dim=-1).clamp(min=1e-6)
+            if self._geo_edges is not None:
+                mask0 = self._cloth._attach_mask[0].float()      # [N, P]
+                cnt0 = mask0.sum(dim=1).clamp(min=1.0)
+                rest = (mask0 * self._geo_dist).sum(dim=1) / cnt0
+            else:
+                rest = torch.norm(rest0 - rest1, dim=-1)
             self._stretch_buf = torch.where(
-                both, dist / rest, torch.zeros_like(dist),
+                both, dist / rest.clamp(min=1e-6), torch.zeros_like(dist),
             )
         else:
             self._stretch_buf = torch.zeros_like(self._stretch_buf)
@@ -218,6 +328,7 @@ class ShirtPresentEnv(ClothSortingEnvBase):
             env_ids, self._anchor_pos, slot=1, radius=HOLDER_ANCHOR_RADIUS,
             max_drape=MAX_HANG_DRAPE,
         ):
+            self._update_holder_geodesics(env_ids)
             return
         origins = self.scene.env_origins[env_ids]
         centroids = origins.clone()
@@ -228,6 +339,7 @@ class ShirtPresentEnv(ClothSortingEnvBase):
         self._cloth.reset_randomized(env_ids, centroids, yaw)
         self._cloth.update()
         self._cloth.attach(env_ids, self._anchor_pos, HOLDER_ANCHOR_RADIUS, slot=1)
+        self._update_holder_geodesics(env_ids)
 
     # ------------------------------------------------------------------
     # Step hook: hand grasp (base machinery) + keep the holder pinned
