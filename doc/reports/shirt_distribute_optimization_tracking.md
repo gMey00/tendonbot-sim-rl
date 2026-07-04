@@ -268,7 +268,47 @@ positive and large), but release QUALITY is poor (`release_event` ≈ 2 % of
 max — releases are rim-grazes, not centred cleared drops), wrong-bin landings
 grow late, the policy std barely anneals (0.61 → 0.58 — the shirt_place
 determinism watch-item), and mean episode length ~319/480 suggests a
-termination firing early (diagnose: joint_vel vs belt_collision — termination
-tags did not reach TB either).  Deterministic per-bin eval of run-1
-checkpoints running (job 3810140); 2-seed retrain with fixed metrics queued
-(`sd_train2`, job 3810141, seeds 1/2).
+termination firing early.  2-seed retrain with fixed metrics: `sd_train2`,
+job 3810141 (control for iteration 2).
+
+### Deterministic eval of run 1 → the noise-controller diagnosis (job 3810146)
+
+`best_agent.pt`, mean actions, seed 7, 96 episodes:
+
+```
+distribute_success_rate = 0.010   bin0 0.031 (n=32) | bin1 0.000 (n=28) | bin2 0.000 (n=36)
+release_rate = 0.906   mean|act| = 0.836
+```
+
+The stochastic policy scored during training; the mean is not a placer.
+Root-cause chain (measured):
+
+1. **mean|act| 0.836 yet `joint_vel` penalty only −0.018/ep and `action_rate`
+   −0.011/ep** → the mean action is a CONSTANT saturated vector: with
+   relative joint actions that is a constant-velocity command (zero
+   action-rate penalty by construction) that pins the joints at their limits
+   (measured joint speeds ~0.4 rad/s — the limit stop, not tracking).
+2. **σ ≈ 0.58 never anneals** (entropy 0, so the only pressure is advantage —
+   and with relative actions the noise INTEGRATES into a position random-walk
+   that covers the drums by itself, then random release timing collects
+   `in_target_bin`; the mean gets no credit assignment).
+3. LR is healthy (KL-adaptive, 2e-5–1e-4); value loss converged — PPO
+   optimized exactly what the sampling distribution earned.
+
+Also found: the manager's `Episode_Termination/*` floats never reach TB (the
+skrl wrapper forwards only tensors) — termination-cause fractions now logged
+as tensors (`Metrics/term_*`, `Metrics/mean_episode_length`).
+
+### Iteration 2 (`sd_train3`, job 3810150, seeds 1/2, 64 envs, 48 000 timesteps)
+
+| Change | Rationale |
+|---|---|
+| `action_l2` −0.1 → −0.4 @ 4000 (new) | magnitude penalty is the only term a constant saturated action feels; pulls the mean toward "hold still" unless motion pays (≈ −9/ep at run-1's |a|) |
+| `initial_log_std` −1.0 (was −0.5) | velocity-like actions integrate noise; σ 0.6 let noise solve the task stochastically (memory precedent: IK-abs variant also wanted −1.0) |
+| trainer 48 000 timesteps (was 20 000) | 20 k × 64 envs was likely 3–5× short for a goal-conditioned cloth task; ≈ 2.4 h/run at the measured 5.6 steps/s |
+| `Metrics/term_*` tensors (new) | diagnose the early-termination trickle seen in eval |
+
+Considered and rejected: `EMAJointPositionToLimitsAction` (reach winner) —
+its EMA buffer resets to the pre-reset joint positions (action-manager reset
+runs before the env writes the holding pose), so it would re-introduce a
+smoothed version of the reset yank; revisit only if action_l2 fails.
