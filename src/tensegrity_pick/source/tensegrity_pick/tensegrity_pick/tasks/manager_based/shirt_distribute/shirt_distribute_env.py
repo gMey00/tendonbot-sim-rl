@@ -89,16 +89,19 @@ TIP_BOX_Z = (1.20, 1.75)
 # dynamic finger tip ≥ 0.10 m (of the ~0.235 m closed-tip offset ⇒ ≤ ~65°
 # from vertical) — end-of-Task-2 the gripper holds the shirt hanging.
 TIP_DOWN_MIN_DROP = 0.10
-# Guided rejection sampling: explore rounds sample uniform half-range widths
-# (capped) around the default pose; once ≥ EXPLOIT_MIN_SEEDS poses are found,
-# further rounds perturb random accepted poses by ±EXPLOIT_NOISE to densify.
-POSE_SWEEP_MAX_ROUNDS = 200
+# Guided rejection sampling: each round, envs are split between EXPLORE
+# (uniform half-range widths, capped, around the default pose) and EXPLOIT
+# (perturb already-accepted poses by ±EXPLOIT_NOISE) as soon as one seed
+# exists.  Measured need: blind exploration accepts only ~0.4 % (6/1600
+# samples, 2026-07-04 job 3809918) — the old design waited for 8 seeds
+# before exploiting, so densification never engaged.
+POSE_SWEEP_MAX_ROUNDS = 300
 POSE_SWEEP_SETTLE_STEPS = 2
 POSE_BANK_TARGET = 256
 POSE_BANK_MIN = 32
 EXPLORE_WIDTH_CAP = 3.1416        # rad, per-joint half-range cap
-EXPLOIT_MIN_SEEDS = 8
-EXPLOIT_NOISE = 0.30              # rad
+EXPLOIT_FRACTION = 0.5            # env fraction perturbing accepted poses
+EXPLOIT_NOISE = 0.25              # rad
 # ── Pose-dependent drape limit ─────────────────────────────────────────────
 # The restored hang must clear whatever is BELOW the sampled tip, not a blunt
 # global bound: over a drum footprint (xy within DRUM_AVOID_RADIUS = drum
@@ -295,14 +298,15 @@ class ShirtDistributeEnv(ClothSortingEnvBase):
         for rnd in range(POSE_SWEEP_MAX_ROUNDS):
             if n_accepted >= POSE_BANK_TARGET:
                 break
-            if n_accepted >= EXPLOIT_MIN_SEEDS:
-                # Exploit: perturb random accepted poses.
+            # Explore everywhere; as soon as one seed exists, an
+            # EXPLOIT_FRACTION of the envs perturbs accepted poses instead.
+            q = default_q + (torch.rand(n, a, device=dev) - 0.5) * 2.0 * width
+            if n_accepted > 0:
                 pool = torch.cat(bank_q, dim=0)
                 base = pool[torch.randint(0, pool.shape[0], (n,), device=dev)]
-                q = base + (torch.rand(n, a, device=dev) - 0.5) * 2.0 * EXPLOIT_NOISE
-            else:
-                # Explore: uniform around the default pose.
-                q = default_q + (torch.rand(n, a, device=dev) - 0.5) * 2.0 * width
+                q_exploit = base + (torch.rand(n, a, device=dev) - 0.5) * 2.0 * EXPLOIT_NOISE
+                exploit = torch.rand(n, device=dev) < EXPLOIT_FRACTION
+                q = torch.where(exploit.unsqueeze(1), q_exploit, q)
             q = torch.clamp(q, lo, hi)
 
             robot.write_joint_state_to_sim(q, zeros_vel, joint_ids=arm_ids)
