@@ -221,9 +221,12 @@ class RewardsCfg:
     # ×(0.25..1) by centering × whole-shirt-lift (shirt_place design).
     release_event = RewTerm(func=mdp.release_event_bonus, weight=240.0)
     # One-shot: opening NOT over the commanded bin (incl. the instant drop at
-    # episode start) ≈ −2 total — a committed mistake, clearly negative but
-    # not so catastrophic that PPO refuses to ever open the gripper.
-    bad_release = RewTerm(func=mdp.bad_release_penalty, weight=-120.0)
+    # episode start) ≈ −1 total — a committed mistake, clearly negative but
+    # small enough that release exploration survives (at −120 with σ = e⁻¹,
+    # train3-seed2's release_rate collapsed to 0.003 mid-run: early penalty
+    # hits pushed the gripper mean negative and releases stopped being
+    # sampled).
+    bad_release = RewTerm(func=mdp.bad_release_penalty, weight=-60.0)
 
     # ── 4. Success: released cloth in the commanded drum ────────────
     in_target_bin = RewTerm(func=mdp.fraction_in_target_bin, weight=120.0)
@@ -236,12 +239,19 @@ class RewardsCfg:
         params={"z_threshold": 0.70, "drum_radius": 0.40},
     )
 
-    # ── 5. Anti-hover time cost + post-drop neutral return ──────────
+    # ── 5. Anti-hover time cost + post-drop settling ────────────────
     carry_time = RewTerm(func=mdp.carry_time_penalty, weight=-1.5)
-    return_to_neutral = RewTerm(
-        func=mdp.return_to_neutral,
+    # Calm-and-high instead of return-to-default (the UR5e default pose is
+    # LOW from the pedestal mount — the neutral pull dove the arm into the
+    # belt_collision cliff after every success; see settle_after_success).
+    settle_after_success = RewTerm(
+        func=mdp.settle_after_success,
         weight=200.0,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=MISSING), "std": 0.40},
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=MISSING),
+            "vel_std": 1.0,
+            "safe_tip_z": 0.95,
+        },
     )
 
     # ── Regularisation (curriculum ramps, see CurriculumCfg) ────────
@@ -258,13 +268,16 @@ class RewardsCfg:
         weight=-3e-4,
         params={"max_velocity": 10.0, "asset_cfg": SceneEntityCfg("robot", joint_names=MISSING)},
     )
+    # margin 0.05: the penalty gradient starts at tip z = 0.85, well before
+    # the belt_collision termination cliff at 0.68 (iteration 3 — the noise
+    # random-walk was absorbing episodes at the cliff with no prior warning).
     belt_contact = RewTerm(
         func=mdp.belt_contact_penalty,
         weight=-10.0,
         params={
             "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
             "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
-            "margin": 0.0,
+            "margin": 0.05,
             "max_depth": 0.15,
         },
     )
@@ -306,9 +319,14 @@ class TerminationsCfg:
         time_out=True,
         params={"max_velocity": 100.0, "asset_cfg": SceneEntityCfg("robot", joint_names=MISSING)},
     )
+    # time_out=False (was True in shirt_place): a bootstrapped truncation
+    # makes wandering into the cliff nearly FREE for PPO (the value estimate
+    # substitutes the lost return) — with relative-action noise random-walking
+    # the arm, the cliff absorbed up to 48 % of train3 episodes.  As a true
+    # termination the lost return teaches avoidance.
     belt_collision = DoneTerm(
         func=mdp.belt_collision_termination,
-        time_out=True,
+        time_out=False,
         params={
             "ee_cfg": SceneEntityCfg("robot", body_names=MISSING),
             "belt_height": CONVEYOR_SURFACE_HEIGHT_M,
@@ -359,7 +377,7 @@ class ShirtDistributeEnvCfg(ManagerBasedRLEnvCfg):
         obs.target_bin_rel_ee.params["ee_cfg"].body_names = grasp
 
         self.rewards.joint_vel.params["asset_cfg"].joint_names = controlled_joints
-        self.rewards.return_to_neutral.params["asset_cfg"].joint_names = arm_joints
+        self.rewards.settle_after_success.params["asset_cfg"].joint_names = arm_joints
         self.rewards.belt_contact.params["ee_cfg"].body_names = grasp
 
         self.events.reset_arm.params["asset_cfg"].joint_names = arm_joints

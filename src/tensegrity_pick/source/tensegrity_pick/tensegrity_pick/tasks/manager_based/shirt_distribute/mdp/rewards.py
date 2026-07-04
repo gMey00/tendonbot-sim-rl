@@ -222,27 +222,27 @@ def carry_time_penalty(env: "ManagerBasedRLEnv") -> torch.Tensor:
 # Phase 5: after the drop
 # ---------------------------------------------------------------------------
 
-def return_to_neutral(
+def settle_after_success(
     env: "ManagerBasedRLEnv",
     asset_cfg: SceneEntityCfg,
-    std: float = 0.40,
+    vel_std: float = 1.0,
+    safe_tip_z: float = 0.95,
 ) -> torch.Tensor:
-    """Reward for returning joints to defaults once the shirt is distributed.
+    """Post-success calm: still joints with the fingertip parked high.
 
-    Per-joint normalized deviation (soft-range scaled) → 1 − tanh(rms/std);
-    gated on ``was_distributed`` (port of shirt_place's post-place objective —
-    prevents lingering over the rim).
+    Replaces the shirt_place-style return-to-default (iteration 3): the
+    UR5e's default pose sits low from the pedestal mount, so the neutral pull
+    drove the arm into the belt_collision cliff AFTER every success
+    (train3: 29–48 % of episodes ended by belt_collision, late — post-drop),
+    truncating exactly the reward stream that makes releasing dominant.
+    For this task any calm, high pose is a valid terminal posture:
+    ``(1 − tanh(rms(q̇)/vel_std)) × tip_above(safe_tip_z)``, gated on
+    ``was_distributed``.
     """
     robot: Articulation = env.scene[asset_cfg.name]
-    current = robot.data.joint_pos[:, asset_cfg.joint_ids]
-    default = robot.data.default_joint_pos[:, asset_cfg.joint_ids]
-
-    limits = robot.data.soft_joint_pos_limits[:, asset_cfg.joint_ids, :]
-    scale = limits[..., 1] - limits[..., 0]
-    valid = scale.isfinite() & (scale > 1e-6)
-    scale = torch.where(valid, scale, torch.ones_like(scale))
-
-    dev = (current - default) / scale
-    distance = torch.norm(dev, dim=-1) / math.sqrt(dev.shape[-1])
-    result = 1.0 - torch.tanh(distance / std)
-    return result * env.was_distributed.float()
+    qd = robot.data.joint_vel[:, asset_cfg.joint_ids]
+    rms = torch.norm(qd, dim=-1) / math.sqrt(qd.shape[-1])
+    calm = 1.0 - torch.tanh(rms / vel_std)
+    tip_z = env._finger_tip_pos()[:, 2] - env.scene.env_origins[:, 2]
+    high = (tip_z > safe_tip_z).float()
+    return calm * high * env.was_distributed.float()
