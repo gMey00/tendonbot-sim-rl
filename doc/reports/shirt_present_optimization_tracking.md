@@ -245,3 +245,24 @@ Every gate is reachable, the naive scripted heuristic scores nonzero, and covera
 axis RL must improve (oriented stretch vs the baseline's blind ray-pull).  → Training
 authorised per the workflow; run 1: `train.py --num_envs 64`, PPO profile from the yaml
 (20 k trainer steps), job 3810160.
+
+---
+
+## Phase 2: Training
+
+### Run 1 — PPO, 64 envs, 20 k trainer steps (job 3810160, 34 min)
+
+Stochastic rollouts: grasp_rate → 1.00 within 2 k steps; present_rate climbing 0.33 → 0.68
+and still rising at the 20 k cap; final_coverage → 0.56; drop_rate 0.05–0.21.
+**Deterministic eval** (agent_20000, seed 7, 96 episodes, job 3810211):
+
+| present_rate | grasp_rate | drop_rate | final_coverage | mean\|act\| |
+|---|---|---|---|---|
+| **0.625** | 0.927 | 0.167 | 0.574 | 0.520 |
+
+vs scripted baseline 0.125.  No determinism gap (deterministic ≈ late stochastic rollouts).
+Leaks to 0.9: drops (0.167 — the policy sometimes reopens the gripper) and residual
+non-grasps (0.073).  Coverage at 0.574 already exceeds the 0.50 gate and sits in the
+ICRA reference band.  → Run 2: same config, 60 k trainer steps (job 3810212) — run 1 was
+still improving at cap; revisit the drop penalty only if run 2's drop_rate stays > ~0.1
+(diagnose gates first, lesson: don't touch weights blindly).
