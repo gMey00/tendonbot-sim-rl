@@ -49,7 +49,7 @@ Train an RL agent (the second arm) to maximize garment inspectability:
 
 **Success predicate** (`presented_now`, latched over a window — ≥ 80 % of the
 last 60 steps): `grasp_active(slot 0) ∧ holder_attached(slot 1) ∧
-stretch_ratio ∈ [0.90, 1.10] ∧ silhouette_coverage ≥ 0.55 ∧ cloth-centroid
+stretch_ratio/r0 ∈ [0.92, 1.10] ∧ silhouette_coverage ≥ 0.50 ∧ cloth-centroid
 speed < 0.20 m/s`.  Rationale (measured decisions):
 
 - **Silhouette coverage** = rasterized projection of all particles onto the
@@ -58,10 +58,11 @@ speed < 0.20 m/s`.  Rationale (measured decisions):
   score.  A front+back inspection sees the SAME occluding silhouette, so one
   area serves both viewpoints.  Reference band: ICRA-2024 cloth-competition
   top-three coverage ≈ 0.55–0.60.
-- **Stretch ratio** = ‖patch-centroid₀ − patch-centroid₁‖ / their
-  `flat_rest_pos` separation — the exact definition validated stable through
-  1.15 by the Stage-0 two-attachment test; the 1.10 upper edge keeps a
-  safety margin.
+- **Stretch ratio** = ‖patch-centroid₀ − patch-centroid₁‖ / GEODESIC rest
+  distance from the holder patch (PBD spring graph, GPU multi-source
+  Bellman-Ford per reset), normalised by the at-grasp value r0 (the
+  lowest-point span is already gravity-taut at grasp: raw r0 = 1.10–1.43
+  measured).  < 0.92·r0 = slack, > 1.10·r0 = overstretch (Stage-0 margin).
 - **Speed gate on the cloth centroid, never the EE** (shirt_pick Phase-3
   lesson: residual PD sway at raised postures is 0.24–0.27 m/s while the
   hanging garment low-pass filters to 0.06–0.20; the camera inspects the
@@ -151,7 +152,7 @@ Total: **8 dims (Kinova) / 7 dims (UR5e)**.
 | `shirt_vel` | 3 | Shirt centroid velocity |
 | `grasp_active` | 1 | Hand grasp (slot 0) attached |
 | `holder_attached` | 1 | Holder anchor (slot 1) still pinned |
-| `stretch_ratio` | 1 | Inter-grasp tautness (0 until both attached) |
+| `stretch_ratio` | 1 | At-grasp-normalised tautness (0 until both attached) |
 | `coverage` | 1 | Camera-plane silhouette coverage |
 | `gripper_closure` | 1 | Normalized closure |
 | `actions` | 8 / 7 | Previous action |
@@ -171,11 +172,11 @@ Sequential shirt_pick pattern.  dt-scaling: per-step weight *w* earns
 |---|---|---|
 | `reaching` | 2.0 | `1 − tanh(‖tip − lowest point‖ / 0.25)`; **saturates to 1 while grasped** (the lowest point migrates post-grasp — chasing it would fight the stretch) |
 | `grasp_hold` | 5.0 | Per-step while the slot-0 attachment holds |
-| `stretch` | 8.0 | Clamped tautness progress (ratio 0.50 → 0.98), gated on BOTH attachments |
-| `coverage` | 10.0 | Camera-plane silhouette coverage, gated on both attachments (anti-fling/bunch) |
+| `stretch` | 8.0 | Maintain-tautness on the at-grasp-normalised ratio (0.80 → 0.97 ramp), gated on BOTH attachments |
+| `coverage` | 14.0 | Camera-plane silhouette coverage, gated on both attachments (anti-fling/bunch); 10→14 after gate diagnosis (weakest gate) |
 | `presented` | 30.0 | Full success predicate per step — dominant term; no anti-hover fade needed (holding IS the task) |
-| `overstretch` | −40.0 | Proportional above ratio 1.10 (validated stability ends at 1.15) |
-| `drop` | −120.0 | One-shot when an established hand grasp is lost (≈ −2 after dt) |
+| `overstretch` | −40.0 | Proportional above normalised ratio 1.05 — gradient moat under the 1.10 predicate edge (validated stability ends at +15 %) |
+| `drop` | −240.0 | One-shot when an established hand grasp is lost (≈ −4 after dt); −120→−240 after run-2 drops capped present at 0.65–0.71 |
 | `action_rate` | −1e-4 → −3e-3 | Curriculum ramp at 2000 trainer steps (shirt_place profile) |
 | `joint_vel` | −1e-4 → −2e-3 | 〃 |
 
