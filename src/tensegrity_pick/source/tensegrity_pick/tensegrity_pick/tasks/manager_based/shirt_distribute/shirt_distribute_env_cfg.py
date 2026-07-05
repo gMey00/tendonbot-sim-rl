@@ -356,6 +356,9 @@ class ShirtDistributeEnvCfg(ManagerBasedRLEnvCfg):
     """Robot-agnostic base configuration for the shirt distribute task."""
 
     scene: ShirtDistributeSceneCfg = ShirtDistributeSceneCfg(num_envs=512, env_spacing=5.0)
+    # Cached holding-pose bank (robot-specific; None = per-process sweep).
+    # See ShirtDistributeEnv.pose_bank_path for why caching matters.
+    pose_bank_path: str | None = None
     actions: ActionsCfg = ActionsCfg()
     observations: ObservationsCfg = ObservationsCfg()
     rewards: RewardsCfg = RewardsCfg()

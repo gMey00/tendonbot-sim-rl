@@ -16,6 +16,9 @@ from tensegrity_pick.tasks.manager_based.shared.cloth_sorting_scene_cfg import (
     SECOND_ROBOT_MOUNT_POS,
     SECOND_ROBOT_MOUNT_ROT_UR,
 )
+from tensegrity_pick.tasks.manager_based.shared.proj_base_scene_cfg import (
+    PROJ_ASSETS_PATH,
+)
 from tensegrity_pick.tasks.manager_based.shirt_distribute import mdp
 from tensegrity_pick.tasks.manager_based.shirt_distribute.shirt_distribute_env_cfg import (
     ShirtDistributeEnvCfg,
@@ -28,6 +31,12 @@ class UR5eF140ShirtDistributeEnvCfg(ShirtDistributeEnvCfg):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+
+        # Cached UR5e holding-pose bank: train + eval share ONE init
+        # distribution (scripts/generate_distribute_pose_bank.py).
+        self.pose_bank_path = (
+            f"{PROJ_ASSETS_PATH}/Props/Cloth/banks/ur5e_f140_distribute_pose_bank.pt"
+        )
 
         self.scene.robot = UR5E_GRIPPER_CFG.replace(
             prim_path="{ENV_REGEX_NS}/Robot",

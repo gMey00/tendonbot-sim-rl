@@ -41,6 +41,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Sequence
 
 import torch
@@ -126,6 +127,16 @@ class ShirtDistributeEnv(ClothSortingEnvBase):
 
     hanging_bank_path = HANGING_BANK_PATH
 
+    # Cached holding-pose bank (robot-specific — set by the robot variant
+    # cfg via ``pose_bank_path``; generated once by
+    # ``scripts/generate_distribute_pose_bank.py``).  Without a cache the
+    # bank is re-swept per process from the GLOBAL torch RNG, which makes
+    # the init DISTRIBUTION itself depend on seed AND num_envs — measured:
+    # the same checkpoint scored 0.21 vs 0.56 deterministic on eval seeds
+    # 7/8 purely from the distribution shift.  A cached bank makes training
+    # and evaluation sample the same 256 poses.
+    pose_bank_path: str | None = None
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._target_bin = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
@@ -161,8 +172,38 @@ class ShirtDistributeEnv(ClothSortingEnvBase):
             self.num_envs, dtype=torch.bool, device=self.device
         )
 
-        # One-off holding-pose sweep (needs the settled sim from __init__).
-        self._build_holding_pose_bank()
+        # Holding-pose bank: load the cached bank when configured (train and
+        # eval then share ONE init distribution); fall back to the in-sim
+        # sweep otherwise (seed/num_envs-dependent — see class attr note).
+        if not self._load_pose_bank():
+            self._build_holding_pose_bank()
+
+    def _load_pose_bank(self) -> bool:
+        """Load ``pose_bank_path``; False (+ warning) on any mismatch."""
+        log = logging.getLogger(__name__)
+        path = getattr(self.cfg, "pose_bank_path", None) or self.pose_bank_path
+        if not path:
+            return False
+        if not os.path.isfile(path):
+            log.warning(
+                "Holding-pose bank not found at %s — falling back to the "
+                "per-process sweep (generate it with "
+                "scripts/generate_distribute_pose_bank.py).", path,
+            )
+            return False
+        data = torch.load(path, map_location=self.device)
+        if data["q"].shape[1] != len(self._arm_joint_ids):
+            log.warning(
+                "Holding-pose bank %s has %d joints but the arm has %d — "
+                "bank ignored.", path, data["q"].shape[1], len(self._arm_joint_ids),
+            )
+            return False
+        self._pose_bank_q = data["q"].to(self.device)
+        self._pose_bank_tip = data["tip"].to(self.device)
+        self._pose_bank_drape = data["drape"].to(self.device)
+        log.info("Holding-pose bank loaded: %d poses (%s)",
+                 self._pose_bank_q.shape[0], path)
+        return True
 
     # ------------------------------------------------------------------
     # Goal conditioning
