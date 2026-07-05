@@ -74,8 +74,24 @@ def main() -> None:
                     f"y[{tips[:,1].min():.2f},{tips[:,1].max():.2f}] "
                     f"z[{tips[:,2].min():.2f},{tips[:,2].max():.2f}]"))
 
+    # "Hold the arm" action: zero for relative terms; for absolute
+    # to-limits terms (EMA variant) zero targets MID-LIMITS and the arm
+    # drifts — encode the CURRENT joint positions instead.
+    from isaaclab.envs.mdp.actions.joint_actions_to_limits import (
+        JointPositionToLimitsAction,
+    )
+    arm_term = u.action_manager.get_term("arm_action")
+    is_limits = isinstance(arm_term, JointPositionToLimitsAction)
+    robot0 = u.scene["robot"]
+    a_arm = len(u._arm_joint_ids)
+
     def act(grip: float) -> torch.Tensor:
         a = torch.zeros(n, u.action_manager.total_action_dim, device=dev)
+        if is_limits:
+            q = robot0.data.joint_pos[:, u._arm_joint_ids]
+            lim = robot0.data.soft_joint_pos_limits[:, u._arm_joint_ids, :]
+            lo, hi = lim[..., 0], lim[..., 1]
+            a[:, :a_arm] = torch.clamp((2.0 * q - (hi + lo)) / (hi - lo), -1.0, 1.0)
         a[:, -1] = grip
         return a
 
