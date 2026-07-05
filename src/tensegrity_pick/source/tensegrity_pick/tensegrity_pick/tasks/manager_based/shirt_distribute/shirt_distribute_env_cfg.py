@@ -221,12 +221,13 @@ class RewardsCfg:
     # ×(0.25..1) by centering × whole-shirt-lift (shirt_place design).
     release_event = RewTerm(func=mdp.release_event_bonus, weight=240.0)
     # One-shot: opening NOT over the commanded bin (incl. the instant drop at
-    # episode start) ≈ −1 total — a committed mistake, clearly negative but
-    # small enough that release exploration survives (at −120 with σ = e⁻¹,
-    # train3-seed2's release_rate collapsed to 0.003 mid-run: early penalty
-    # hits pushed the gripper mean negative and releases stopped being
-    # sampled).
-    bad_release = RewTerm(func=mdp.bad_release_penalty, weight=-60.0)
+    # episode start).  DISCOVERY CURRICULUM (iteration 4): starts mild (−5)
+    # and ramps to −60 at 4000 steps — at a constant −60/−120 with σ = e⁻¹,
+    # 2 of 4 seeds collapsed (release_rate < 0.01 for thousands of steps:
+    # early penalty hits push the gripper-action mean negative and releases
+    # stop being SAMPLED, extinguishing the exploration the penalty is meant
+    # to shape).
+    bad_release = RewTerm(func=mdp.bad_release_penalty, weight=-5.0)
 
     # ── 4. Success: released cloth in the commanded drum ────────────
     in_target_bin = RewTerm(func=mdp.fraction_in_target_bin, weight=120.0)
@@ -302,6 +303,11 @@ class CurriculumCfg:
     action_l2 = CurrTerm(
         func=mdp.modify_reward_weight,
         params={"term_name": "action_l2", "weight": -0.4, "num_steps": 4000},
+    )
+    # Full bad-release penalty only after the release behaviour has formed.
+    bad_release = CurrTerm(
+        func=mdp.modify_reward_weight,
+        params={"term_name": "bad_release", "weight": -60.0, "num_steps": 4000},
     )
 
 
