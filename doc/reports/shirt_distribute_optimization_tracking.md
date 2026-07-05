@@ -380,6 +380,57 @@ earlier eval) is learned first by the MEAN.  Remaining gap: placement
 precision.  σ is state-independent and anneals glacially (0.368 → 0.342 over
 18 k) — with σ·scale ≈ 1.4 cm/step of joint-space noise the sampled policy is
 as precise as the drum tolerance, so PPO feels little pressure to sharpen
-the mean beyond it.  Next levers: σ-anneal time (longer budget), release
-penalty curriculum (seed variance), and evaluating the FINAL checkpoints
-(σ falling, success still climbing at the cap).
+the mean beyond it.
+
+### Final 48 k results + deterministic eval matrix (jobs 3812621/3812624)
+
+Training-time (stochastic) success at 48 k: iter2-s1 **0.819**, iter3-s1
+**0.808** (their release-collapse siblings: 0.468 / 0.321).  Deterministic,
+96 eps each:
+
+| Checkpoint | eval seed | success | bin0 / bin1 / bin2 | release | mean\|act\| |
+|---|---|---|---|---|---|
+| iter3-s1 `agent_18000` (mid-run) | 7 | 0.094 | 0.06 / 0.23 / 0.00 | 0.89 | 0.23 |
+| iter3-s1 `agent_48000` | 7 | 0.208 | 0.52 / 0.05 / 0.13 | 0.93 | 0.30 |
+| iter3-s1 `agent_48000` | 8 | **0.454** | 0.21 / 0.47 / 0.65 | 0.97 | 0.30 |
+| iter3-s1 `best_agent` | 7 | 0.122 | 0.27 / 0.00 / 0.11 | 0.97 | 0.32 |
+| iter2-s1 `agent_48000` | 7 | 0.031 | 0.07 / 0.03 / 0.00 | 0.73 | **0.833** |
+| iter3-s2 `agent_48000` | 7 | 0.312 | 0.23 / 0.19 / 0.53 | 0.94 | 0.35 |
+
+Readings:
+- **Iteration-3 fixes carry the deterministic gains** (not budget): iter2-s1
+  with the same stochastic 0.82 but no cliff fix stays a saturated noise
+  controller (mean|act| 0.833, deterministic 0.031).
+- Deterministic quality doubles 18 k → 48 k and is still rising at the cap,
+  but ≈ 0.33 mean is far from 0.85, and per-bin profiles rotate between
+  checkpoints/eval-seeds — an unconverged mean.
+- `best_agent` (training-reward selection) is WORSE than the final
+  checkpoint — reconfirms deterministic-eval selection.
+- The **eval-seed spread (0.208 vs 0.454, ≈ 5σ for n = 96)** is not episode
+  noise: the holding-pose bank is rebuilt from the torch RNG at env
+  construction, so each eval seed tests a different init distribution —
+  always report ≥ 2 eval seeds.
+
+Ops note (cost: two crashed eval batches): piping Isaac Sim job output
+through `grep | tail` in sbatch masked (and possibly caused) silent crashes —
+redirect full output to a file and grep the file.
+
+### Iteration 4 (in flight) + iteration 5 pivot (EMA-to-limits actions)
+
+In flight: `sd_train5r` (pure +48 k resume of iter3-s1 — measures the
+σ-anneal-only path) and `sd_train6` (seeds 3/4/5, relative actions +
+`bad_release` discovery curriculum −5 → −60 @ 4000 — seed-robustness
+attribution after 2 of 4 seeds collapsed release sampling under a constant
+penalty).
+
+Iteration 5: the shirt_present agent reached **0.927 deterministic** on the
+SAME UR5e-F140 second robot with `EMAJointPositionToLimitsActionCfg`
+(α = 0.2, σ₀ = −0.5, 96 k timesteps).  With absolute smoothed targets the
+policy MEAN encodes a pose — noise does not integrate into a random walk —
+removing the noise-controller failure at its root instead of penalizing it
+away.  The reset-yank objection is solved by moving the holding-pose write
+into a reset EVENT: the event manager runs BEFORE `action_manager.reset()`
+in `_reset_idx`, so the EMA buffer (which resets to current joint positions)
+snapshots the holding pose correctly.  `action_l2` is dropped for EMA (it
+was the relative-action fix; in to-limits space it arbitrarily biases toward
+mid-range postures).

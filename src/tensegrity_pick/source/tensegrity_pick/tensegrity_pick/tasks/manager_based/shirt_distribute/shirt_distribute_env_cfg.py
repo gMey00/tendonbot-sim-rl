@@ -175,6 +175,11 @@ class EventsCfg:
             "velocity_range": (0.0, 0.0),
         },
     )
+    # LAST event term: writes the sampled holding pose + closed gripper so
+    # (a) it overrides the default-pose events above and (b) it runs BEFORE
+    # action_manager.reset() — absolute/EMA action terms snapshot the correct
+    # pose into their buffers (enabler for EMAJointPositionToLimitsAction).
+    reset_holding_pose = EventTerm(func=mdp.reset_holding_pose, mode="reset")
 
 
 @configclass

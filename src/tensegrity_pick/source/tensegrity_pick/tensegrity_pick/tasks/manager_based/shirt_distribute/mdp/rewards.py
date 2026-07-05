@@ -43,6 +43,23 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
+# Reset events
+# ---------------------------------------------------------------------------
+
+def reset_holding_pose(env: "ManagerBasedRLEnv", env_ids: torch.Tensor) -> None:
+    """Write the sampled end-of-Task-2 holding pose during the EVENT phase.
+
+    The event manager runs BEFORE ``action_manager.reset()`` in
+    ``_reset_idx``, so absolute/EMA action terms snapshot the holding pose
+    (not the stale pre-reset pose) into their internal buffers — the enabler
+    for ``EMAJointPositionToLimitsAction`` on this task.  No-op until the
+    env's pose bank exists (pre-init resets).
+    """
+    if getattr(env, "_pose_bank_q", None) is not None:
+        env._apply_holding_pose(env_ids)
+
+
+# ---------------------------------------------------------------------------
 # Observations (task-specific)
 # ---------------------------------------------------------------------------
 

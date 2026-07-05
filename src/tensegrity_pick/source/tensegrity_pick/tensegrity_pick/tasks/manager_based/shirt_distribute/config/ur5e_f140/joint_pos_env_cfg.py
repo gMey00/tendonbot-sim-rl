@@ -60,3 +60,38 @@ class UR5eF140ShirtDistributeEnvCfg_PLAY(UR5eF140ShirtDistributeEnvCfg):
         super().__post_init__()
         self.scene.num_envs = 50
         self.scene.env_spacing = 5.0
+
+
+@configclass
+class UR5eF140ShirtDistributeEMAEnvCfg(UR5eF140ShirtDistributeEnvCfg):
+    """EMA joint-position-to-limits action variant (iteration 5).
+
+    Absolute smoothed joint targets (alpha = 0.2, the reach-grid winner and
+    the shirt_present determinism fix): the policy MEAN encodes a target
+    POSE, so exploration noise does not integrate into a position random
+    walk — the failure mode measured on the relative-action variant
+    (stochastic 0.8 vs deterministic 0.2–0.45).  Requires the
+    ``reset_holding_pose`` EVENT (runs before ``action_manager.reset()``) so
+    the EMA buffer snapshots the sampled holding pose instead of the stale
+    pre-reset pose.
+    """
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.actions.arm_action = mdp.EMAJointPositionToLimitsActionCfg(
+            asset_name="robot",
+            joint_names=list(CONTROLLED_JOINT_NAMES),
+            alpha=0.2,
+        )
+        # action_l2 was the RELATIVE-action anti-saturation fix; in
+        # to-limits space it arbitrarily biases toward mid-range postures.
+        self.rewards.action_l2.weight = 0.0
+        self.curriculum.action_l2 = None
+
+
+@configclass
+class UR5eF140ShirtDistributeEMAEnvCfg_PLAY(UR5eF140ShirtDistributeEMAEnvCfg):
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.scene.num_envs = 50
+        self.scene.env_spacing = 5.0

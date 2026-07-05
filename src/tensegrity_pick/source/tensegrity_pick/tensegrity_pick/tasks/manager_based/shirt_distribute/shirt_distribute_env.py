@@ -150,6 +150,17 @@ class ShirtDistributeEnv(ClothSortingEnvBase):
         arm_names = list(self.cfg.actions.arm_action.joint_names)
         self._arm_joint_ids = [robot.joint_names.index(n) for n in arm_names]
 
+        # Holding-pose handoff between the reset EVENT and ``_reset_cloth``:
+        # the pose is written by the ``reset_holding_pose`` event (which runs
+        # BEFORE ``action_manager.reset()``, so absolute/EMA action terms
+        # snapshot the correct pose into their buffers); the sampled tip and
+        # admissible drape are stashed here for the cloth restore.
+        self._pending_tip_local = torch.zeros(self.num_envs, 3, device=self.device)
+        self._pending_allowed = torch.zeros(self.num_envs, device=self.device)
+        self._holding_pose_applied = torch.zeros(
+            self.num_envs, dtype=torch.bool, device=self.device
+        )
+
         # One-off holding-pose sweep (needs the settled sim from __init__).
         self._build_holding_pose_bank()
 
@@ -374,8 +385,16 @@ class ShirtDistributeEnv(ClothSortingEnvBase):
     # Cloth reset: restore the hang at the sampled holding pose's fingertip
     # ------------------------------------------------------------------
 
-    def _reset_cloth(self, env_ids: torch.Tensor) -> None:
-        """Grasped-hang reset (§ recipe): pose → closed gripper → bank hang."""
+    def _apply_holding_pose(self, env_ids: torch.Tensor) -> None:
+        """Sample + write the holding pose (arm joints, PD targets, closed
+        gripper) and stash the tip anchor for the cloth restore.
+
+        Called by the ``reset_holding_pose`` reset EVENT so it runs BEFORE
+        ``action_manager.reset()`` — absolute/EMA action terms snapshot the
+        correct pose into their internal buffers (the EMA term resets its
+        moving average to the CURRENT joint positions).  ``_reset_cloth``
+        falls back to calling it directly if the event is absent.
+        """
         k = env_ids.numel()
         if k == 0:
             return
@@ -384,8 +403,6 @@ class ShirtDistributeEnv(ClothSortingEnvBase):
 
         idx = torch.randint(0, self._pose_bank_q.shape[0], (k,), device=dev)
         q = self._pose_bank_q[idx]
-        tip_local = self._pose_bank_tip[idx]
-
         robot.write_joint_state_to_sim(
             q, torch.zeros_like(q), joint_ids=self._arm_joint_ids, env_ids=env_ids,
         )
@@ -394,6 +411,24 @@ class ShirtDistributeEnv(ClothSortingEnvBase):
         )
         self._force_gripper_closed(env_ids)
 
+        self._pending_tip_local[env_ids] = self._pose_bank_tip[idx]
+        self._pending_allowed[env_ids] = self._pose_bank_drape[idx]
+        self._holding_pose_applied[env_ids] = True
+
+    def _reset_cloth(self, env_ids: torch.Tensor) -> None:
+        """Grasped-hang reset (§ recipe): pose → closed gripper → bank hang."""
+        k = env_ids.numel()
+        if k == 0:
+            return
+        dev = self.device
+
+        # Normally the reset event already wrote the pose (see
+        # _apply_holding_pose); fall back for configs without the event.
+        if not bool(self._holding_pose_applied[env_ids].all()):
+            self._apply_holding_pose(env_ids)
+        self._holding_pose_applied[env_ids] = False
+        tip_local = self._pending_tip_local[env_ids]
+
         anchors = torch.zeros(self.num_envs, 3, device=dev)
         anchors[env_ids] = self.scene.env_origins[env_ids] + tip_local
 
@@ -401,7 +436,7 @@ class ShirtDistributeEnv(ClothSortingEnvBase):
         # belt / free space — computed at sweep time) quantized DOWN to the
         # nearest DRAPE_LEVEL (the restore helper takes one max_drape/call);
         # sweep acceptance guarantees allowed ≥ DRAPE_LEVELS[0].
-        allowed = self._pose_bank_drape[idx]
+        allowed = self._pending_allowed[env_ids]
         restored = torch.zeros(k, dtype=torch.bool, device=dev)
         levels = torch.tensor(DRAPE_LEVELS, device=dev)
         assigned = (torch.bucketize(allowed, levels, right=True) - 1).clamp(min=0)
