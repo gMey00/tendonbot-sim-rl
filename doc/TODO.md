@@ -183,14 +183,26 @@ Progress log: [shirt_pick_optimization_tracking.md](reports/shirt_pick_optimizat
   ([shirt_distribute_env.py](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shirt_distribute/shirt_distribute_env.py)).
 - ✅ Init infrastructure (2026-07-04): hanging bank restorable at the OWN finger tip (slot 0)
   + `_force_gripper_closed` reset helper — the "shirt already in the gripper" start.
-- 🔴 **Init grasped at sampled end-of-Task-2 poses** (sampled joint configs + fingertip hang
-  restore; later replaced by the real Task-2 terminal bank) — *delegated: Alex agent, UR5e-F140,
-  joint actions; recipe in the prompt.*
-- 🔴 **Reward:** sparse landing-in-correct-bin + graded release event — port the shirt_place
-  `release_event` quality grading and dt-scaling weights directly — *delegated (same agent)*.
+- ✅ **Init grasped at sampled end-of-Task-2 poses** (2026-07-06): in-sim holding-pose sweep →
+  cached pose bank (`res/Props/Cloth/banks/ur5e_f140_distribute_pose_bank.pt`) + fingertip
+  hang restore (slot 0); `RelativeJointPositionAction` (zero action holds the sampled pose);
+  Task-2 terminal-bank seam documented in `shirt_distribute_env.py`.
+- ✅ **Reward** (2026-07-06): shirt_place release design retargeted to the commanded bin —
+  graded one-shot `release_event`, anti-hover clearance fade, release-required `in_target_bin`,
+  `bad_release` (discovery curriculum), wrong-bin penalty, `settle_after_success`, dt-scaled.
+- ✅ **Scripted baseline validates the MDP** (2026-07-06): `baseline_shirt_distribute.py`
+  places **21/24 = 0.88** across the three bins; all drums reachable through the training action
+  path (no throw needed). Env-count benchmark: peak 357 env·steps/s @ 64 envs on RTX PRO 6000.
+- 🔴 **§2 not yet met: ≥ 0.85 across ALL three bins.** Best trained checkpoint deterministic
+  **0.60, all bins non-zero (0.77/0.42/0.60)** (`sd_train9fb` s2). Blocker precisely diagnosed:
+  **goal-conditioned mode collapse** (per-seed 2-of-3-bin specialisation, robust to exploration
+  temperature ⇒ PPO shared-critic multi-task interference). Next: per-goal advantage/return
+  normalisation or separate critic head; goal-balanced minibatches; HER goal relabelling; goal
+  curriculum — see the [tracking conclusion](reports/shirt_distribute_optimization_tracking.md#conclusion--status-vs-2).
 - 🟡 **Bin-layout randomization** so nearest ≠ correct generalizes (target >85 % correct-bin
-  across labels and layouts).
-- 🟡 TossingBot-style throw (release-velocity conditioning) if bins prove outside comfortable reach.
+  across labels and layouts) — after the mode collapse is resolved.
+- 🟡 TossingBot-style throw (release-velocity conditioning) — NOT needed for reach (baseline hit
+  all bins); only if a later layout puts a drum outside the envelope.
 - 🟢 Retire/merge the old [shirt_sort](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shirt_sort/shirt_sort_env_cfg.py) template — superseded by shirt_distribute.
 
 ### Cross-cutting

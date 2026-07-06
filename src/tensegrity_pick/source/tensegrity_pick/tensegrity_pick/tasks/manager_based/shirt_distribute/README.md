@@ -12,13 +12,37 @@ the condition label never enters the observation directly — it only selects
 target bin is resampled uniformly, so "nearest bin" and "correct bin" diverge
 and the policy cannot ignore the goal.
 
-> **Status: trainable MDP (2026-07-04, Alex agent).** The episode starts with
-> the shirt already hanging from the robot's own closed gripper at a sampled
-> end-of-Task-2 holding pose (holding-pose sweep + hanging-bank restore at the
-> fingertip, slot 0); rewards are the shirt_place release design retargeted to
-> the commanded bin (graded one-shot release event, anti-hover fade,
-> release-required success).  Training/eval results pending — see the
-> [optimization tracking](../../../../../../../../doc/reports/shirt_distribute_optimization_tracking.md).
+> **Status: trained, MDP validated, §2 target not yet met (2026-07-06, Alex
+> agent).** The episode starts with the shirt already hanging from the robot's
+> own closed gripper at a sampled end-of-Task-2 holding pose (cached
+> holding-pose bank + hanging-bank restore at the fingertip, slot 0); rewards
+> are the shirt_place release design retargeted to the commanded bin (graded
+> one-shot release event, anti-hover fade, release-required success).  The
+> scripted baseline reaches **0.88** (all three drums reachable); the best
+> trained checkpoint reaches **deterministic 0.60 with all three bins non-zero
+> (0.77 / 0.42 / 0.60)**, short of the ≥ 0.85-all-bins bar because of a
+> diagnosed **goal-conditioned mode collapse** (per-seed 2-of-3-bin
+> specialisation, robust to exploration temperature → PPO shared-critic
+> multi-task interference).  Full analysis, all iterations, and next steps in
+> the [optimization tracking](../../../../../../../../doc/reports/shirt_distribute_optimization_tracking.md).
+
+## Results (UR5e-F140)
+
+Best checkpoint `sd_train9fb` seed 2 `agent_96000` — deterministic (mean
+actions), 96 episodes/eval seed:
+
+| eval seed | overall | bin0 reusable | bin1 recyclable | bin2 trash | release |
+|---|---|---|---|---|---|
+| 7 | **0.596** | 0.77 | 0.42 | 0.60 | 0.98 |
+
+Other seeds reach 0.75–1.00 on two bins but abandon the third (which one is
+seed-dependent), so their per-bin minimum is ~0.  The scripted baseline
+(`baseline_shirt_distribute.py`, DLS-IK carry→release through the training
+action path) places **21/24 = 0.88** across the three commanded bins, proving
+the MDP and full drum reachability.  Training curves + per-bin success in
+[figures/ur5e_f140/](figures/ur5e_f140/).
+
+![Per-bin success](figures/ur5e_f140/03_per_bin_success.png)
 
 ## Table of Contents
 

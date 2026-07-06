@@ -555,4 +555,71 @@ Targeted fix for the mode collapse, decoupled from the old high-σ risks by
 | `initial_log_std` −1.0 → −0.7 | more initial exploration so all three goal modes are discovered before σ anneals |
 | `entropy_loss_scale` 0.0 → 0.003 | SUSTAIN exploration across goals so PPO doesn't greedily collapse onto the first two modes; safe now because action_l2 sharpens the mean even at moderate σ |
 
-*(results below as the run + its deterministic eval complete)*
+**Result: the mode collapse SURVIVES more exploration.**  σ stayed higher
+(0.42–0.45 vs 0.30) and every seed still specialized to 2 of 3 bins
+(stochastic last-10):
+
+| seed | bin0 | bin1 | bin2 | drops |
+|---|---|---|---|---|
+| s1 | 0.81 | 0.72 | **0.00** | trash |
+| s2 | 0.83 | **0.00** | 0.83 | recyclable |
+| s3 | 0.97 | 0.93 | **0.00** | trash |
+
+Deterministic eval (job 3817956, 96 eps) confirms it — every seed solves bin 0
+plus one other bin and hard-zeros the third:
+
+| Checkpoint | eval seed | success | bin0 / bin1 / bin2 | release |
+|---|---|---|---|---|
+| it7-s1 `agent_80000` | 7 | 0.520 | 0.91 / 0.61 / 0.09 | 0.86 |
+| it7-s2 `agent_96000` | 7 | 0.427 | 0.75 / 0.00 / 0.77 | 0.54 |
+| it7-s2 `agent_96000` | 8 | 0.510 | 0.86 / 0.00 / 0.81 | 0.64 |
+| it7-s3 `agent_96000` | 7 | 0.586 | 0.96 / 0.94 / 0.00 | 0.61 |
+| it7-s3 `agent_96000` | 8 | 0.626 | 1.00 / 0.92 / 0.00 | 0.66 |
+
+This is the decisive negative result: raising exploration temperature does
+NOT escape the collapse.  The failure is therefore **structural multi-task
+interference in PPO's shared value function**, not an exploration-schedule
+problem — with one shared critic across the three goals, the hardest-so-far
+goal earns a negative advantage early (its return sits below the goal-averaged
+baseline), which actively pushes the policy AWAY from attempting it, and the
+two "won" goals lock in.  Consistent detail across ALL runs: **bin 0
+(reusable, left drum) is the EASIEST — essentially always learned; the policy
+sacrifices one of {recyclable, trash}, and which one is seed-dependent.**
+
+## Conclusion & status vs §2
+
+**Delivered:** a complete, validated, documented Task-3 MDP — grasped-hang
+initialisation from a cached pose bank + hanging bank (the Task-2 seam
+explicit), the shirt_place release-into-drum reward design retargeted to the
+commanded bin, a scripted baseline that proves the MDP (**21/24 = 0.88**, all
+three drums reachable through the training action path), an RTX PRO 6000
+env-count benchmark (peak 357 env·steps/s @ 64), and revalidation + eval +
+plotting scripts.  Six root-cause bugs found and fixed along the way
+(metrics-wipe ordering, noise-controller saturation, post-success belt cliff,
+bootstrapped-termination free-cliff, release-penalty collapse, and the
+train/eval init-distribution shift).
+
+**Not yet met:** the §2 bar of ≥ 0.85 deterministic success across ALL three
+commanded bins.  Best selectable checkpoint: **`sd_train9fb` seed 2
+`agent_96000` — deterministic 0.596 with all three bins non-zero
+(0.77 / 0.42 / 0.60)**; other seeds reach 0.75–0.85 on two bins but abandon
+the third.  The single remaining blocker is precisely characterised and
+reproducible: **goal-conditioned mode collapse (per-seed 2-of-3-bin
+specialisation), robust to exploration temperature → PPO shared-critic
+multi-task interference.**
+
+**Concrete next steps (in priority order), for the follow-up work:**
+1. **Per-goal advantage/return normalisation** (or a separate critic head
+   per bin) so the hardest goal is not devalued against the goal-averaged
+   baseline — the direct fix for the diagnosed interference.
+2. **Goal-balanced minibatches / larger critic** — ensure each PPO update
+   sees all three goals in comparable proportion; the current `[256,128,64]`
+   shared net may under-represent three distinct release behaviours.
+3. **HER-style goal relabelling** — relabel a released-into-wrong-bin
+   episode as a success for the bin it actually hit, giving dense
+   multi-goal signal.
+4. **Curriculum over goals** — pre-train each bin, then randomise, to seed
+   all three modes before interference sets in.
+5. Only after ≥ 0.85 all-bins: bin-layout randomisation (§8 / §2 generalise
+   beyond the three fixed drums) and the real Task-2 terminal-state bank at
+   the documented seam.
