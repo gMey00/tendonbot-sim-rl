@@ -528,6 +528,23 @@ it discovers and σ anneals before the third is found**.  This is exactly the
 reachability, saturation, the cliff, or the init shift (all now fixed) — is
 what caps deterministic success at ≈ 0.5–0.65.
 
+**Deterministic eval (job 3816223, 96 eps):**
+
+| Checkpoint | eval seed | success | bin0 / bin1 / bin2 | release | mean\|act\| |
+|---|---|---|---|---|---|
+| 9fb-s1 `agent_92-96k` | 7 | 0.529 | 0.75 / 0.84 / **0.00** | 0.70 | 0.59 |
+| 9fb-s1 | 8 | 0.471 | 0.77 / 0.68 / **0.03** | 0.63 | 0.63 |
+| **9fb-s2 `agent_96000`** | 7 | **0.596** | 0.77 / 0.42 / 0.60 | 0.98 | 0.45 |
+| 9fb-s3 `agent_78000` | 7 | 0.094 | 0.00 / 0.00 / 0.38 | 0.34 | 1.06 |
+
+Two confirmations: (a) the fixed bank **collapsed the eval-seed spread**
+(s1: 0.529 vs 0.471, vs the old 0.21-vs-0.56) — the init-shift confounder is
+gone; (b) **`9fb-s2` is the current best selectable checkpoint at 0.596 with
+ALL THREE bins non-zero** (0.77 / 0.42 / 0.60) — its deterministic mean is
+more balanced than its stochastic rollout (which showed bin1 ≈ 0.07), i.e. the
+mean partially recovers the "dropped" bin.  Still short of 0.85-all-bins; the
+per-bin floor (bin1 0.42) is the mode-collapse residue iteration 7 targets.
+
 ### Iteration 7 (`sd_train10x`, seeds 1/2/3, 96 k, fixed bank): sustain multi-goal exploration
 
 Targeted fix for the mode collapse, decoupled from the old high-σ risks by
