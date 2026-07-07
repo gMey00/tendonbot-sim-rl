@@ -18,7 +18,7 @@ from tensorboard.backend.event_processing.event_accumulator import EventAccumula
 
 import sys
 from pathlib import Path as _Path
-sys.path.insert(0, str(_Path(__file__).resolve().parents[3] / ".config"))
+sys.path.insert(0, str(_Path(__file__).resolve().parents[4] / ".config"))
 import plot_config as pcfg
 pcfg.apply_style()
 
@@ -26,7 +26,7 @@ pcfg.apply_style()
 # extension root (src/tensegrity_pick, derived from this script's location) so
 # logs, figures and reports resolve to the canonical tree regardless of the
 # caller's working directory.
-_EXTENSION_ROOT: Final = Path(__file__).resolve().parents[1]
+_EXTENSION_ROOT: Final = Path(__file__).resolve().parents[2]
 _LOG_SUBDIR: Final = "logs/skrl/reach"
 _FIGURES_SUBDIR: Final = (
     "source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures"

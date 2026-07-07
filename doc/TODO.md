@@ -73,7 +73,7 @@ All three items validated — full findings, methodology and reproduction comman
 ### Crumpled-state bank (Task-1 initial-state distribution)  ✅ CLOSED (2026-07-03)
 
 - ✅ ~~**Drop-and-settle generator**~~\
-  **DONE:** [scripts/generate_crumpled_bank.py](../src/tensegrity_pick/scripts/generate_crumpled_bank.py)
+  **DONE:** [scripts/asset_generation/generate_crumpled_bank.py](../src/tensegrity_pick/scripts/asset_generation/generate_crumpled_bank.py)
   — SoftGym protocol (random pick, lift 0.15–0.45 m + lateral drag, release, settle ≤300 steps)
   in parallel envs on the free upstream belt. Generated bank: **256 states**
   (64 envs × 4 rounds, 4.5 min) at `res/Props/Cloth/banks/tshirt_crumpled_bank.pt` (65 MB,
@@ -153,7 +153,7 @@ Progress log: [shirt_pick_optimization_tracking.md](reports/shirt_pick_optimizat
 - ✅ Stub: hanging-anchor cloth reset at `PRESENTATION_POS`, passive holder robot, lowest-point
   observation ([shirt_present_env.py](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shirt_present/shirt_present_env.py)).
 - ✅ **Random-particle hang init** (2026-07-04): hanging-state bank (356 states,
-  [generate_hanging_bank.py](../src/tensegrity_pick/scripts/generate_hanging_bank.py)) restored
+  [generate_hanging_bank.py](../src/tensegrity_pick/scripts/asset_generation/generate_hanging_bank.py)) restored
   per reset via `_reset_cloth_hanging_from_bank` (slot-1 anchor, yaw+mirror augmentation,
   `max_drape` filter keeps long hangs out of the reusable drum under the pose).
 - ✅ **Shared visibility/stretch metrics** (2026-07-04):

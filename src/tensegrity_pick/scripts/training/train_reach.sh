@@ -3,10 +3,10 @@
 #
 # USAGE
 #   cd src/tensegrity_pick
-#   ./scripts/train_reach.sh                            # train all 4 variants
-#   ./scripts/train_reach.sh tensegrity ur10e           # specific variants only
-#   ./scripts/train_reach.sh --skip-train tensegrity    # plot only (no training)
-#   ./scripts/train_reach.sh --allow-incomplete         # allow partial run plots
+#   ./scripts/training/train_reach.sh                            # train all 4 variants
+#   ./scripts/training/train_reach.sh tensegrity ur10e           # specific variants only
+#   ./scripts/training/train_reach.sh --skip-train tensegrity    # plot only (no training)
+#   ./scripts/training/train_reach.sh --allow-incomplete         # allow partial run plots
 #
 # OPTIONS
 #   --skip-train         Skip training; only run plotting/report for each variant
@@ -79,7 +79,7 @@ done
 # Must be run from src/tensegrity_pick/
 if [[ ! -f "scripts/skrl/train.py" ]]; then
     echo "ERROR: Run this script from src/tensegrity_pick/"
-    echo "       cd src/tensegrity_pick && ./scripts/train_reach.sh"
+    echo "       cd src/tensegrity_pick && ./scripts/training/train_reach.sh"
     exit 1
 fi
 
@@ -138,7 +138,7 @@ for VARIANT in "${VARIANTS[@]}"; do
 
         # shellcheck disable=SC2086
         conda run --no-capture-output -n "$CONDA_ENV" \
-            python3 scripts/plot_reach_training_results.py \
+            python3 scripts/plotting/plot_reach_training_results.py \
             --variant "$VARIANT" \
             $ALLOW_INCOMPLETE \
             $CURRICULUM_STEP

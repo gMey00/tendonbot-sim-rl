@@ -212,7 +212,7 @@ What it does, and the Alex-specific reasons behind each step:
 7. **Installs the project extension** (`pip install -e source/tensegrity_pick`)
    plus monitoring extras (`plotly`, `tbparse`, `rich`, `plotext`, …) and `btop`
    (via conda-forge, used by `watch_alex.sh`).
-8. **Smoke-tests** with `scripts/list_envs.py`.
+8. **Smoke-tests** with `scripts/diagnostics/list_envs.py`.
 
 > If you hit a GLIBC error after the cluster's ongoing AlmaLinux 8 → 9
 > migration, simply re-run the installer to refresh — the Isaac Sim binary build

@@ -52,7 +52,7 @@ import torch
 
 import sys
 from pathlib import Path as _Path
-sys.path.insert(0, str(_Path(__file__).resolve().parents[3] / ".config"))
+sys.path.insert(0, str(_Path(__file__).resolve().parents[4] / ".config"))
 import plot_config as pcfg
 pcfg.apply_style()
 
@@ -66,7 +66,7 @@ from isaaclab.utils import configclass
 
 # ── Robot config ──────────────────────────────────────────────────────────
 
-PROJ_ASSETS_PATH = str(_Path(__file__).resolve().parents[3] / "res")
+PROJ_ASSETS_PATH = str(_Path(__file__).resolve().parents[4] / "res")
 
 ARM_JOINT_NAMES = ["elbow_joint", "wrist_y_joint", "wrist_x_joint"]
 

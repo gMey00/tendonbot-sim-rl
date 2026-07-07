@@ -459,7 +459,7 @@ prioritised against compute budget.
 - **Plot-07 right panel was empty** — root cause was a plot-script
   tag-name mismatch (`Episode_Reward/goal_reached` vs the actual
   `Info / Episode_Reward/position_reached`). Fixed in
-  [plot_reach_training_results.py](../../src/tensegrity_pick/scripts/plot_reach_training_results.py).
+  [plot_reach_training_results.py](../../src/tensegrity_pick/scripts/plotting/plot_reach_training_results.py).
   Re-running the plotter against the existing event files produces
   a populated right panel without any new training.
 - **`metric_term["success_rate"]` zeroed after reset** — fixed in
@@ -481,10 +481,10 @@ prioritised against compute budget.
   A rerun of `evaluate.py` populates the new field. (§8.5)
 - **Scripts wrote figures to a stray top-level `source/` tree** —
   fixed in
-  [plot_reach_training_results.py](../../src/tensegrity_pick/scripts/plot_reach_training_results.py),
-  [plot_place_training_results.py](../../src/tensegrity_pick/scripts/plot_place_training_results.py)
+  [plot_reach_training_results.py](../../src/tensegrity_pick/scripts/plotting/plot_reach_training_results.py),
+  [plot_place_training_results.py](../../src/tensegrity_pick/scripts/plotting/plot_place_training_results.py)
   and
-  [plot_sort_training_results.py](../../src/tensegrity_pick/scripts/plot_sort_training_results.py)
+  [plot_sort_training_results.py](../../src/tensegrity_pick/scripts/plotting/plot_sort_training_results.py)
   so they now write to the canonical extension tree
   `src/tensegrity_pick/source/tensegrity_pick/.../figures`. The
   already-generated `aggregate/` figures were moved into the
@@ -505,7 +505,7 @@ prioritised against compute budget.
 - [src/tensegrity_pick/scripts/run_reach_pipeline.sh](../../src/tensegrity_pick/scripts/run_reach_pipeline.sh)
 - [src/tensegrity_pick/scripts/rerun_all_evals.sh](../../src/tensegrity_pick/scripts/rerun_all_evals.sh)
 - [src/tensegrity_pick/scripts/skrl/evaluate.py](../../src/tensegrity_pick/scripts/skrl/evaluate.py)
-- [src/tensegrity_pick/scripts/plot_reach_training_results.py](../../src/tensegrity_pick/scripts/plot_reach_training_results.py)
+- [src/tensegrity_pick/scripts/plotting/plot_reach_training_results.py](../../src/tensegrity_pick/scripts/plotting/plot_reach_training_results.py)
 
 ### Data
 - Training runs: `logs/skrl/reach/{tensegrity,tensegrity_tendon,tensegrity_physical_tendon}/2026-05-22_*_ppo_torch/`

@@ -69,8 +69,10 @@ def main() -> None:
         from _recorder import FrameRecorder
         cam = env.scene["record_cam"]
         # Close follow-shot of the shirt on the belt (gripper stays above frame).
+        # Capture every 2 control steps (control dt = 1/60 s) so 30 fps plays the
+        # recording back in REAL TIME (was every=4 @ 20 fps → 1.33× too fast).
         recorder = FrameRecorder(
-            cam, every=4,
+            cam, every=2,
             tracker=lambda: env.cloth.centroid_pos_w[0],
             eye_offset=(0.60, -0.65, 0.42),
         )
@@ -159,7 +161,7 @@ def main() -> None:
             for _ in range(60):
                 env.step(zero)
                 recorder.maybe_capture()
-        recorder.save(args_cli.record, "shirt_place_run", fps=20)
+        recorder.save(args_cli.record, "shirt_place_run", fps=30)
 
     print("-" * 70)
     if problems:

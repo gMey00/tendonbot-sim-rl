@@ -35,7 +35,7 @@ from tensorboard.backend.event_processing.event_accumulator import (
 
 import sys
 from pathlib import Path as _Path
-sys.path.insert(0, str(_Path(__file__).resolve().parents[3] / ".config"))
+sys.path.insert(0, str(_Path(__file__).resolve().parents[4] / ".config"))
 import plot_config as pcfg
 pcfg.apply_style()
 
@@ -49,7 +49,7 @@ VARIANT_LOG_DIRS: Final[dict[str, Path]] = {
     # with existing training runs logged before the config restructuring.
     "tensegrity": Path("logs/skrl/cube_place"),
     "tensegrity_tendon": Path("logs/skrl/cube_place/tensegrity_tendon"),
-    \"tensegrity_physical_tendon\": Path(\"logs/skrl/cube_place/tensegrity_physical_tendon\"),
+    "tensegrity_physical_tendon": Path("logs/skrl/cube_place/tensegrity_physical_tendon"),
     "ur10e": Path("logs/skrl/cube_place/ur10e"),
     "kinova": Path("logs/skrl/cube_place/kinova"),
 }

@@ -68,7 +68,7 @@ cd ../src/tensegrity_pick
 python -m pip install -e source/tensegrity_pick
 
 # Installation überprüfen
-python scripts/list_envs.py
+python scripts/diagnostics/list_envs.py
 ```
 
 > **📂 Siehe:** `tools/README.md` für die Installationsdokumentation, `.config/env_vars.sh` für Umgebungsvariablen.
@@ -362,10 +362,10 @@ Wir haben die Verstärkungen nach Klein (2023) abgestimmt: Dämpfung auf null se
 
 ```bash
 # Sprungantworttest (repliziert Klein-2023-Protokoll)
-python scripts/step_response_test.py --headless --num-envs 1 --output-dir ./results
+python scripts/diagnostics/step_response_test.py --headless --num-envs 1 --output-dir ./results
 
 # GUI-basierte Gelenksteuerung (interaktiver Schieberegler für jedes Gelenk)
-python scripts/verify_actuation.py --task=Template-Reach-Tensegrity-v0 --num_envs=1
+python scripts/diagnostics/verify_actuation.py --task=Template-Reach-Tensegrity-v0 --num_envs=1
 
 # Modellvalidierungs-Suite (PD + Sehnen-Sprungantworten mit Plots)
 python scripts/model_validation/run_step_response_pd.py
@@ -628,14 +628,14 @@ python scripts/skrl/play.py --task=Template-Reach-Tensegrity-Play-v0 --num_envs=
 
 # ─── SMOKE TESTS ─────────────────────────────────────────────────
 # Zero-Action-Agent (prüft, ob Szene lädt und Physik läuft)
-python scripts/zero_agent.py --task=Template-Reach-Tensegrity-v0 --num_envs=2 --headless
+python scripts/agents/zero_agent.py --task=Template-Reach-Tensegrity-v0 --num_envs=2 --headless
 
 # Random-Action-Agent (prüft Aktionsraum, Belohnungsberechnung)
-python scripts/random_agent.py --task=Template-Reach-Tensegrity-v0 --num_envs=2 --headless
+python scripts/agents/random_agent.py --task=Template-Reach-Tensegrity-v0 --num_envs=2 --headless
 
 # ─── HILFSPROGRAMME ──────────────────────────────────────────────
 # Alle registrierten Umgebungen auflisten
-python scripts/list_envs.py
+python scripts/diagnostics/list_envs.py
 
 # Workspace-Erreichbarkeitsanalyse
 python scripts/workspace_analysis/workspace_sample.py

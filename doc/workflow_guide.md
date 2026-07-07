@@ -68,7 +68,7 @@ cd ../src/tensegrity_pick
 python -m pip install -e source/tensegrity_pick
 
 # Verify the installation
-python scripts/list_envs.py
+python scripts/diagnostics/list_envs.py
 ```
 
 > **📂 See:** `tools/README.md` for installer docs, `.config/env_vars.sh` for environment variables.
@@ -615,14 +615,14 @@ python scripts/skrl/play.py --task=Template-Reach-Tensegrity-Play-v0 --num_envs=
 
 # ─── SMOKE TESTS ─────────────────────────────────────────────────
 # Zero-action agent (checks scene loads, physics runs)
-python scripts/zero_agent.py --task=Template-Reach-Tensegrity-v0 --num_envs=2 --headless
+python scripts/agents/zero_agent.py --task=Template-Reach-Tensegrity-v0 --num_envs=2 --headless
 
 # Random-action agent (checks action space, reward computation)
-python scripts/random_agent.py --task=Template-Reach-Tensegrity-v0 --num_envs=2 --headless
+python scripts/agents/random_agent.py --task=Template-Reach-Tensegrity-v0 --num_envs=2 --headless
 
 # ─── UTILITIES ───────────────────────────────────────────────────
 # List all registered environments
-python scripts/list_envs.py
+python scripts/diagnostics/list_envs.py
 
 # Workspace reachability analysis
 python scripts/workspace_analysis/workspace_sample.py
