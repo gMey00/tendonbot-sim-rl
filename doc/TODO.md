@@ -167,9 +167,17 @@ Progress log: [shirt_pick_optimization_tracking.md](reports/shirt_pick_optimizat
   hackable by bunching/hiding), taut-but-not-overstretched bonus using the tautness proxy
   (inter-grasp distance / rest distance, `cloth_metrics.stretch_ratio` ≤ 1.15), cloth-centroid
   speed gate — *delegated (same agent)*.
-- 🟡 **Brute-force grasp-pair oracle** → *delegated: FAPS heuristic-study agent
-  ([prompt](agent_prompt_present_heuristics.md)) — also covers the 2-grasp/3-grasp heuristic
-  comparison + thesis figures.*
+- ✅ **Brute-force grasp-pair oracle + 2-grasp/3-grasp heuristic comparison** (2026-07-04,
+  FAPS heuristic-study agent): [present_heuristics_study.md](reports/present_heuristics_study.md)
+  — horizontal presentation stretch (2nd grasp raised to the holder's height, pulled along the
+  camera-plane x axis; self-aligning, yaw gap 0.003). Naive lowest-point heuristic 0.679
+  median coverage (beats free hang 0.567); regrasping HURTS (−0.031 paired → answer to open
+  question #2: robot 1 keeps holding); 2 880-pair oracle map (top decile 0.842): chord LENGTH
+  drives quality, hem-edge pairs win — **scripted hem_corner↔hem_corner reaches 0.820–0.832
+  (p90 0.95)**, shoulder↔shoulder fails (0.493); oracle-guided 2nd grasp from arbitrary first
+  grasp 0.713 ([policy JSON](reports/data/present_oracle_policy.json)). Recommended success
+  threshold **0.65** (0.75 stretch goal); reward tautness gently up to 1.05.
+  Scripts: `scripts/model_validation/present_heuristics/`.
 - 🟡 Later: reset from the REAL Task-1 terminal-state bank
   (`ShirtPickEnv.snapshot_terminal_states` hook exists; decide agent_12000 vs agent_8000 —
   post-present grasp slips 5–7 % vs 1–2 %) — skill-chaining distribution shift is the report's
