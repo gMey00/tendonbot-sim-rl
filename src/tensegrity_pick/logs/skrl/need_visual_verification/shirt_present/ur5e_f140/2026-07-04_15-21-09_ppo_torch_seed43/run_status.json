@@ -1,0 +1,8 @@
+{
+  "status": "completed",
+  "task": "Template-Shirt-Present-UR5e-F140-v0",
+  "target_timesteps": 96000,
+  "run_dir": "/home/hpc/iwfa/iwfa131h/studentische-arbeiten-present/src/tensegrity_pick/logs/skrl/shirt_present/2026-07-04_15-21-09_ppo_torch_seed43",
+  "algorithm": "ppo",
+  "framework": "torch"
+}
