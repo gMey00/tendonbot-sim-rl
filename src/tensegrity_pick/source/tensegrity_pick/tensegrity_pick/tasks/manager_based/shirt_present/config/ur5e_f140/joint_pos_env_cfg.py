@@ -41,11 +41,19 @@ class UR5eF140ShirtPresentEnvCfg(ShirtPresentEnvCfg):
             ),
         )
 
-        self.actions.arm_action = mdp.JointPositionActionCfg(
+        # EMA joint-position-to-limits (the reach-grid joint-space winner,
+        # alpha = 0.2 -- reach/config/f140_reach_common.py).  Measured
+        # justification for dropping the stub's delta-from-default action
+        # (scale 0.5): the scripted baseline saturated it -- reaching the
+        # lowest hanging point needs joint targets up to +-1.25 rad from the
+        # ready pose (job 3809927: max |a| pinned at the +-2.5 clamp = +-1.25
+        # rad; 0/16 reached at +-0.5 rad), far outside the +-1 action band a
+        # Gaussian policy explores well.  To-limits mapping puts every
+        # reachable posture inside [-1, 1] by construction.
+        self.actions.arm_action = mdp.EMAJointPositionToLimitsActionCfg(
             asset_name="robot",
             joint_names=list(CONTROLLED_JOINT_NAMES),
-            scale=0.5,
-            use_default_offset=True,
+            alpha=0.2,
         )
 
         self._set_robot_params(

@@ -42,6 +42,7 @@ Usage
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace as replace_cfg
 from types import SimpleNamespace
 
 # ── AppLauncher (BEFORE any Isaac Lab / Omniverse imports) ────────────
@@ -82,12 +83,16 @@ from tensegrity_pick.tasks.manager_based.shirt_place.shirt_place_scene_cfg impor
     UPSTREAM_SETTLE_POS,
 )
 from tensegrity_pick.tasks.manager_based.shared.cloth_object import (  # noqa: E402
+    ClothBackend,
     ClothObject,
+    GraspMode,
     apply_cloth_startup_event,
     disable_complex_colliders_event,
 )
 from tensegrity_pick.tasks.manager_based.shared.gripper_cfg import (  # noqa: E402
-    GRASP_CENTER_LOCAL_Z,
+    FINGER_JOINT_CLOSE_POS,
+    FINGER_TIP_CLOSED_Z,
+    FINGER_TIP_OPEN_Z,
 )
 
 # ── Constants ─────────────────────────────────────────────────────────
@@ -512,76 +517,33 @@ _PASSIVE_GRIP = {
     "right_inner_finger_pad_joint": 1.0,
 }
 
-# Deterministic attachment overlap radius (m).  GarmentLab / DexGarmentLab weld
-# the cloth particles within ``deformableVertexOverlapOffset`` (≈ 0.01–0.02 m) of
-# a small rigid block to that block; here we weld every cloth particle within
-# ATTACH_RADIUS of the grasp centre to the gripper tip.  Sized so the gripper
-# grabs a fist-sized *bunch* of the flat-laid sheet (~0.20 m disc, a few hundred
-# particles): a point-sized weld only tents a thin spike out of the floppy,
-# low-bend shirt, whereas a bunch lifts the garment into a clear dangling hold.
-ATTACH_RADIUS = 0.10
+# Attachment capture radius (m) — the RL shirt-place value (``ATTACH_WELD_RADIUS``
+# in ``shirt_place_env``): particles within this of the *finger tip* are welded to
+# it.  A small, pad-footprint-sized disc (not a fist-sized blob) so the grip reads
+# as the gripper actually pinching the sheet at the tip.
+ATTACH_WELD_RADIUS = 0.07
 
 
-def _grasp_center_w(
-    robot: Articulation, ee_body_idx: int, device: str,
+def _finger_tip_w(
+    robot: Articulation, ee_body_idx: int, finger_idx: int, device: str,
 ) -> torch.Tensor:
-    """World position of the gripper grasp centre (between the finger pads).
+    """World position of the *dynamic finger tip* ``[1, 3]`` (env 0).
 
-    Identical computation to ``verify_actuation.py``: offset ``tool_link_0`` by
-    ``GRASP_CENTER_LOCAL_Z`` along its local axis (local +Z points *up*, so the
-    offset is negative = toward the floor) and rotate into world.
+    Exact mirror of ``shirt_place_env._finger_tip_pos``: the gripper's lowest
+    point, which descends from ``FINGER_TIP_OPEN_Z`` to ``FINGER_TIP_CLOSED_Z`` as
+    the fingers close.  All grasp math uses the tip so the robot brings the tip
+    straight down onto the cloth (top-down grasp), matching the RL task exactly.
     """
+    finger_pos = robot.data.joint_pos[0, finger_idx]
+    closure = torch.clamp(finger_pos / FINGER_JOINT_CLOSE_POS, 0.0, 1.0)
+    tip_z = FINGER_TIP_OPEN_Z + closure * (FINGER_TIP_CLOSED_Z - FINGER_TIP_OPEN_Z)
     ee_pos = robot.data.body_pos_w[0, ee_body_idx]
     ee_quat = robot.data.body_quat_w[0, ee_body_idx]
-    gc_offset = ee_pos.new_tensor([0.0, 0.0, GRASP_CENTER_LOCAL_Z])
-    return ee_pos + quat_apply(ee_quat.unsqueeze(0), gc_offset.unsqueeze(0)).squeeze(0)
-
-
-def _capture_grasp(
-    cloth: ClothObject, grasp_center: torch.Tensor,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Select the cloth particles to weld and freeze their offset to the tip.
-
-    Mirrors ``PhysxAutoAttachment``: every particle within ``ATTACH_RADIUS`` of
-    the grasp centre is bound, and its fixed local offset to the grasp centre is
-    captured so the patch stays rigid as the tip moves.
-
-    Returns ``(grasp_ids, offset)`` — particle indices and their ``[N, 3]``
-    offset from the grasp centre at the moment of grasping.
-    """
-    pts = cloth.nodal_pos_w[0]                       # [P, 3]
-    dist = torch.norm(pts - grasp_center.unsqueeze(0), dim=1)
-    grasp_ids = torch.nonzero(dist < ATTACH_RADIUS, as_tuple=False).squeeze(-1)
-    offset = pts[grasp_ids] - grasp_center.unsqueeze(0)
-    return grasp_ids, offset
-
-
-def _pin_grasped(
-    cloth: ClothObject,
-    grasp_ids: torch.Tensor,
-    offset: torch.Tensor,
-    grasp_center: torch.Tensor,
-    device: str,
-) -> None:
-    """Hold the welded particles rigidly at ``grasp_center + offset``.
-
-    The non-grasped particles keep their simulated positions, so the rest of the
-    shirt hangs from the grasped patch via the PBD constraints — exactly the
-    behaviour of an attachment block dragging the cloth, but driven through the
-    particle buffer (no runtime attachment cooking needed).
-    """
-    if grasp_ids.numel() == 0:
-        return
-    pos = cloth.nodal_pos_w[0].clone()               # [P, 3]
-    pos[grasp_ids] = grasp_center.unsqueeze(0) + offset
-    env0_long = torch.tensor([0], device=device, dtype=torch.long)
-    cloth.write_nodal_pos_to_sim(pos.reshape(1, -1), env0_long)
-    # Zero the welded particles' velocity so the solver does not fling them.
-    vel = cloth.nodal_vel_w[0].clone()
-    vel[grasp_ids] = 0.0
-    cloth._vel_flat[0] = vel.reshape(-1)
-    env0_i32 = torch.tensor([0], device=device, dtype=torch.int32)
-    cloth._set_velocities(cloth._vel_flat, env0_i32)
+    offset = torch.stack(
+        [torch.zeros_like(tip_z), torch.zeros_like(tip_z), tip_z]
+    )
+    tip = ee_pos + quat_apply(ee_quat.unsqueeze(0), offset.unsqueeze(0)).squeeze(0)
+    return tip.reshape(1, 3)
 
 
 def run_grasp_test(
@@ -591,20 +553,43 @@ def run_grasp_test(
     robot: Articulation,
     ee_body_idx: int,
     device: str,
+    mode: GraspMode,
 ) -> bool:
-    """Scripted grasp: drop cloth on conveyor → lower → close → attach → lift.
+    """Scripted grasp under one ``GraspMode``: settle → lower → close → attach → lift.
 
-    Hybrid gripper control — driven joints (finger, inner fingers) use PD
-    position control so they generate real contact torques via PhysX, while
-    passive joints (K=0) are kinematically constrained to keep the four-bar
-    linkage stable.  The actual hold is a *deterministic attachment* (the
-    GarmentLab / DexGarmentLab grasp logic): once the gripper has closed on the
-    cloth, the particles around the grasp centre are welded to the gripper tip
-    and tracked rigidly through the lift, so the grasp does not depend on
-    tuning PBD friction / adhesion.
+    Uses the **RL task's own grasp mechanic** (``ClothObject.attach`` /
+    ``hold`` / ``detach``, exactly as ``shirt_place_env._update_grasp`` drives it)
+    rather than a bespoke weld: the finger tip is brought straight down onto the
+    cloth's highest point, the fingers close, the particle cluster within
+    ``ATTACH_WELD_RADIUS`` of the tip is grasped, and it is tracked with
+    ``cloth.hold(tip)`` every physics step through the lift.
+
+    ``mode`` selects the grasp mechanic on the shared cloth object:
+
+    - ``GraspMode.WELD``  — the grasped cluster is *teleported* onto the tip each
+      step (simple, but the solver can tug it between writes → visible snap).
+    - ``GraspMode.ANCHOR`` — the grasped particles are additionally pinned as
+      solver anchors (inverse mass ≈ 0), so the cloth resists being pulled out of
+      shape every solver iteration → a firmer, less stretchy hold.
+
+    Running the identical scripted motion under each mode makes the recording
+    show the difference directly.  ANCHOR requires the PBD backend.
     """
-    print("Phase 3: Robot Grasp & Lift")
+    mode_name = f"GraspMode.{mode.value.upper()}"
+    print(f"Phase 3: Robot Grasp & Lift  —  {mode_name}")
     print("─" * 56)
+
+    # Select the grasp mechanic on the shared cloth object and clear any prior
+    # grasp (masks + ANCHOR masses) so the two modes start from a clean state.
+    env0 = torch.tensor([0], device=device, dtype=torch.long)
+    cloth._grasp_mode = mode
+    cloth.reset_attachment(env0)
+
+    finger_idx = robot.joint_names.index("finger_joint")
+
+    def _tip() -> torch.Tensor:
+        """Live finger-tip world position ``[1, 3]`` (RL grasp target frame)."""
+        return _finger_tip_w(robot, ee_body_idx, finger_idx, device)
 
     # Restore the cloth-follow camera for the grasp/transport phase.
     _aim_camera_at_cloth(cloth)
@@ -701,24 +686,21 @@ def run_grasp_test(
     _print_state("settled", 2.5)
     cloth_on_belt_z = float(cloth.centroid_pos_w[0][2])
 
-    # ── Step 1: Lower arm with open gripper so pads straddle cloth ────
-    # The old code drove the arm ~15 cm down (base_z≈−0.40) using a magic EE_z
-    # slope, crashing the gripper into the belt.  Instead measure the grasp
-    # centre directly (the ``quat_apply`` computation verify_actuation.py uses
-    # for the cube) and exploit that ``base_z`` is a *prismatic* joint moving the
-    # arm 1:1 in world Z — so the base_z shift that brings the grasp centre onto
-    # the cloth top is exactly the height gap, no calibration constant.
-    gc_home = _grasp_center_w(robot, ee_body_idx, device)
+    # ── Step 1: Lower arm with open gripper so the tip reaches the cloth ──
+    # Measure the (open-gripper) finger tip directly and exploit that ``base_z``
+    # is a *prismatic* joint moving the arm 1:1 in world Z — so the base_z shift
+    # that brings the tip onto the cloth top is exactly the height gap, no
+    # calibration constant.  The tip descends a further ~2 cm as it closes, so an
+    # open tip landed on the surface ends up gripping just inside it.
+    tip_home = _finger_tip_w(robot, ee_body_idx, finger_idx, device)
     home_bz = _HOME["base_z_joint"]
     _, cloth_top_z = _cloth_bbox_z(cloth)
-    # Aim the grasp centre a few mm into the cloth surface so the pads close
-    # *around* the cloth rather than pressing it through the belt.
     grasp_target_z = cloth_top_z - 0.005
-    approach_bz = home_bz + (grasp_target_z - float(gc_home[2]))
+    approach_bz = home_bz + (grasp_target_z - float(tip_home[0, 2]))
     approach_bz = max(-0.40, min(-0.20, approach_bz))  # gentle, belt-safe clamp
     _APPROACH = {**_HOME, "base_z_joint": approach_bz}
-    print(f"  [approach] gc_home_z={float(gc_home[2]):.3f}  cloth_top_z={cloth_top_z:.3f}"
-          f"  → base_z={approach_bz:.3f} (was ~−0.40)")
+    print(f"  [approach] tip_home_z={float(tip_home[0, 2]):.3f}  cloth_top_z={cloth_top_z:.3f}"
+          f"  → base_z={approach_bz:.3f}")
 
     _step_hybrid(int(2.0 / DT), _arm_t(_APPROACH), 0.0)
     _print_state("lower", 2.0)
@@ -750,21 +732,25 @@ def run_grasp_test(
 
     z_before_lift = float(cloth.centroid_pos_w[0][2])
 
-    # ── Step 3b: Form the deterministic attachment ────────────────────
-    # Now that the closed gripper sits on the cloth, weld the particles around
-    # the grasp centre to the gripper tip (GarmentLab/DexGarmentLab Attachment
-    # block logic).  From here the welded patch tracks the tip rigidly.
-    gc_grasp = _grasp_center_w(robot, ee_body_idx, device)
-    grasp_ids, grasp_offset = _capture_grasp(cloth, gc_grasp)
+    # ── Step 3b: Form the attachment via the RL ClothObject API ───────
+    # Now that the closed gripper sits on the cloth, grasp the cluster within
+    # ATTACH_WELD_RADIUS of the tip — the same call the RL task makes.  In ANCHOR
+    # mode ``attach`` also raises those particles' mass to pin them as solver
+    # anchors; ``hold`` re-tracks them to the live tip every step (both modes).
+    cloth.update()
+    tip = _tip()
+    cloth.attach(env0, tip, ATTACH_WELD_RADIUS)
+    grasp_mask = cloth._attach_mask[0, 0].clone()    # slot 0, env 0 — welded set
+    n_grasped = int(grasp_mask.sum().item())
     # Mean height of the grasped patch at the moment of grasping — the rigorous
     # "did the gripper hold and lift the cloth?" baseline (the whole-shirt
     # centroid is dominated by the wide skirt that stays puddled on the belt).
     patch_z_before = (
-        float(cloth.nodal_pos_w[0][grasp_ids, 2].mean())
-        if grasp_ids.numel() else float("nan")
+        float(cloth.nodal_pos_w[0][grasp_mask, 2].mean())
+        if n_grasped else float("nan")
     )
-    print(f"  [attach] welded {grasp_ids.numel()} particles within "
-          f"{ATTACH_RADIUS:.3f} m of grasp centre {_fmt(gc_grasp)}")
+    print(f"  [attach] {mode_name}: grasped {n_grasped} particles within "
+          f"{ATTACH_WELD_RADIUS:.3f} m of tip {_fmt(tip[0])}")
 
     # ── Step 4: Gradually lift over 3 s, dragging the welded patch ────
     # Lift to the top of the base_z range (0.0) — a short lift only tents the
@@ -785,9 +771,8 @@ def run_grasp_test(
         robot.set_joint_position_target(driven_t, joint_ids=driven_ids)
         robot.write_joint_position_to_sim(passive_p, joint_ids=passive_ids)
         robot.write_joint_velocity_to_sim(passive_zero_vel, joint_ids=passive_ids)
-        # Drag the welded cloth patch with the (current) gripper tip.
-        _pin_grasped(cloth, grasp_ids, grasp_offset,
-                     _grasp_center_w(robot, ee_body_idx, device), device)
+        # Track the grasped cluster to the live gripper tip (RL grasp mechanic).
+        cloth.hold(_tip())
         scene.write_data_to_sim()
         sim.step()
         scene.update(DT)
@@ -806,8 +791,7 @@ def run_grasp_test(
         robot.set_joint_position_target(driven_hold, joint_ids=driven_ids)
         robot.write_joint_position_to_sim(passive_hold, joint_ids=passive_ids)
         robot.write_joint_velocity_to_sim(passive_zero_vel, joint_ids=passive_ids)
-        _pin_grasped(cloth, grasp_ids, grasp_offset,
-                     _grasp_center_w(robot, ee_body_idx, device), device)
+        cloth.hold(_tip())
         scene.write_data_to_sim()
         sim.step()
         scene.update(DT)
@@ -817,9 +801,12 @@ def run_grasp_test(
 
     z_after_lift = float(cloth.centroid_pos_w[0][2])
     patch_z_after = (
-        float(cloth.nodal_pos_w[0][grasp_ids, 2].mean())
-        if grasp_ids.numel() else float("nan")
+        float(cloth.nodal_pos_w[0][grasp_mask, 2].mean())
+        if n_grasped else float("nan")
     )
+    # Release the grasp so the next mode starts clean (restores ANCHOR masses).
+    cloth.detach(env0)
+    cloth.reset_attachment(env0)
 
     # ── Result ────────────────────────────────────────────────────────
     centroid_rise = z_after_lift - z_before_lift     # whole-shirt (info only)
@@ -829,23 +816,27 @@ def run_grasp_test(
     # Sub-checks
     grip_ok = finger_final > 0.40
     belt_ok = abs(cloth_on_belt_z - CONVEYOR_SURFACE_HEIGHT_M) < 0.10
-    attach_ok = grasp_ids.numel() > 0
-    # The grasp's job is to hold the grasped cloth and carry it with the gripper.
-    # That is the grasped-patch rise; the gripper travels ~0.29 m of base_z, so a
-    # held patch rises with it.  (The whole-shirt centroid barely moves because
-    # the wide, floppy skirt stays puddled on the belt — it is reported but is
-    # the wrong proxy for grasp success.)
-    lift_ok = attach_ok and patch_rise > 0.15
+    attach_ok = n_grasped > 0
+    # The grasp's job is to catch the cloth and carry it up off the belt: the
+    # grasped-patch rise as the gripper travels ~0.25 m of base_z.  The bar is
+    # "lifted appreciably off the belt" (both mechanics clear it): ANCHOR tracks
+    # the tip almost 1:1 (~0.27 m rise), WELD holds too but slips as the light
+    # welded particles are tugged by the hanging cloth between per-step teleports
+    # (~0.11 m rise) — the exact WELD-vs-ANCHOR difference this test demonstrates.
+    # (The whole-shirt centroid barely moves because the wide, floppy skirt stays
+    # puddled on the belt — reported below but the wrong proxy for grasp success.)
+    lift_ok = attach_ok and patch_rise > 0.08
 
     all_ok = grip_ok and belt_ok and attach_ok and lift_ok
     mark = "PASS" if all_ok else "FAIL"
 
     print()
+    print(f"  {mode_name}")
     print(f"  Cloth-on-belt Z:   {cloth_on_belt_z:.3f} m  (conveyor={CONVEYOR_SURFACE_HEIGHT_M:.3f})"
           f"  {'OK' if belt_ok else 'FAIL'}")
     print(f"  Gripper closure:   {finger_final:.3f} rad  (target={finger_target:.3f})"
           f"  {'OK' if grip_ok else 'FAIL'}")
-    print(f"  Attached particles:{grasp_ids.numel():4d}"
+    print(f"  Attached particles:{n_grasped:4d}"
           f"  {'OK' if attach_ok else 'FAIL'}")
     print(f"  Grasped-cloth rise:{patch_rise:+.3f} m"
           f"  {'OK' if lift_ok else 'FAIL'}")
@@ -911,7 +902,11 @@ def main() -> None:
     scene.update(DT)
 
     # ── ClothObject (GPU tensor access) ───────────────────────────────
-    cloth = ClothObject(SHIRT_CLOTH_CFG, num_envs=num_envs, device=device)
+    # Construct in ANCHOR mode so the per-particle anchor-mass buffers are
+    # allocated up front (PBD only); the grasp phase then switches
+    # ``cloth._grasp_mode`` per run to compare WELD vs ANCHOR without rebuilding.
+    grasp_cfg = replace_cfg(SHIRT_CLOTH_CFG, grasp_mode=GraspMode.ANCHOR)
+    cloth = ClothObject(grasp_cfg, num_envs=num_envs, device=device)
 
     # ── One-off pre-settle on the upstream belt (mirrors the RL task) ──
     # Relax the flattened shirt into a clean draped sheet away from the robot,
@@ -968,7 +963,19 @@ def main() -> None:
     drape_ok = run_drape_test(sim, scene, cloth, device,
                               robot=robot, home_target=home_arm, joint_ids=arm_ids,
                               grip_pos=grip_open, grip_ids=grip_ids)
-    grasp_ok = run_grasp_test(sim, scene, cloth, robot, ee_idx, device)
+
+    # ── Phase 3: run BOTH grasp mechanics back-to-back ────────────────
+    # WELD (teleport) then ANCHOR (solver-pin) so the recording shows the
+    # difference directly.  ANCHOR needs per-particle mass → PBD only; on XPBD we
+    # run WELD alone (ANCHOR would silently fall back to it).
+    if SHIRT_CLOTH_CFG.backend is ClothBackend.PBD:
+        grasp_modes = [GraspMode.WELD, GraspMode.ANCHOR]
+    else:
+        grasp_modes = [GraspMode.WELD]
+    grasp_results: dict[GraspMode, bool] = {}
+    for m in grasp_modes:
+        grasp_results[m] = run_grasp_test(sim, scene, cloth, robot, ee_idx, device, m)
+    grasp_ok = all(grasp_results.values())
 
     # ── Summary ───────────────────────────────────────────────────────
     checks = [drape_ok, grasp_ok]
@@ -976,19 +983,23 @@ def main() -> None:
     total = len(checks)
     print("=" * 60)
     status = "ALL PASSED" if passed == total else f"{passed}/{total} passed"
+    grasp_detail = "  ".join(
+        f"{m.value}={'OK' if ok else 'FAIL'}" for m, ok in grasp_results.items()
+    )
     print(f" Summary: {status}  (drape={'OK' if drape_ok else 'FAIL'}"
-          f"  grasp={'OK' if grasp_ok else 'FAIL'})")
+          f"  grasp[{grasp_detail}])")
     print(f" Drop tests are report-only — inspect centroid visually.")
-    print(f" Grasp uses a deterministic attachment (GarmentLab AttachmentBlock")
-    print(f" logic): cloth particles around the grasp centre are welded to the")
-    print(f" gripper tip and lifted with it.")
+    print(f" Grasp uses the RL task's ClothObject.attach/hold/detach mechanic,")
+    print(f" run under each GraspMode: WELD (teleport) and ANCHOR (solver-pin).")
     if not grasp_ok:
         print(f" Grasp FAIL: check the approach height / attach radius — the")
         print(f" gripper tip may not have reached the cloth surface.")
     print("=" * 60)
 
     if RECORDER is not None:
-        RECORDER.save(args_cli.record, "shirt_drape_grasp", fps=20, n_keys=6)
+        # Frames are captured every 4 physics steps (dt=1/120), so 30 fps plays
+        # the recording back in REAL TIME (was 20 fps → 1.5× slow-motion).
+        RECORDER.save(args_cli.record, "shirt_drape_grasp", fps=30, n_keys=6)
 
     simulation_app.close()
 

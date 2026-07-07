@@ -73,7 +73,7 @@ All three items validated — full findings, methodology and reproduction comman
 ### Crumpled-state bank (Task-1 initial-state distribution)  ✅ CLOSED (2026-07-03)
 
 - ✅ ~~**Drop-and-settle generator**~~\
-  **DONE:** [scripts/generate_crumpled_bank.py](../src/tensegrity_pick/scripts/generate_crumpled_bank.py)
+  **DONE:** [scripts/asset_generation/generate_crumpled_bank.py](../src/tensegrity_pick/scripts/asset_generation/generate_crumpled_bank.py)
   — SoftGym protocol (random pick, lift 0.15–0.45 m + lateral drag, release, settle ≤300 steps)
   in parallel envs on the free upstream belt. Generated bank: **256 states**
   (64 envs × 4 rounds, 4.5 min) at `res/Props/Cloth/banks/tshirt_crumpled_bank.pt` (65 MB,
@@ -153,23 +153,41 @@ Progress log: [shirt_pick_optimization_tracking.md](reports/shirt_pick_optimizat
 - ✅ Stub: hanging-anchor cloth reset at `PRESENTATION_POS`, passive holder robot, lowest-point
   observation ([shirt_present_env.py](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shirt_present/shirt_present_env.py)).
 - ✅ **Random-particle hang init** (2026-07-04): hanging-state bank (356 states,
-  [generate_hanging_bank.py](../src/tensegrity_pick/scripts/generate_hanging_bank.py)) restored
+  [generate_hanging_bank.py](../src/tensegrity_pick/scripts/asset_generation/generate_hanging_bank.py)) restored
   per reset via `_reset_cloth_hanging_from_bank` (slot-1 anchor, yaw+mirror augmentation,
   `max_drape` filter keeps long hangs out of the reusable drum under the pose).
 - ✅ **Shared visibility/stretch metrics** (2026-07-04):
   [shared/cloth_metrics.py](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shared/cloth_metrics.py)
   — rasterized `silhouette_coverage` in the camera plane, `stretch_ratio`/`rest_distance`
   tautness (offline-tested: `scripts/model_validation/test_cloth_metrics.py`).
-- 🔴 **Naive lowest-point second grab + stretch MDP** (rewards, success latch, second attachment
-  on slot 0 via `shirt_grasp_point_w` override) — *delegated: Alex agent, UR5e-F140, joint
-  actions; see the prompt for the decided metrics starting points.*
-- 🔴 **Reward:** projected coverage measured from the *camera viewpoints* (top-down coverage is
-  hackable by bunching/hiding), taut-but-not-overstretched bonus using the tautness proxy
-  (inter-grasp distance / rest distance, `cloth_metrics.stretch_ratio` ≤ 1.15), cloth-centroid
-  speed gate — *delegated (same agent)*.
-- 🟡 **Brute-force grasp-pair oracle** → *delegated: FAPS heuristic-study agent
-  ([prompt](agent_prompt_present_heuristics.md)) — also covers the 2-grasp/3-grasp heuristic
-  comparison + thesis figures.*
+- ✅ ~~**Naive lowest-point second grab + stretch MDP**~~ **DONE (2026-07-04, Alex agent,
+  branch `project/shirt-present`):** slot-0 grasp via `shirt_grasp_point_w` override,
+  windowed present latch, at-grasp-normalised geodesic tautness, EMA to-limits actions
+  (measured: delta-from-default saturated).  Trained UR5e-F140 to deterministic
+  present **0.927** on 2 eval seeds × 96 episodes (`agent_96000`, run 6) vs scripted
+  baseline 0.125 — see
+  [shirt_present_optimization_tracking.md](reports/shirt_present_optimization_tracking.md).
+- ✅ ~~**Reward:** projected coverage from camera viewpoints, tautness bonus, centroid speed
+  gate~~ **DONE:** silhouette coverage (camera XZ plane, gated on both grasps), maintain-taut
+  band on the GEODESIC at-grasp-normalised ratio (flat-Euclidean over-reads wrap-around pairs
+  1.3–1.6 — measured), overstretch moat from 1.05, drop one-shot −240; final coverage 0.68
+  (above the ICRA 0.55–0.60 band).  NB: the RL run's coverage gate (0.50) is below the FAPS
+  study's recommended 0.65 — a candidate re-threshold now that both are merged (`final_coverage`
+  is logged, so re-scoreable).
+- ✅ **Brute-force grasp-pair oracle + 2-grasp/3-grasp heuristic comparison** (2026-07-04,
+  FAPS heuristic-study agent): [present_heuristics_study.md](reports/present_heuristics_study.md)
+  — horizontal presentation stretch (2nd grasp raised to the holder's height, pulled along the
+  camera-plane x axis; self-aligning, yaw gap 0.003). Naive lowest-point heuristic 0.679
+  median coverage (beats free hang 0.567); regrasping HURTS (−0.031 paired → answer to open
+  question #2: robot 1 keeps holding); 2 880-pair oracle map (top decile 0.842): chord LENGTH
+  drives quality, hem-edge pairs win — **scripted hem_corner↔hem_corner reaches 0.820–0.832
+  (p90 0.95)**, shoulder↔shoulder fails (0.493); oracle-guided 2nd grasp from arbitrary first
+  grasp 0.713 ([policy JSON](reports/data/present_oracle_policy.json)). Recommended success
+  threshold **0.65** (0.75 stretch goal); reward tautness gently up to 1.05.
+  Scripts: `scripts/model_validation/present_heuristics/`.
+- 🟡 Task-2→3 terminal bank: hook + validation script DONE
+  (`snapshot_shirt_present_terminal.py`, 58-state presented-filtered sample with both grasp
+  masks) — Task-3 agent regenerates at the size it needs from `agent_96000`.
 - 🟡 Later: reset from the REAL Task-1 terminal-state bank
   (`ShirtPickEnv.snapshot_terminal_states` hook exists; decide agent_12000 vs agent_8000 —
   post-present grasp slips 5–7 % vs 1–2 %) — skill-chaining distribution shift is the report's

@@ -1,0 +1,8 @@
+{
+  "status": "completed",
+  "task": "Template-Reach-UR10-F140-IK-Abs-v0",
+  "target_timesteps": 100000,
+  "run_dir": "/home/hpc/iwfa/iwfa131h/studentische-arbeiten/src/tensegrity_pick/logs/skrl/reach/ur10_f140_ikabs/2026-07-02_10-33-09_ppo_torch_seed42",
+  "algorithm": "ppo",
+  "framework": "torch"
+}

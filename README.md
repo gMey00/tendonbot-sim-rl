@@ -122,10 +122,10 @@ cd src/tensegrity_pick
 python -m pip install -e source/tensegrity_pick
 
 # 6. Verify all environments are registered
-python scripts/list_envs.py
+python scripts/diagnostics/list_envs.py
 
 # 7. Run a quick smoke test
-python scripts/zero_agent.py --task=Template-Reach-Tensegrity-v0 --num_envs=2 --headless
+python scripts/agents/zero_agent.py --task=Template-Reach-Tensegrity-v0 --num_envs=2 --headless
 ```
 
 ### Training
@@ -148,7 +148,7 @@ python scripts/skrl/play.py --task=Template-Reach-Tensegrity-Play-v0 --num_envs=
 
 ```bash
 cd /home/robot/Isaac/IsaacLab
-./isaaclab.sh -p /path/to/src/tensegrity_pick/scripts/step_response_test.py \
+./isaaclab.sh -p /path/to/src/tensegrity_pick/scripts/diagnostics/step_response_test.py \
     --headless --num-envs 1 --output-dir ./step_response_results
 ```
 
