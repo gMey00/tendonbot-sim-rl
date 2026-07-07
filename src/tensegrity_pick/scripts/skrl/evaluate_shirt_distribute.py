@@ -48,7 +48,6 @@ simulation_app = app_launcher.app
 import gymnasium as gym  # noqa: E402
 import torch  # noqa: E402
 import skrl  # noqa: F401, E402
-from skrl.utils.runner.torch import Runner  # noqa: E402
 
 import isaaclab_tasks  # noqa: F401, E402
 from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
@@ -73,7 +72,10 @@ def main() -> None:
     experiment_cfg["trainer"]["close_environment_at_exit"] = False
     experiment_cfg["agent"]["experiment"]["write_interval"] = 0
     experiment_cfg["agent"]["experiment"]["checkpoint_interval"] = 0
-    runner = Runner(env, experiment_cfg)
+    # PerGoalRunner builds the multi-head critic + per-goal PPO for the per-goal
+    # config, and falls back to stock Runner behaviour for a stock PPO yaml.
+    from tensegrity_pick.tasks.manager_based.shirt_distribute.learning import PerGoalRunner
+    runner = PerGoalRunner(env, experiment_cfg)
     resume_path = os.path.abspath(args_cli.checkpoint)
     print(f"[INFO] Loading checkpoint: {resume_path}")
     runner.agent.load(resume_path)

@@ -250,8 +250,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         # configure and instantiate the skrl runner
         # https://skrl.readthedocs.io/en/latest/api/utils/runner.html
         # R6: cube_sort uses a custom DeepSets-encoder Runner subclass.
-        if args_cli.task and "cube-sort" in args_cli.task.lower():
+        # shirt_distribute uses a per-goal PPO Runner (mode-collapse fix); it
+        # falls back to stock behaviour for a stock (agent.class: PPO) yaml, so
+        # every shirt-distribute variant can route through it safely.
+        _task_lc = args_cli.task.lower() if args_cli.task else ""
+        if "cube-sort" in _task_lc:
             from tensegrity_pick.agents import CubeSetRunner as _Runner
+        elif "shirt-distribute" in _task_lc:
+            from tensegrity_pick.tasks.manager_based.shirt_distribute.learning import PerGoalRunner as _Runner
         else:
             _Runner = Runner
         runner = _Runner(env, agent_cfg)

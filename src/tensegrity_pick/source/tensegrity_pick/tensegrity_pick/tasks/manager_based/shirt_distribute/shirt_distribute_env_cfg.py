@@ -128,6 +128,10 @@ class ObservationsCfg:
         grasp_active = ObsTerm(func=mdp.grasp_active_obs)
         was_distributed = ObsTerm(func=mdp.was_distributed_obs)
         actions = ObsTerm(func=mdp.last_action)
+        # Goal task-id one-hot (mode-collapse fix B3). MUST stay the LAST term:
+        # the per-goal critic and PerGoalPPO recover the commanded bin from
+        # ``obs[..., -3:].argmax(-1)`` (see mdp.rewards.target_bin_onehot).
+        target_bin_onehot = ObsTerm(func=mdp.target_bin_onehot, params={"num_bins": 3})
 
         def __post_init__(self) -> None:
             self.enable_corruption = False

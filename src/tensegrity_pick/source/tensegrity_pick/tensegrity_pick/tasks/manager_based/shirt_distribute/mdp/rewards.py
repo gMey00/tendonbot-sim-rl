@@ -84,6 +84,22 @@ def was_distributed_obs(env: "ManagerBasedRLEnv") -> torch.Tensor:
     return env.was_distributed.float().unsqueeze(-1)
 
 
+def target_bin_onehot(env: "ManagerBasedRLEnv", num_bins: int = 3) -> torch.Tensor:
+    """One-hot of the commanded bin (N, num_bins) — the goal task-id.
+
+    Mode-collapse fix (research report §C #2, B3): a relative-position goal
+    vector alone can be under-weighted by the shared trunk (gradient starvation,
+    Pezeshki et al. 2021); an explicit, linearly-separable one-hot de-aliases the
+    three goals in value space.  This term is kept as the LAST observation slice
+    so the per-goal critic and the PerGoalPPO agent can recover the commanded bin
+    as ``obs[..., -num_bins:].argmax(-1)`` independent of the rest of the layout.
+    Must stay last; do not append observation terms after it.
+    """
+    if getattr(env, "_target_bin", None) is None:
+        return torch.zeros(env.num_envs, num_bins, device=env.device)
+    return torch.nn.functional.one_hot(env._target_bin, num_classes=num_bins).float()
+
+
 # ---------------------------------------------------------------------------
 # Phase 1–2: goal-conditioned carry + clearance
 # ---------------------------------------------------------------------------

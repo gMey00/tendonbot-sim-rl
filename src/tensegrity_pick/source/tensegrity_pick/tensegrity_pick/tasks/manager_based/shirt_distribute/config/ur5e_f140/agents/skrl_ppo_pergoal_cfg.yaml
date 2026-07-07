@@ -1,0 +1,93 @@
+seed: 42
+
+# ============================================================================
+#  Per-goal PPO — goal-conditioned mode-collapse fix (research report §C #1)
+# ============================================================================
+#  doc/reports/RESEARCH_REPORT_goal_conditioned_mode_collapse
+#
+#  Baseline PPO (skrl_ppo_cfg.yaml) collapses to 2-of-3 bins per seed: the
+#  shared critic + single aggregate return normalizer drives the hardest-so-far
+#  goal's normalized advantage negative, and a unimodal shared actor is pushed
+#  away from it (winner-take-all).  This config applies the report's bundled #1
+#  intervention, changing ONLY the critic + normalization (all PPO
+#  hyperparameters frozen at the iteration-7 baseline for attributability):
+#
+#    1. value.class = GoalMultiHeadValue   — one critic head per commanded bin
+#       (MultiCriticAL single-actor/multi-critic; Mysore et al. 2022).
+#    2. agent.class = PerGoalPPO           — per-bin return normalization +
+#       per-bin advantage normalization (PopArt-style; Hessel et al. 2019).
+#    3. value_preprocessor = null          — the agent owns per-goal value norm.
+#    4. models.separate = True             — a custom value class cannot ride the
+#       shared-model path; policy + value are now separate nets (was shared).
+#
+#  Requires the goal one-hot as the LAST 3 observation dims
+#  (ObservationsCfg.target_bin_onehot) — the critic and agent recover the
+#  commanded bin from obs[..., -3:].argmax(-1).
+# ============================================================================
+
+models:
+  separate: True
+  policy:  # unchanged from the baseline (single shared Gaussian actor)
+    class: GaussianMixin
+    clip_actions: False
+    clip_log_std: True
+    min_log_std: -3.0
+    max_log_std: 0.5
+    initial_log_std: -0.7
+    network:
+      - name: net
+        input: OBSERVATIONS
+        layers: [256, 128, 64]
+        activations: elu
+    output: ACTIONS
+  value:  # per-bin multi-head critic (trunk [256,128,64] ELU is hardcoded in the
+          # GoalMultiHeadValue class; only num_bins is read from here).
+    class: GoalMultiHeadValue
+    clip_actions: False
+    num_bins: 3
+
+
+memory:
+  class: RandomMemory
+  memory_size: -1
+
+
+agent:
+  class: PerGoalPPO
+  rollouts: 48
+  learning_epochs: 5
+  mini_batches: 8
+  discount_factor: 0.99
+  lambda: 0.95
+  learning_rate: 1.0e-04
+  learning_rate_scheduler: KLAdaptiveLR
+  learning_rate_scheduler_kwargs:
+    kl_threshold: 0.004
+  state_preprocessor: RunningStandardScaler
+  state_preprocessor_kwargs: null
+  # value_preprocessor DISABLED: PerGoalPPO maintains one RunningStandardScaler
+  # per commanded bin internally (the aggregate scaler is the diagnosed culprit).
+  value_preprocessor: null
+  value_preprocessor_kwargs: null
+  random_timesteps: 0
+  learning_starts: 0
+  grad_norm_clip: 1.0
+  ratio_clip: 0.2
+  value_clip: 0.2
+  clip_predicted_values: True
+  entropy_loss_scale: 0.003
+  value_loss_scale: 2.0
+  kl_threshold: 0.0
+  rewards_shaper_scale: 0.5
+  time_limit_bootstrap: False
+  experiment:
+    directory: "shirt_distribute"
+    experiment_name: ""
+    write_interval: 200
+    checkpoint_interval: 2000
+
+
+trainer:
+  class: SequentialTrainer
+  timesteps: 48000
+  environment_info: log

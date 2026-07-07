@@ -32,6 +32,26 @@ gym.register(
 )
 
 gym.register(
+    id="Template-Shirt-Distribute-UR5e-F140-PerGoal-v0",
+    entry_point="tensegrity_pick.tasks.manager_based.shirt_distribute.shirt_distribute_env:ShirtDistributeEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:UR5eF140ShirtDistributeEnvCfg",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_pergoal_cfg.yaml",
+    },
+)
+
+gym.register(
+    id="Template-Shirt-Distribute-UR5e-F140-PerGoal-Play-v0",
+    entry_point="tensegrity_pick.tasks.manager_based.shirt_distribute.shirt_distribute_env:ShirtDistributeEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:UR5eF140ShirtDistributeEnvCfg_PLAY",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_pergoal_cfg.yaml",
+    },
+)
+
+gym.register(
     id="Template-Shirt-Distribute-UR5e-F140-EMA-v0",
     entry_point="tensegrity_pick.tasks.manager_based.shirt_distribute.shirt_distribute_env:ShirtDistributeEnv",
     disable_env_checker=True,
