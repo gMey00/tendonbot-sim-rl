@@ -586,6 +586,68 @@ two "won" goals lock in.  Consistent detail across ALL runs: **bin 0
 (reusable, left drum) is the EASIEST — essentially always learned; the policy
 sacrifices one of {recyclable, trash}, and which one is seed-dependent.**
 
+## Phase 2: Per-Goal PPO (mode-collapse fix, research-report #1)
+
+**Date:** 2026-07-07 · **Branch:** `project/shirt-distribute`
+
+### Motivation
+
+Phase 1 ended blocked on **goal-conditioned mode collapse** (per-seed
+2-of-3-bin specialisation; best deterministic 0.596). A dedicated literature
+review — [`RESEARCH_REPORT_goal_conditioned_mode_collapse`](RESEARCH_REPORT_goal_conditioned_mode_collapse)
+— diagnosed the cause as **cross-goal critic interference under a single
+aggregate return normalizer**: with symmetric per-goal rewards the operative
+asymmetry is *transient return scale* (the hardest-so-far goal's returns are
+lower early), so one shared `(μ, σ)` and the global GAE advantage normalization
+drive that goal's *normalized* advantage negative, and a unimodal shared actor
+is pushed away from it. Seed-dependent symmetry-breaking selects which bin is
+dropped; simplicity bias keeps bin 0 (easiest) always learned.
+
+### Intervention (report §C #1, bundled)
+
+Implemented in a new `shirt_distribute/learning/` package; all PPO
+hyperparameters frozen at the Phase-1 iteration-7 baseline for attributability.
+
+1. **Per-goal value + advantage normalization** (`PerGoalPPO`, subclasses skrl
+   PPO): one `RunningStandardScaler` per commanded bin replaces the single
+   aggregate value scaler (PopArt-style, Hessel et al. 2019); GAE advantages are
+   standardized *within each bin group* instead of across the whole batch. Bins
+   are recovered from a goal one-hot (argmax survives per-column
+   standardization). Per-goal raw-advantage means + value scales are logged as
+   the mechanism diagnostic.
+2. **Per-goal value heads** (`GoalMultiHeadValue`): shared `[256,128,64]` ELU
+   trunk, one linear critic head per bin, selected by the goal one-hot
+   (MultiCriticAL single-actor/multi-critic, Mysore et al. 2022).
+3. **Goal one-hot observation** (`mdp.target_bin_onehot`, last obs slice): the
+   linearly-separable task-id de-aliases goals in value space (report §C #2, B3)
+   and drives head selection.
+
+Config: `skrl_ppo_pergoal_cfg.yaml` (separate policy/value nets — a custom value
+class cannot ride skrl's shared-model path; value_preprocessor disabled),
+`Template-Shirt-Distribute-UR5e-F140-PerGoal-v0`. `PerGoalRunner` routes both
+train and eval; a stock PPO yaml still runs unchanged through it (A/B baseline
+preserved). SHARED-FILE flag (§8): `scripts/skrl/train.py` gains a
+shirt-distribute runner branch analogous to the existing cube-sort one.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| Standalone logic tests (bin recovery under standardization, per-goal GAE zero-mean/unit-std per group, multi-head gather vs explicit reference) | **PASS** |
+| GPU smoke run (job 3820417, seed 0, 4800 steps ≈ 100 updates, 64 envs) | **PASS** — constructs, ~100 `update()`s clean, per-goal checkpoints serialize, GPU util 86 % |
+
+### Training run
+
+3-seed array (job 3820478, seeds 0/1/2, 96 k timesteps, 64 envs) — matches the
+budget at which the Phase-1 best checkpoint (`agent_96000`) emerged.
+
+_Results: PENDING deterministic evaluation (per-bin, ≥2 eval seeds) — to be
+filled in below._
+
+<!-- RESULTS_PLACEHOLDER_PERGOAL -->
+
+---
+
 ## Conclusion & status vs §2
 
 **Delivered:** a complete, validated, documented Task-3 MDP — grasped-hang
