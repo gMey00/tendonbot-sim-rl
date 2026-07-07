@@ -1,0 +1,8 @@
+{
+  "status": "completed",
+  "task": "Template-Reach-UR10-Frankenstein-OSC-v0",
+  "target_timesteps": 100000,
+  "run_dir": "/home/hpc/iwfa/iwfa131h/studentische-arbeiten/src/tensegrity_pick/logs/skrl/reach/ur10_frankenstein_osc/2026-07-02_11-41-00_ppo_torch_seed7",
+  "algorithm": "ppo",
+  "framework": "torch"
+}
