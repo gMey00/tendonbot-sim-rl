@@ -1,13 +1,13 @@
 # Alex Cluster — Quick Start for `tensegrity_pick`
 
-[← Back to documentation index](README.md)
+[← Alex Cluster Docs](README.md) · [← Documentation index](../README.md)
 
 > This guide documents the cluster conventions a newcomer must know, the project's helper
 > scripts (`tools/` + `.config/env_vars.sh`), and the everyday commands you'll use.
 >
 > The following assumes the **`rtxpro6k`** partition (8 × NVIDIA RTX PRO 6000 per
 > node). For the verified hardware/software facts of those nodes, see the
-> companion document [Alex RTX PRO 6000 Hardware & Environment](alex_rtxpro6k_hardware.md).
+> companion document [Alex RTX PRO 6000 Hardware & Environment](alex_rtx6000pro_hardware.md).
 >
 > Wherever a cluster-wide convention is stated, it is cited to the official
 > NHR@FAU documentation so you can verify and go deeper.
@@ -131,6 +131,8 @@ Check your usage and quota anytime with:
 ```bash
 shownicerquota.pl      # friendly per-filesystem view (NHR@FAU tool)[^nhr-fs]
 quota -s               # generic Unix view[^nhr-fs]
+sreport cluster AccountUtilizationByUser start=2026-06-12 end=now -t Hours # used CPU-hours per user
+sreport cluster AccountUtilizationByUser start=2026-06-12 end=now -t Hours --tres=gres/gpu # used GPU-hours per user
 ```
 
 ---
@@ -427,7 +429,7 @@ A few things worth knowing:
 ## 10. Where to go next
 
 - **Hardware/software facts to cite in the thesis:** companion doc
-  [Alex RTX PRO 6000 Hardware & Environment](alex_rtxpro6k_hardware.md).
+  [Alex RTX PRO 6000 Hardware & Environment](alex_rtx6000pro_hardware.md).
 - **Acknowledging the resources in publications/thesis:** NHR@FAU asks you to
   acknowledge the compute resources; see the official wording.[^nhr-ack]
 - **Deeper Slurm usage** (arrays, dependencies, job control): NHR@FAU Slurm

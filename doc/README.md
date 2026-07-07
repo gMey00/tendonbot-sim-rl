@@ -9,6 +9,7 @@ Project documentation for the tensegrity robot simulation and reinforcement lear
 | Document | Description |
 |----------|-------------|
 | [nv_isaac.md](nv_isaac.md) | NVIDIA Isaac Sim and Isaac Lab — overview, links, and learning resources |
+| [Alex_cluster/](Alex_cluster/README.md) | Alex NHR@FAU GPGPU cluster: quickstart, RTX PRO 6000 hardware/environment, Tier3 application |
 | [Tensegrity_robot/](Tensegrity_robot/README.md) | Tensegrity robot: kinematics, tendon simulation, model validation, workspace analysis |
 | [Tensegrity_robot/tendon_simulation.md](Tensegrity_robot/tendon_simulation.md) | Tendon-driven simulation: physical model, software architecture, validation |
 | [remote_desktop_setup.md](remote_desktop_setup.md) | Secure remote desktop setup with Tailscale and RustDesk |

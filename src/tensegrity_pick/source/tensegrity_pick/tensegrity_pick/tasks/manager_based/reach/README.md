@@ -94,7 +94,7 @@ sampling (see tracking log, iteration 13).
 | [physical_elbow_spec.md](config/tensegrity_tendon/physical_elbow_spec.md) | tensegrity physical-elbow kinematics and actuation |
 | [optimization tracking log](../../../../../../../../doc/reports/reach_optimization_tracking.md) | full change history (iterations 0–15) with root-cause analyses |
 | [reach task handoff](../../../../../../../../doc/reach_task_handoff.md) | mission/state snapshot of the grid study (2026-07-01) |
-| [Alex quickstart](../../../../../../../../doc/alex_quickstart.md) | cluster workflow (Slurm, rendering caveats) |
+| [Alex quickstart](../../../../../../../../doc/Alex_cluster/alex_quickstart.md) | cluster workflow (Slurm, rendering caveats) |
 
 ## Directory Structure
 
@@ -212,7 +212,7 @@ Reset: controlled joints to default ± 0.125 rad offset, zero velocity;
 
 ### On the Alex cluster (recommended)
 
-See the [Alex quickstart](../../../../../../../../doc/alex_quickstart.md). From
+See the [Alex quickstart](../../../../../../../../doc/Alex_cluster/alex_quickstart.md). From
 the repo root on a login node:
 
 ```bash
@@ -254,7 +254,7 @@ conda run --no-capture-output -n env_isaaclab \
     --task Template-Reach-UR5e-F140-Play-v0
 
 # Interactive play of the latest checkpoint (workstation only — rendering
-# does NOT work on Alex, see doc/alex_quickstart.md §7a)
+# does NOT work on Alex, see doc/Alex_cluster/alex_quickstart.md §7a)
 conda run --no-capture-output -n env_isaaclab \
     python3 scripts/skrl/play.py \
     --task Template-Reach-UR5e-F140-Play-v0 --num_envs 10

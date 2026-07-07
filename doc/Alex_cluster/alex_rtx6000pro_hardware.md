@@ -1,6 +1,6 @@
 # Alex Cluster — RTX PRO 6000 Partition Hardware & Environment
 
-[← Back to documentation index](README.md)
+[← Alex Cluster Docs](README.md) · [← Documentation index](../README.md)
 
 > **Goal**  Document the exact hardware and software environment of the new
 > **`rtxpro6k`** GPU partition on the **Alex** cluster (NHR@FAU), for the

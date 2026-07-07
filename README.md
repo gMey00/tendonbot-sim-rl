@@ -163,6 +163,7 @@ cd /home/robot/Isaac/IsaacLab
 |----------|-------------|
 | [`doc/README.md`](doc/README.md) | Documentation index |
 | [`doc/nv_isaac.md`](doc/nv_isaac.md) | NVIDIA Isaac Sim / Isaac Lab resources and links |
+| [`doc/Alex_cluster/README.md`](doc/Alex_cluster/README.md) | Alex NHR@FAU GPGPU cluster: quickstart, RTX PRO 6000 hardware, Tier3 application |
 | [`doc/Tensegrity_robot/README.md`](doc/Tensegrity_robot/README.md) | Tensegrity robot documentation: kinematics, tendon simulation, model validation, workspace analysis |
 | [`doc/Tensegrity_robot/tendon_simulation.md`](doc/Tensegrity_robot/tendon_simulation.md) | Tendon simulation: physics, architecture, validation |
 | [`doc/remote_desktop_setup.md`](doc/remote_desktop_setup.md) | Remote desktop setup (Tailscale + RustDesk) |
