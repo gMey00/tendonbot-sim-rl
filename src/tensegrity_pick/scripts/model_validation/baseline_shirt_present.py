@@ -150,56 +150,71 @@ def main() -> None:
     raw_cov = u.coverage.clone()
     raw_low = u.shirt_lowest_point_w.clone()
     cloth_speed = u.cloth.centroid_vel_w.norm(dim=-1)
-    print("\n── raw hang (bank states, settled) ──────────────────────")
+    print("\n── raw hang (hem-anchored bank states, settled) ─────────")
     print(stats("[raw] coverage", raw_cov))
     print(stats("[raw] cloth speed (m/s)", cloth_speed))
     print(stats("[raw] lowest-point z (m)", raw_low[:, 2] - u.scene.env_origins[:, 2]))
 
-    # Geodesic sanity: on a gravity-straightened hang the anchor→lowest
-    # Euclidean distance ≈ the fabric path (geodesic), so euclid/geodesic
-    # should sit at or just below 1 (folded sleeves → lower).  Values > ~1.05
-    # break the metric (index-space mismatch — tracking report Phase 1).
-    if u._geo_edges is not None:
-        pts = u.cloth.nodal_pos_w
-        low_idx = pts[:, :, 2].argmin(dim=1)
-        geo_low = u._geo_dist.gather(1, low_idx.unsqueeze(1)).squeeze(1)
-        euc_low = (raw_low - u._anchor_pos).norm(dim=-1)
-        print(stats("[geo] anchor→lowest euclid (m)", euc_low))
-        print(stats("[geo] anchor→lowest geodesic (m)", geo_low))
-        print(stats("[geo] euclid/geodesic (expect ≤ ~1)", euc_low / geo_low.clamp(min=1e-6)))
-    else:
-        print("[geo] WARNING: no spring graph — flat-Euclidean fallback in use")
+    # Hem-to-hem geometry diagnostics: where the targeted hem corner hangs and
+    # whether the holder-arm gripper sits at the anchor (finding #3 cosmetic fix).
+    hem_tgt = u.shirt_grasp_point_w.clone()
+    print(stats("[hem] target-corner z (m, env-local)",
+                hem_tgt[:, 2] - u.scene.env_origins[:, 2]))
+    print(stats("[hem] target-corner dist to holder anchor (m)",
+                (hem_tgt - u._anchor_pos).norm(dim=-1)))
+    if "holder_robot" in u.scene.keys():
+        hr = u.scene["holder_robot"]
+        try:
+            ee_i = hr.body_names.index("tool_link_0")
+            ee = hr.data.body_pos_w[:, ee_i, :]
+            drop = (u.scene.env_origins + torch.tensor(u.present_anchor_local, device=dev)
+                    + torch.tensor([0.0, 0.0, 0.80], device=dev))[:, 2] - ee[:, 2]
+            print(f"[holder] tool_link_0 z={float(ee[0,2]-u.scene.env_origins[0,2]):.3f} "
+                  f"vs anchor z={u.present_anchor_local[2]:.3f}  "
+                  f"gripper→anchor dist={float((ee[0]-u._anchor_pos[0]).norm()):.3f} m "
+                  f"(measured rest drop below mount ≈ {float(drop[0]):.3f} m)")
+        except (ValueError, KeyError):
+            print("[holder] tool_link_0 not found — skipping holder-pose check")
 
-    # ── Phase 1: approach the lowest hanging point ────────────────────────
+    # Tautness definition sanity: the hem<->hem stretch ratio normalises the
+    # patch separation by the FLAT rest distance between the two grasp
+    # particles (study's rest_distance).  Print that rest length so the pull
+    # target (ratio x rest along x) and the [0.90, 1.15] band are interpretable.
+    rest_hh = (u._cloth.flat_rest_pos[u._hem_ids[0]]
+               - u._cloth.flat_rest_pos[u._hem_ids[1]]).norm()
+    print(f"[taut] hem<->hem flat rest distance = {float(rest_hh):.3f} m "
+          f"(pull target offset = {float(rest_hh) * 1.05:.3f} m along x)")
+
+    # ── Phase 1: approach the targeted HEM CORNER (open gripper) ──────────
     reached = torch.zeros(n, dtype=torch.bool, device=dev)
     min_d = torch.full((n,), float("inf"), device=dev)
     it = 0
     for it in range(APPROACH_MAX_STEPS):
-        low = u.shirt_lowest_point_w
-        d = (tip() - low).norm(dim=-1)
+        tgt = u.shirt_grasp_point_w
+        d = (tip() - tgt).norm(dim=-1)
         min_d = torch.minimum(min_d, d)
         reached |= d < 0.07
         if reached.all():
             break
-        # Staged: aim 12 cm above the lowest point until close (approach from
-        # above disturbs the hang less), then the true target.
-        stage_off = torch.zeros_like(low)
+        # Staged: aim 12 cm short until close (a gentler approach disturbs the
+        # hang less), then the true target.
+        stage_off = torch.zeros_like(tgt)
         stage_off[:, 2] = torch.where(d > 0.15, 0.12, 0.0)
-        servo_to(low + stage_off, active=~reached)
+        servo_to(tgt + stage_off, active=~reached)
         hold_current(reached)
         step_once()
         if (it + 1) % 120 == 0:
             print(f"[approach] step {it + 1}: mean dist {d.mean():.3f} m, "
                   f"reached {int(reached.sum())}/{n}")
-    d = (tip() - u.shirt_lowest_point_w).norm(dim=-1)
+    d = (tip() - u.shirt_grasp_point_w).norm(dim=-1)
     print(f"\n[approach] reached (<7 cm): {int(reached.sum())}/{n} after {it + 1} steps")
-    print(stats("[approach] final tip→lowest dist (m)", d))
-    print(stats("[approach] min tip→lowest dist (m)", min_d))
+    print(stats("[approach] final tip→hem-target dist (m)", d))
+    print(stats("[approach] min tip→hem-target dist (m)", min_d))
 
-    # ── Phase 2: close → deterministic attach at the lowest point ────────
+    # ── Phase 2: close → deterministic attach at the hem corner ──────────
     a[:, N_ARM] = CLOSE
     for _ in range(CLOSE_STEPS):
-        servo_to(u.shirt_lowest_point_w, active=~u.grasp_active)
+        servo_to(u.shirt_grasp_point_w, active=~u.grasp_active)
         hold_current(u.grasp_active)
         step_once()
     grasped = u.grasp_active.clone()
@@ -208,20 +223,27 @@ def main() -> None:
         print(stats("[grasp] at-grasp RAW stretch ratio (= r0, held envs)",
                     u.stretch_ratio[grasped]))
 
-    # ── Phase 3: stretch along the anchor→grasp direction ────────────────
-    anchor = u._anchor_pos
-    dvec = tip() - anchor
-    dhat = dvec / dvec.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+    # ── Phase 3: HORIZONTAL presentation pull ─────────────────────────────
+    # Servo the grasped hem corner to the study's horizontal-pull target
+    # (holder height, offset along camera-plane x) — gravity drapes the body
+    # below the taut chord.  This is the study's GEOMETRY CORRECTION: pull
+    # horizontally to the holder's height, NOT along the raw separation vector.
+    pull_reached = torch.zeros(n, dtype=torch.bool, device=dev)
     for it in range(STRETCH_MAX_STEPS):
-        ratio = u.stretch_ratio_norm
-        need_pull = grasped & u.grasp_active & (ratio < args_cli.target_ratio)
-        servo_to(tip() + dhat * 0.05, active=need_pull)
+        goal = u.present_pull_target_w
+        pd = (tip() - goal).norm(dim=-1)
+        pull_reached |= pd < 0.04
+        need_pull = grasped & u.grasp_active & (~pull_reached)
+        servo_to(goal, active=need_pull)
         hold_current(~need_pull)
         step_once()
         if not bool(need_pull.any()):
             break
-    print(f"\n[stretch] pull phase ended after {it + 1} steps "
-          f"(target ratio {args_cli.target_ratio})")
+    goal = u.present_pull_target_w
+    print(f"\n[stretch] horizontal pull ended after {it + 1} steps "
+          f"(reached<4cm {int((grasped & pull_reached).sum())}/{int(grasped.sum())})")
+    print(stats("[stretch] final tip→pull-target dist (m)",
+                (tip() - goal).norm(dim=-1)))
 
     # ── Phase 4: hold still + measure ─────────────────────────────────────
     pres_frac = torch.zeros(n, device=dev)

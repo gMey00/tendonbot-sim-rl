@@ -357,3 +357,123 @@ regenerates at any size for shirt_distribute.
 
 `shirt_present/figures/ur5e_f140/01–06` (run 6, plotted via
 `scripts/plotting/plot_shirt_present_training_results.py`).
+
+---
+
+## Phase 2: Hem-to-Hem Presentation Redesign
+
+**Date:** 2026-07-07
+
+After Georg's visual inspection of the run-6 checkpoint (findings in
+`logs/skrl/need_visual_verification/shirt_present/findings.md`), the naive
+lowest-point second grasp was replaced with the **hem-corner ↔ hem-corner,
+horizontal-pull** geometry validated by the FAPS heuristics study
+([present_heuristics_study.md](present_heuristics_study.md): scripted hem↔hem
+median camera-plane coverage **0.820** @ ratio 1.05 vs **0.679** for the naive
+lowest-point rule, +0.14).  Six visual-inspection findings were addressed in
+the same pass.
+
+### Findings addressed (visual inspection of agent_96000)
+
+1. **Premature gripper-close reward hack** — `reaching_target` now pays out
+   ONLY while the gripper is open pre-grasp (zeroed when commanded closed) and
+   a new `early_close_penalty` (−15, scaled by distance) punishes closing the
+   gripper while far from the target and ungrasped.  The policy must approach
+   OPEN and close at the target.
+2. **Cloth/robot clipping & wrap-around** — mitigated by the cleaner horizontal
+   geometry (the arm works BESIDE the taut chord instead of reaching through
+   the drape to the lowest point) plus the relocated anchor (shirt hangs in
+   free space, clear of the drum/pedestal).  Residual is a collision-fidelity
+   matter (the UR5e has `enabled_self_collisions=False`); GUI-verify only.
+3. **Passive holder didn't grip the anchor** — the holder arm is now mounted
+   directly above the (local) presentation anchor pointing straight down; the
+   rest EE offset was MEASURED (baseline job 3820849/3821608: tool_link_0 sits
+   0.98 m below the mount) so the gripper sits at the anchor (measured
+   gripper→anchor distance 0.087 m, was 0.207 m at the first guess).
+4. **Shirt self-collision "too far along Y" → requested x=0.8** — reconciled
+   and REJECTED as stated.  The UR5e has self-collision DISABLED, so the fold
+   is cosmetic, not physical.  The literal x=0.8 sits directly above the
+   robot's OWN pedestal (x∈[0.6,0.9], y∈[0.85,1.15]) and would drape the shirt
+   through the robot — regressing finding #2.  Instead the local anchor moved
+   to **x=0.50**, halving the cross-body reach (base at x=0.75) while clearing
+   both the reusable drum (right edge 0.42) and the pedestal.  Coverage is
+   translation-invariant (`cloth_metrics` rasterizes the zero-based
+   silhouette), so relocating the anchor is metric-neutral.
+5. **Arm occludes the −Y inspection camera** — a mild `occlusion_penalty` (−2)
+   discourages the EE sitting on the camera side of the cloth.  Best-effort:
+   the coverage metric has NO camera sensor so it cannot see occlusion, and the
+   fixed base geometry (robot at y=1.0, cloth y=0.85, camera y=2.0) makes some
+   overlap unavoidable.  GUI-verify.
+6. **Cloth "a bit too stretchy"** — investigated, NO change: shirt_present and
+   shirt_pick share the identical `CLOTH_SORTING_SHIRT_CFG`
+   (`stretch_stiffness` 1e5, `mass_kg` 0.30), so it is a shared-cloth property
+   matching the validated shirt_pick, not a task bug.  The directed 1.05 pull +
+   overstretch guard keep the presentation in-band.
+
+### Geometry & MDP changes
+
+* **Holder** restricted to the 43 bottom-edge-anchored hanging-bank states
+  (`present_geometry.holder_region_mask`) so the retriever grips a HEM point —
+  the study's hem↔hem holder.  Set `use_hem_holder=False` to fall back to the
+  full random-anchor bank (the oracle-guided regime, study §5.2, median 0.713).
+* **Hand target** = the opposite hem corner.  The two hem-corner particles
+  (3835, 9696) are found once from the flat-rest shape via the study's landmark
+  scheme (`present_geometry.hem_corner_particle_ids`).  The target is **latched
+  at reset** to the more accessible (farther-from-anchor) corner — recomputing
+  it per step made the argmax flip between the two corners (~0.37 m apart) when
+  they hung at similar distances, a discretely jumping target (measured:
+  scripted reach 2/16 per-step → 8/32 latched).
+* **Directed horizontal pull** (`pulling_horizontal`, weight 10): the hand is
+  shaped toward `anchor + x_sign·(1.05·rest)` at the holder's y/z — the study's
+  taut horizontal chord (gravity drapes the body below).  Replaces the old
+  undirected `stretch_progress`-only shaping.
+* **Tautness** switched from the geodesic + at-grasp-r0 normalisation to the
+  study's **flat rest distance** between the two grasp patches
+  (`cloth_metrics.stretch_ratio` definition).  The r0/geodesic scheme was
+  calibrated for the lowest-point grasp (span already gravity-taut at grasp);
+  hem↔hem CHANGES configuration hang→horizontal, so a correctly executed pull
+  read ~0.82 normalised (below the taut gate) — the flat-rest denominator reads
+  **1.05 raw** at the chord directly (measured baseline 3821608:
+  at-grasp ratio 1.051, p10–p90 1.046–1.057).  Band [0.90, 1.15].
+* **Success threshold** raised to coverage **≥ 0.65** (study recommendation for
+  hem↔hem; was 0.50 for the naive rule).
+* **Local anchor** (0.50, 0.85, 1.20): z lowered 1.60→1.20 so the horizontal
+  chord is within the UR5e envelope (base z=0.75); measured that z=1.35 left
+  the far pull-side at the reach edge (baseline 3820849 reach 6/16) while z=1.20
+  brings both sides inside (8/32).
+
+### Scripted baseline calibration (in-scene, hem↔hem horizontal pull)
+
+`baseline_shirt_present.py` (weak resolved-rate servo — a lower bound, NOT the
+RL ceiling; the original naive baseline scored present 0.125 and RL reached
+0.927 from it):
+
+| baseline | reach<7cm | grasped | present | held coverage (p50 / p90 / max) | at-grasp ratio |
+|---|---|---|---|---|---|
+| v1 (z=1.35, geodesic+r0) | 6/16 | 7/16 | 0/16 | 0.515 / 0.638 / 0.698 | 1.28 (mis-cal) |
+| v2 (z=1.20, flat-rest) | 2/16 | 2/16 | 0/16 | 0.633 / — / — | **1.051** |
+| **v3 (+ latched target)** | **8/32** | **13/32** | **4/32 = 0.125** | **0.629 / 0.744 / 0.817** | 1.05 |
+
+The v3 profile (present 0.125, grasp 0.41, coverage ceiling 0.82) mirrors the
+original naive baseline that RL took to 0.927.  Raw hem-anchored hang coverage
+is already 0.646 (p90 0.787) — the hem hold spreads the garment before any
+stretch; the horizontal pull adds the taut top edge (best envs reach the
+study's 0.82).  In-scene delta vs the robot-free study: the scripted servo
+rarely completes the pull, so median held coverage (0.63) sits below the
+study's 0.82 median — the RL policy is expected to close this gap.
+
+### What LOST / rejected (measured)
+
+* **Geodesic + r0-normalised tautness** — mis-reads the hang→horizontal config
+  change (correct pull → 0.82 normalised, below the 0.92 gate).  Removed the
+  spring-graph Bellman-Ford machinery; flat rest distance is clean for the
+  hem-corner pair.
+* **Anchor x=0.8 (the literal request)** — drapes the shirt through the robot's
+  own pedestal; x=0.50 chosen instead.
+* **Per-step hand-target selection** — jumpy argmax; latched at reset.
+* **Anchor z=1.35** — far pull-side at the reach edge; lowered to 1.20.
+
+### Run 7 — hem↔hem training (job 3821649, seeds 43/44, 120 k steps)
+
+_Pending — deterministic checkpoint selection to follow (≥ 2 eval seeds × 96
+episodes, present latch at the 0.65 coverage gate)._

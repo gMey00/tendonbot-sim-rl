@@ -1,32 +1,36 @@
 """Reward / observation functions for the shirt present task (pipeline task 2).
 
-Sequential structure (shirt_pick pattern, adapted from pick-and-hold to
-regrasp-and-stretch):
+Hem-to-hem presentation (study-validated geometry — see shirt_present_env.py):
+the arm grasps the OPPOSITE hem corner and pulls it HORIZONTALLY to the
+holder's height.  Sequential reward structure (shirt_pick pattern):
 
-  1. Reach:    tanh proximity of the dynamic finger tip to the LOWEST hanging
-               point (the literature-standard second-grasp target and the
-               deterministic attach target; saturates to 1 once grasped so the
-               term never pulls the arm back after the regrasp)
+  1. Reach:    tanh proximity of the finger tip to the targeted HEM CORNER,
+               paid ONLY while the gripper is still OPEN (pre-grasp) and held
+               at 1.0 once grasped — so closing the gripper early earns nothing
+               (fixes the premature-close reward hack: the deterministic
+               proximity-attach latches within 10 cm on closing, so an early
+               close + drift-in used to farm reach+grasp without a real
+               reach-then-grasp)
   2. Grasp:    per-step bonus while the hand attachment (slot 0) holds
-  3. Stretch:  clamped progress of the inter-grasp tautness ratio toward taut
-               (gated on BOTH attachments — an unattached fling earns nothing)
-  4. Coverage: projected-silhouette coverage in the inspection-camera plane
-               (gated on both attachments; the honest "inspectable" score —
-               folds/bunching count once, hiding the shirt earns nothing)
-  5. Present:  per-step bonus while the full success predicate holds — this is
-               the success reward; holding the stretched presentation IS the
-               task, so no anti-hover fade is needed
-  6. Overstretch: per-step penalty above the validated tautness band (the
-               two-attachment stretch is only validated stable through 1.15)
-  7. Drop:     one-shot penalty when an established hand grasp is lost
+  3. Pull:     tanh proximity of the hand to the HORIZONTAL-PULL target
+               (holder height, offset along the camera-plane x) — DIRECTS the
+               stretch into the study's horizontal chord (gated on both grasps)
+  4. Stretch:  clamped at-grasp-normalised tautness toward taut (both grasps)
+  5. Coverage: projected-silhouette coverage in the inspection-camera plane
+  6. Present:  per-step success bonus while the full predicate holds
+  7. Overstretch: per-step penalty above the validated tautness band
+  8. Drop:     one-shot penalty when an established hand grasp is lost
+  9. EarlyClose: per-step penalty for commanding the gripper CLOSED while far
+               from the target and not yet grasped (fixes the hack directly)
+ 10. Occlusion: mild per-step penalty for the arm sitting between the −Y camera
+               and the cloth (cosmetic — the coverage metric has no camera
+               sensor, so it cannot see the arm; best-effort visual term)
 
 dt-scaling (shirt_place lesson): Isaac Lab multiplies rewards by dt (1/60 s),
 so per-step weights earn ~ weight x episode-seconds and one-shots earn
 weight/60 — the drop penalty is sized ~60x the per-step terms.
 
-All functions guard against the ObservationManager/RewardManager term probe
-during ``load_managers()`` (env attributes like ``_cloth`` / the task-state
-buffers do not exist yet).
+All functions guard against the manager term probe during ``load_managers()``.
 """
 
 from __future__ import annotations
@@ -37,6 +41,10 @@ import torch
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
+
+# Gripper-command threshold above which the deterministic attach is armed
+# (matches FINGER_CMD_CLOSE in shared/cloth_sorting_env.py).
+_FINGER_CMD_CLOSE = 0.40
 
 
 def _ready(env: "ManagerBasedRLEnv") -> bool:
@@ -53,20 +61,40 @@ def _both_attached(env: "ManagerBasedRLEnv") -> torch.Tensor:
     return env.grasp_active & env.holder_attached
 
 
+def _gripper_closing(env: "ManagerBasedRLEnv") -> torch.Tensor:
+    """Per-env bool: the gripper is COMMANDED closed (attach armed)."""
+    robot = env.scene["robot"]
+    if hasattr(robot.data, "joint_pos_target"):
+        cmd = robot.data.joint_pos_target[:, env._finger_joint_idx]
+    else:
+        cmd = robot.data.joint_pos[:, env._finger_joint_idx]
+    return cmd > _FINGER_CMD_CLOSE
+
+
 # ---------------------------------------------------------------------------
 # Observations
 # ---------------------------------------------------------------------------
 
-def lowest_point_rel_tip(env: "ManagerBasedRLEnv") -> torch.Tensor:
-    """Lowest cloth particle relative to the DYNAMIC finger tip (N, 3).
+def hand_target_rel_tip(env: "ManagerBasedRLEnv") -> torch.Tensor:
+    """Targeted hem corner relative to the DYNAMIC finger tip (N, 3).
 
-    The exact geometry the deterministic attach trigger uses (shirt_pick
-    lesson: give the policy the trigger's own error signal, not a nearby
-    frame's) — camera-trivial from depth.
+    The exact geometry the deterministic attach trigger uses (give the policy
+    the trigger's own error signal) — camera-trivial from depth.
     """
     if not _ready(env):
         return torch.zeros(env.num_envs, 3, device=env.device)
-    return env.shirt_lowest_point_w - env._finger_tip_pos()
+    return env.shirt_grasp_point_w - env._finger_tip_pos()
+
+
+def pull_target_rel_tip(env: "ManagerBasedRLEnv") -> torch.Tensor:
+    """Horizontal-pull goal relative to the finger tip (N, 3).
+
+    Where the grasped hem corner must be brought: holder height, offset along
+    the camera-plane x.  Zero-magnitude before the grasp sets the direction.
+    """
+    if not _ready(env):
+        return torch.zeros(env.num_envs, 3, device=env.device)
+    return env.present_pull_target_w - env._finger_tip_pos()
 
 
 def holder_attached_obs(env: "ManagerBasedRLEnv") -> torch.Tensor:
@@ -77,23 +105,14 @@ def holder_attached_obs(env: "ManagerBasedRLEnv") -> torch.Tensor:
 
 
 def stretch_ratio_obs(env: "ManagerBasedRLEnv") -> torch.Tensor:
-    """At-grasp-normalised tautness, 0 until both attachments hold (N, 1).
-
-    1.0 = as taut as at the moment of the grasp (gravity-taut vertical
-    path); < 1 = the span went slack.  Camera-derivable in principle: both
-    grasp points are visible to the inspection camera and the garment's
-    geometry is known a priori.
-    """
+    """At-grasp-normalised tautness, 0 until both attachments hold (N, 1)."""
     if not _ready(env):
         return torch.zeros(env.num_envs, 1, device=env.device)
     return env.stretch_ratio_norm.unsqueeze(-1)
 
 
 def coverage_obs(env: "ManagerBasedRLEnv") -> torch.Tensor:
-    """Projected-silhouette coverage of the flat one-sided area (N, 1).
-
-    Directly computable from the inspection camera's segmentation mask.
-    """
+    """Projected-silhouette coverage of the flat one-sided area (N, 1)."""
     if not _ready(env):
         return torch.zeros(env.num_envs, 1, device=env.device)
     return env.coverage.unsqueeze(-1)
@@ -103,19 +122,24 @@ def coverage_obs(env: "ManagerBasedRLEnv") -> torch.Tensor:
 # Task rewards
 # ---------------------------------------------------------------------------
 
-def reaching_lowest_point(env: "ManagerBasedRLEnv", std: float = 0.25) -> torch.Tensor:
-    """1 - tanh(||tip - lowest point|| / std); held at 1.0 while grasped.
+def reaching_target(env: "ManagerBasedRLEnv", std: float = 0.25) -> torch.Tensor:
+    """1 - tanh(||tip - hem target|| / std), paid only with an OPEN gripper.
 
-    Unlike shirt_pick's highest point (which becomes the grasped patch and
-    tracks the tip), the LOWEST point moves elsewhere on the garment once the
-    bottom is lifted — chasing it post-grasp would fight the stretch.  So the
-    term saturates to its maximum while the hand grasp holds.
+    Saturates to 1.0 while the hand grasp holds (the hem corner moves once
+    lifted; chasing it post-grasp would fight the pull).  Before the grasp the
+    term is ZEROED whenever the gripper is commanded closed — removing the
+    incentive to close early and drift into the proximity-attach.  The policy
+    must therefore approach OPEN and close at the target.
     """
     if not _ready(env):
         return _zeros(env)
-    d = torch.norm(env._finger_tip_pos() - env.shirt_lowest_point_w, dim=-1)
+    d = torch.norm(env._finger_tip_pos() - env.shirt_grasp_point_w, dim=-1)
     r = 1.0 - torch.tanh(d / std)
-    return torch.where(env.grasp_active, torch.ones_like(r), r)
+    # open-gripper gate pre-grasp; full credit once grasped
+    open_pre = (~_gripper_closing(env)) & (~env.grasp_active)
+    r = torch.where(env.grasp_active, torch.ones_like(r),
+                    torch.where(open_pre, r, torch.zeros_like(r)))
+    return r
 
 
 def grasp_hold(env: "ManagerBasedRLEnv") -> torch.Tensor:
@@ -125,16 +149,24 @@ def grasp_hold(env: "ManagerBasedRLEnv") -> torch.Tensor:
     return env.grasp_active.float()
 
 
-def stretch_progress(
-    env: "ManagerBasedRLEnv", lo: float = 0.80, hi: float = 0.97,
-) -> torch.Tensor:
-    """Clamped MAINTAIN-TAUTNESS term in [0, 1], gated on both attachments.
+def pulling_horizontal(env: "ManagerBasedRLEnv", std: float = 0.20) -> torch.Tensor:
+    """1 - tanh(||hand - horizontal-pull target|| / std), gated on both grasps.
 
-    Works on the at-grasp-normalised ratio: 1.0 right after the grasp
-    (gravity-taut), dropping toward ``lo`` as the span droops.  Saturates at
-    ``hi`` so pulling past taut earns nothing extra (the overstretch penalty
-    takes over above the band).
+    Directs the second grasp to the holder's HEIGHT offset horizontally along
+    the camera-plane x — the study's taut horizontal chord that gravity drapes
+    below.  Replaces the old undirected tautness-only shaping (which let the
+    arm pull in any direction).
     """
+    if not _ready(env):
+        return _zeros(env)
+    d = torch.norm(env._finger_tip_pos() - env.present_pull_target_w, dim=-1)
+    return (1.0 - torch.tanh(d / std)) * _both_attached(env).float()
+
+
+def stretch_progress(
+    env: "ManagerBasedRLEnv", lo: float = 0.80, hi: float = 1.02,
+) -> torch.Tensor:
+    """Clamped MAINTAIN-TAUTNESS term in [0, 1], gated on both attachments."""
     if not _ready(env):
         return _zeros(env)
     prog = torch.clamp((env.stretch_ratio_norm - lo) / (hi - lo), 0.0, 1.0)
@@ -142,11 +174,7 @@ def stretch_progress(
 
 
 def overstretch_penalty(env: "ManagerBasedRLEnv", limit: float = 1.10) -> torch.Tensor:
-    """Tautness excess above ``limit`` (positive; use a negative weight).
-
-    Works on the at-grasp-normalised ratio; the Stage-0 two-attachment test
-    validated stability through +15 % — penalise before untested territory.
-    """
+    """Tautness excess above ``limit`` (positive; use a negative weight)."""
     if not _ready(env):
         return _zeros(env)
     excess = torch.clamp(env.stretch_ratio_norm - limit, min=0.0)
@@ -154,35 +182,54 @@ def overstretch_penalty(env: "ManagerBasedRLEnv", limit: float = 1.10) -> torch.
 
 
 def coverage_reward(env: "ManagerBasedRLEnv") -> torch.Tensor:
-    """Projected-silhouette coverage, gated on both attachments.
-
-    Rasterized silhouette in the camera (XZ) plane — folds and double layers
-    count once, so bunched/hidden cloth cannot farm this.  Gating on the
-    bimanual hold keeps the raw-hang coverage (~0.3-0.5) from being farmed
-    without the second grasp.
-    """
+    """Projected-silhouette coverage, gated on both attachments."""
     if not _ready(env):
         return _zeros(env)
     return env.coverage * _both_attached(env).float()
 
 
 def presented(env: "ManagerBasedRLEnv") -> torch.Tensor:
-    """Per-step success bonus: the full presentation predicate holds NOW.
-
-    both grasps AND stretch ratio in the taut band AND coverage above the
-    threshold AND cloth-centroid speed below the gate (the camera inspects
-    the cloth, not the EE — shirt_pick Phase-3 lesson).  Accruing per step
-    makes an EARLY, STABLE stretched presentation the optimal policy.
-    """
+    """Per-step success bonus: the full presentation predicate holds NOW."""
     if not _ready(env):
         return _zeros(env)
     return env.presented_now.float()
 
 
 def drop_event(env: "ManagerBasedRLEnv") -> torch.Tensor:
-    """One-shot: 1.0 the step an established hand grasp is lost.
-
-    Weight this ~60x the per-step terms (dt-scaling)."""
+    """One-shot: 1.0 the step an established hand grasp is lost (weight ~60x)."""
     if not _ready(env):
         return _zeros(env)
     return env.drop_event
+
+
+def early_close_penalty(
+    env: "ManagerBasedRLEnv", clear_dist: float = 0.12,
+) -> torch.Tensor:
+    """Per-step penalty (positive; negative weight) for closing the gripper early.
+
+    1.0 while the gripper is COMMANDED closed AND no grasp is held AND the tip
+    is farther than ``clear_dist`` from the hem target — i.e. exactly the
+    premature-close-then-drift-in behaviour that farms the proximity-attach.
+    Scales up with distance so a far-away close is punished more.
+    """
+    if not _ready(env):
+        return _zeros(env)
+    d = torch.norm(env._finger_tip_pos() - env.shirt_grasp_point_w, dim=-1)
+    bad = _gripper_closing(env) & (~env.grasp_active) & (d > clear_dist)
+    return bad.float() * torch.clamp(d - clear_dist, min=0.0)
+
+
+def occlusion_penalty(env: "ManagerBasedRLEnv") -> torch.Tensor:
+    """Mild per-step penalty (positive; negative weight): arm in the camera line.
+
+    The −Y inspection camera (y=2.0) sees the cloth (centroid y≈0.85) occluded
+    when the end-effector sits on the camera side of it (ee_y > cloth_y).  The
+    coverage metric has NO camera sensor, so it cannot penalise this — a purely
+    visual/best-effort term to keep the arm reaching PAST the garment rather
+    than in front of it.  Small weight (it fights the fixed base geometry).
+    """
+    if not _ready(env):
+        return _zeros(env)
+    ee_y = env._finger_tip_pos()[:, 1]
+    cloth_y = env._cloth.centroid_pos_w[:, 1]
+    return torch.clamp(ee_y - cloth_y, min=0.0) * _both_attached(env).float()

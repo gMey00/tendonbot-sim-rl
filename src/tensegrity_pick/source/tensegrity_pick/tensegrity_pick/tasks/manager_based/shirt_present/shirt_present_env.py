@@ -1,35 +1,41 @@
 # shirt_present_env.py
 #
 # Task 2 of the cloth-sorting pipeline: the second robot grasps a second
-# holding point on the hanging shirt and stretches it for front/back camera
-# assessment.
+# holding point on the hanging shirt and stretches it HORIZONTALLY for
+# front/back camera assessment.
 #
-# Initial states: the shirt hangs from a static solver anchor at the
-# presentation pose (slot 1), pinned at ONE RANDOM particle patch — restored
-# from the cached hanging-state bank (``scripts/asset_generation/generate_hanging_bank.py``),
-# standing in for the retrieving robot's grip.  Slot 0 is the learning arm's
-# own deterministic attachment grasp (two-attachment stretch, Stage-0
-# de-risked through tautness ratio 1.15).
+# Presentation geometry (hem-to-hem, validated in the FAPS heuristics study,
+# doc/reports/present_heuristics_study.md):
+#   * the holder (slot 1, the retriever's grip) pins the shirt at a HEM point
+#     (bottom edge) so it hangs upside-down — reproduced here by restoring only
+#     the bottom-edge-anchored subset of the hanging bank (``present_geometry``)
+#   * the learning arm (slot 0) grasps the OPPOSITE hem corner (the accessible
+#     one — ``shirt_grasp_point_w`` -> the hem-corner particle farthest from the
+#     holder) and pulls it to the holder's HEIGHT, offset HORIZONTALLY along the
+#     camera-plane x axis (``present_pull_target_w``).  Gravity supplies the
+#     vertical drape below the taut chord; the chord self-aligns to the camera
+#     (study measured yaw gap 0.003, so NO orientation control is needed).
+#   * scripted hem<->hem median camera-plane coverage 0.820 (@ratio 1.05) vs
+#     0.679 for the previous naive lowest-point rule (+0.14) — see the study.
 #
-# Task MDP (naive two-grasp presentation heuristic):
-#   * the deterministic grasp targets the LOWEST hanging point
-#     (``shirt_grasp_point_w`` override — the literature-standard second
-#     grasp: Maitin-Shepard 2010, Doumanoglou 2014)
-#   * per-step task state: inter-grasp tautness ratio (patch-centroid
-#     separation / GEODESIC rest distance on the mesh-edge graph — the
-#     flat-Euclidean normalisation over-reads wrap-around grasp pairs)
-#     and projected-silhouette coverage in the inspection-camera plane
-#     (``shared/cloth_metrics.py``)
-#   * windowed presented latch (>= PRESENT_WINDOW_FRAC of the last
-#     PRESENT_WINDOW steps — consecutive-step latches are too brittle) with
-#     the speed gate on the CLOTH CENTROID, not the EE (shirt_pick Phase-3
-#     lesson: residual PD sway at raised postures is 0.24-0.27 m/s while the
-#     hanging garment low-pass filters to 0.06-0.20)
-#   * drop_event one-shot + was_dropped metric (shirt_pick pattern)
-#   * ``snapshot_terminal_states`` hook for the Task-2 -> Task-3 bank
-# Open task work (see doc/TODO.md):
-#   * later: initialize from the Task-1 terminal-state bank instead of the
-#     idealized random-point hang (skill-chaining distribution shift)
+# This REPLACES the first-pass naive lowest-point second grasp + undirected
+# stretch (the weak heuristic per the study; median 0.679).  Kept from that
+# pass: single hand-grasp held throughout (NO regrasp — study §3 measured it
+# HURTS, -0.031), the overstretch guard, the windowed present latch, dt-scaling
+# discipline.  Tautness now uses the study's FLAT rest distance between the two
+# grasp patches (the geodesic + r0 normalisation of the first pass mis-read the
+# hem<->hem hang->horizontal config change — see the STRETCH_BAND note).
+#
+# LOCAL SCENE OVERRIDE (flagged per the coordination rule — shared/ untouched):
+# the presentation anchor is overridden here (``present_anchor_local``) away
+# from the shared ``PRESENTATION_POS`` (0.15, 0.90, 1.60).  Two measured
+# reasons: (a) the shared pose sits directly above the reusable drum
+# (x=0.15, r=0.274 m) so the long hem-held drapes (0.74-0.95 m) cannot clear it
+# at a robot-reachable height; (b) the horizontal hem<->hem chord must be held
+# at the anchor's HEIGHT, and z=1.60 is beyond the UR5e's vertical reach from
+# its z=0.75 pedestal.  The coverage metric is translation-invariant
+# (cloth_metrics rasterizes the zero-based silhouette), so relocating the
+# anchor is metric-neutral.  See ``doc/reports/shirt_present_optimization_tracking.md``.
 
 from __future__ import annotations
 
@@ -39,42 +45,54 @@ import torch
 
 from ..shared.cloth_metrics import flat_silhouette_area, silhouette_coverage
 from ..shared.cloth_sorting_env import ClothSortingEnvBase
-from ..shared.cloth_sorting_scene_cfg import HANGING_BANK_PATH, PRESENTATION_POS
-from ..shared.proj_base_scene_cfg import DRUM_HEIGHT_M
+from ..shared.cloth_sorting_scene_cfg import HANGING_BANK_PATH
+from .mdp.present_geometry import hem_corner_particle_ids, holder_region_mask
 
 # Particles within this radius of the anchor are pinned (pad-sized, matches
 # the validated ATTACH_WELD_RADIUS).
 HOLDER_ANCHOR_RADIUS = 0.07
-# Only restore hang states short enough to clear the drum tops: the reusable
-# drum at (0.15, 1.0) sits directly under the presentation pose (0.15, 0.90),
-# so a full-length drape (up to ~0.86 m) would dip into it.
-MAX_HANG_DRAPE = PRESENTATION_POS[2] - DRUM_HEIGHT_M - 0.04
+
+# ── Local presentation anchor (see the module header for the justification) ──
+# x=0.50: clears the reusable drum (right edge 0.42) AND the robot pedestal
+#   (left edge 0.60) while HALVING the cross-body reach vs the shared 0.15
+#   (base at x=0.75) — the measured driver of finding #4's self-fold (the UR5e
+#   has self-collision disabled, so that fold is cosmetic, not physical; the
+#   literal x=0.8 request is rejected because it drapes the shirt straight
+#   through the robot's own pedestal, x in [0.6,0.9] y in [0.85,1.15] — that
+#   would REGRESS finding #2's cloth-robot clipping).
+# y=0.85: off the belt collider (y<=0.45) — the shirt hangs in free space.
+# z=1.20: the horizontal chord height.  Measured (baseline job 3820849): at
+#   z=1.35 the pull target's far (-x) side sat at the UR5e reach edge and only
+#   6-7/16 envs reached the hem corner; z=1.20 puts BOTH pull sides inside the
+#   envelope (far side 0.66 m of the ~0.79 m horizontal reach at that height)
+#   and lowers the grab target to ~z 0.93.  Drape clears the floor (1.20-0.95).
+PRESENT_ANCHOR_LOCAL = (0.50, 0.85, 1.20)
 
 # ── Success predicate ────────────────────────────────────────────────
-# Tautness band on the AT-GRASP-NORMALISED ratio: raw ratio = patch
-# separation / geodesic rest distance (spring graph); normalised ratio =
-# raw / r0, where r0 is recorded at the attach rising edge.  Rationale
-# (baseline v4, job 3810139): grabbing the LOWEST point of a hanging
-# garment meets a path that is ALREADY gravity-taut, and the raw ratio
-# reads 1.10-1.43 there (holder patch spread up to 7 cm from the anchor
-# point + real PBD gravity strain) — so "taut" is per-env relative to the
-# at-grasp state: < 0.92 = the span went slack (drooping), > 1.10 = pulled
-# ~10 % beyond the gravity-taut length (safety margin under the Stage-0
-# stretch validation, which showed stability through +15 %).
-STRETCH_BAND = (0.92, 1.10)
-# Fraction of the flat one-sided area the camera-plane silhouette must
-# recover.  Calibrated 2026-07-04 (baseline job 3809927, 16 bank hangs):
-# raw hang mean 0.441, p50 0.425, p90 0.530; naive scripted ray-pull holds
-# reach ≤ 0.512.  0.50 sits above the raw median (bunched cloth cannot
-# score) while staying achievable; the taut+still+both-grasps gates carry
-# the rest of the honesty.  Revisit once trained policies show what an
-# oriented stretch achieves (ICRA-2024 competition band: 0.55–0.60).
-COVERAGE_THRESHOLD = 0.50
-# Geodesic propagation: min-plus relaxation sweeps over the mesh-edge graph
-# (vectorised Bellman-Ford, pure torch on GPU; the ~11 k-vertex garment
-# needs < ~350 hops end-to-end).
-GEO_MAX_ITERS = 400
-GEO_CHECK_EVERY = 50
+# Tautness band on the RAW ratio = patch separation / FLAT rest distance
+# between the two grasp patches (the heuristics study's definition,
+# cloth_metrics.stretch_ratio).  Switched from the geodesic + r0 normalisation
+# of the first pass: that was calibrated for the LOWEST-point grasp (span
+# already gravity-taut at grasp, r0=1.1-1.4), but hem<->hem CHANGES
+# configuration hang->horizontal, so a correctly executed horizontal pull read
+# ~0.82 normalised (below the taut gate) — measured baseline job 3820849.  With
+# the flat-rest denominator the horizontal chord reads ~1.05 raw (the study's
+# number) directly.  The two hem corners define a clean bottom-edge chord, so
+# the flat-Euclidean over-reading that motivated the geodesic (wrap-around
+# lowest points) does not arise here.
+STRETCH_BAND = (0.90, 1.15)
+# Camera-plane silhouette-coverage gate.  RAISED 0.50 -> 0.65 for the hem<->hem
+# geometry: the study recommends coverage >= 0.65 (scripted hem<->hem median
+# 0.820, p25 0.701) as the success threshold, up from the 0.50 gate the naive
+# lowest-point rule needed (its median was only 0.679).  Re-confirmed in-scene
+# by the scripted hem<->hem baseline (baseline_shirt_present.py --hem).
+COVERAGE_THRESHOLD = 0.65
+# Horizontal-pull target: the hand is pulled to the holder's y/z, offset along
+# world x by this ratio times the at-grasp fabric span (flat rest holder->hand).
+# 1.05 = the study sweet spot (1.10 buys +0.012 coverage but ~doubles settle
+# time — bad for a stability latch).
+STRETCH_TARGET_RATIO = 1.05
+
 # Cloth-centroid speed gate (NOT the EE — see the class docstring note).
 PRESENT_VEL_THRESHOLD = 0.20   # m/s
 PRESENT_WINDOW = 60            # steps (1 s @ 60 Hz)
@@ -82,45 +100,86 @@ PRESENT_WINDOW_FRAC = 0.8      # fraction of the window that must qualify
 
 
 class ShirtPresentEnv(ClothSortingEnvBase):
-    """Regrasp the lowest point and stretch the hanging shirt for inspection."""
+    """Regrasp the opposite hem corner and stretch the shirt horizontally."""
 
-    # Slot 0 = the learning arm's deterministic attachment grasp (enabled —
-    # the base env's attach/hold/detach machinery, retargeted to the lowest
-    # point via ``shirt_grasp_point_w``).  Slot 1 = the static holder anchor.
+    # Slot 0 = the learning arm's deterministic attachment grasp (enabled).
+    # Slot 1 = the static holder anchor (the retriever's hem grip).
     enable_hand_grasp = True
 
-    # Random-particle hang states (missing file → centre-hang fallback below).
+    # Random-particle hang states (missing file -> centre-hang fallback).
     hanging_bank_path = HANGING_BANK_PATH
+
+    # Local presentation anchor (env-local coords); overridable by scripts.
+    present_anchor_local: tuple[float, float, float] = PRESENT_ANCHOR_LOCAL
+    # Restore ONLY bottom-edge-anchored (hem) hang states so the holder grips a
+    # hem point -> reproduces the study's winning hem<->hem geometry.  Set False
+    # to fall back to the full random-anchor bank (the oracle-guided-second-
+    # grasp regime, study §5.2, median 0.713 — still above the 0.65 gate).
+    use_hem_holder: bool = True
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         n, dev = self.num_envs, self.device
-        # Static holder anchor at the presentation pose (world coords per env).
+
+        # Static holder anchor at the (local) presentation pose (world/env).
         self._anchor_pos = self.scene.env_origins + torch.tensor(
-            PRESENTATION_POS, device=dev, dtype=torch.float32
+            self.present_anchor_local, device=dev, dtype=torch.float32
         ).unsqueeze(0)
 
         # Reference area for silhouette coverage (flat one-sided rest shape).
         self._ref_area = flat_silhouette_area(self._cloth.flat_rest_pos)
 
-        # Mesh-edge graph for geodesic rest distances (src/dst/weight, both
-        # directions).  Weights = edge lengths in the settled rest shape
-        # (≈ PBD spring rest lengths).  ``_geo_dist[e, p]`` = geodesic from
-        # the holder patch of env e to particle p, refreshed per reset.
-        self._geo_edges = self._extract_mesh_edges()
-        self._geo_dist = torch.full(
-            (n, self._cloth.num_particles), 10.0, device=dev,
-        )
+        # ── Hem-to-hem grasp geometry ─────────────────────────────────
+        # The two hem-corner particle indices (deterministic from the flat rest
+        # shape via the study's landmark scheme) — the hand's second-grasp
+        # target set.  ``shirt_grasp_point_w`` picks, per env, the corner
+        # FARTHER from the holder anchor (the accessible, hanging one).
+        self._hem_ids = hem_corner_particle_ids(self._cloth.flat_rest_pos).to(dev)
 
-        # Per-step task-state buffers (recomputed after every physics step —
-        # rewards/observations consume the values from the END of the
-        # previous step, the same one-step delay as every cloth quantity).
+        # Restrict the hanging bank to bottom-edge (hem) anchors so the holder
+        # grips a hem point (study winner).  The base loader dropped anchor_idx,
+        # so re-read it and subset our own bank buffers (a local override — the
+        # shared helper still does the actual restore).
+        if self.use_hem_holder and self._hang_pos is not None:
+            try:
+                import torch as _t
+                anchor_idx = _t.load(
+                    self.hanging_bank_path, map_location="cpu", weights_only=False
+                )["anchor_idx"].to(dev)
+                mask = holder_region_mask(self._cloth.flat_rest_pos, anchor_idx)
+                if int(mask.sum()) >= 8:
+                    self._hang_pos = self._hang_pos[mask]
+                    self._hang_vel = self._hang_vel[mask]
+                    if self._hang_drape is not None:
+                        self._hang_drape = self._hang_drape[mask]
+                    import logging
+                    logging.getLogger(__name__).info(
+                        "shirt_present: restricted hanging bank to %d hem-anchored "
+                        "states (of %d) for the hem<->hem holder.",
+                        int(mask.sum()), mask.numel(),
+                    )
+                else:  # pragma: no cover - safety net
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        "shirt_present: only %d hem-anchored bank states — keeping "
+                        "the full bank (random holder).", int(mask.sum()),
+                    )
+            except Exception as exc:  # pragma: no cover - fallback
+                import logging
+                logging.getLogger(__name__).warning(
+                    "shirt_present: hem-holder bank filter failed (%s) — using the "
+                    "full random-anchor bank.", exc,
+                )
+
+        # Per-step task-state buffers (recomputed after every physics step).
         self._stretch_buf = torch.zeros(n, device=dev)
         self._coverage_buf = torch.zeros(n, device=dev)
 
-        # At-grasp tautness reference r0 (recorded on the attach rising
-        # edge — the gravity-taut vertical path at the lowest point).
+        # At-grasp tautness reference r0 + at-grasp fabric span + pull direction
+        # (all recorded on the attach rising edge).
         self._r0 = torch.ones(n, device=dev)
+        self._grasp_rest = torch.full((n,), 0.37, device=dev)   # holder->hand span
+        self._x_sign = torch.ones(n, device=dev)                # ±1 pull direction
 
         # Windowed presented latch + drop bookkeeping (shirt_pick pattern).
         self._present_ring = torch.zeros(n, PRESENT_WINDOW, dtype=torch.bool, device=dev)
@@ -130,14 +189,49 @@ class ShirtPresentEnv(ClothSortingEnvBase):
         self._was_dropped = torch.zeros(n, dtype=torch.bool, device=dev)
         self._prev_attached = torch.zeros(n, dtype=torch.bool, device=dev)
 
+        # LATCHED hand target: the hem corner picked once at reset (the more
+        # accessible one) and held for the whole episode.  Recomputing it per
+        # step made the argmax flip between the two corners (~0.37 m apart) when
+        # they hung at similar distances — a discretely JUMPING target the
+        # controller/policy cannot track (measured: scripted reach 2/16 with the
+        # per-step target).  Default to hem corner 0 until the first reset.
+        self._target_hem_idx = self._hem_ids[0].repeat(n)
+
     # ------------------------------------------------------------------
-    # Grasp target: the LOWEST hanging point (naive second-grab heuristic)
+    # Grasp target: the OPPOSITE hem corner (accessible hem-to-hem grasp)
     # ------------------------------------------------------------------
+
+    def _far_hem_idx(self, env_ids: torch.Tensor) -> torch.Tensor:
+        """Hem-corner particle index farthest from the anchor, per env in *env_ids*."""
+        pts = self._cloth.nodal_pos_w[env_ids]                 # [k, P, 3]
+        hem = pts[:, self._hem_ids, :]                         # [k, 2, 3]
+        d = torch.norm(hem - self._anchor_pos[env_ids].unsqueeze(1), dim=-1)  # [k, 2]
+        return self._hem_ids[d.argmax(dim=1)]                  # [k]
+
+    @property
+    def hand_target_idx(self) -> torch.Tensor:
+        """Per-env particle index ``[N]`` of the LATCHED targeted hem corner."""
+        return self._target_hem_idx
 
     @property
     def shirt_grasp_point_w(self) -> torch.Tensor:
-        """The lowest hanging point — the deterministic attach target."""
-        return self.shirt_lowest_point_w
+        """The targeted hem corner's world position — the deterministic attach target."""
+        idx = self.hand_target_idx
+        pts = self._cloth.nodal_pos_w
+        return pts[torch.arange(pts.shape[0], device=pts.device), idx]
+
+    @property
+    def present_pull_target_w(self) -> torch.Tensor:
+        """Horizontal-pull goal ``[N, 3]``: holder y/z, offset along world x.
+
+        The hand should bring the second grasp to the holder's HEIGHT
+        (``_anchor_pos`` y, z) and pull it horizontally by
+        ``STRETCH_TARGET_RATIO * at-grasp span`` along ``_x_sign`` — the taut
+        horizontal chord of the study's presentation.
+        """
+        tgt = self._anchor_pos.clone()
+        tgt[:, 0] = tgt[:, 0] + self._x_sign * (STRETCH_TARGET_RATIO * self._grasp_rest)
+        return tgt
 
     # ------------------------------------------------------------------
     # Task-state accessors (consumed by mdp/rewards.py and the baseline)
@@ -155,7 +249,13 @@ class ShirtPresentEnv(ClothSortingEnvBase):
 
     @property
     def stretch_ratio_norm(self) -> torch.Tensor:
-        """At-grasp-normalised tautness ``[N]`` (1.0 = as taut as at grasp)."""
+        """Tautness ``[N]`` = patch separation / flat rest distance.
+
+        1.0 = taut at the flat rest length; the horizontal chord targets ~1.05.
+        (Name kept for the obs/reward call sites; ``_r0`` is pinned at 1.0 — the
+        first pass's at-grasp normalisation is not used for hem<->hem, see the
+        STRETCH_BAND note.)
+        """
         return self._stretch_buf / self._r0
 
     @property
@@ -191,130 +291,53 @@ class ShirtPresentEnv(ClothSortingEnvBase):
         )
 
     # ------------------------------------------------------------------
-    # Geodesic rest distances (mesh-edge graph, GPU min-plus relaxation)
-    # ------------------------------------------------------------------
-
-    def _extract_mesh_edges(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None:
-        """The garment's PBD spring graph as ``(src, dst, weight)`` (bidirectional).
-
-        Reads ``physxParticle:springIndices`` / ``springRestLengths`` authored
-        on the env-0 cloth prim by ``particleUtils.add_physx_particle_cloth``
-        — the springs are indexed over the WELDED particle set (the cloth
-        view's index space) with the true PBD rest lengths as weights.  The
-        render mesh's face-vertex indices must NOT be used here: the render
-        mesh has more vertices than the welded particle set, and indexing
-        GPU tensors with them raises a device-side assert that poisons the
-        whole CUDA context (baseline v3, job 3810090).  All index validation
-        happens on CPU before any GPU tensor is touched; on any failure the
-        stretch ratio falls back to the flat-Euclidean normalisation (known
-        to over-read wrap-around pairs).
-        """
-        import logging
-        try:
-            import numpy as np
-            from pxr import Sdf
-            mesh_path = self._cloth._cloth_pattern.replace("env_*", "env_0")
-            prim = self.sim.stage.GetPrimAtPath(Sdf.Path(mesh_path))
-            e = np.asarray(prim.GetAttribute("physxParticle:springIndices").Get(),
-                           dtype=np.int64)                       # [S, 2]
-            w_np = np.asarray(prim.GetAttribute("physxParticle:springRestLengths").Get(),
-                              dtype=np.float32)                  # [S]
-            p = self._cloth.num_particles
-            if e.ndim != 2 or e.shape[1] != 2 or e.shape[0] != w_np.shape[0]:
-                raise ValueError(f"unexpected spring attribute shapes {e.shape}/{w_np.shape}")
-            if e.min() < 0 or e.max() >= p:
-                raise ValueError(
-                    f"spring indices [{e.min()}, {e.max()}] outside the "
-                    f"{p}-particle view — index spaces do not match")
-            src = torch.as_tensor(e[:, 0], device=self.device)
-            dst = torch.as_tensor(e[:, 1], device=self.device)
-            w = torch.as_tensor(w_np, device=self.device)
-            # Both directions for the relaxation sweeps.
-            src_b = torch.cat([src, dst])
-            dst_b = torch.cat([dst, src])
-            w_b = torch.cat([w, w])
-            logging.getLogger(__name__).info(
-                "shirt_present geodesics: %d springs over %d particles, "
-                "mean rest length %.4f m", e.shape[0], p, float(w.mean()),
-            )
-            return src_b, dst_b, w_b
-        except Exception as exc:  # pragma: no cover - fallback path
-            logging.getLogger(__name__).warning(
-                "shirt_present: spring-graph extraction failed (%s) — stretch "
-                "ratio falls back to flat-Euclidean normalisation.", exc,
-            )
-            return None
-
-    def _update_holder_geodesics(self, env_ids: torch.Tensor) -> None:
-        """Refresh ``_geo_dist`` for *env_ids* from their slot-1 patch masks.
-
-        Vectorised multi-source Bellman-Ford: distances start at 0 on the
-        pinned holder patch and relax along mesh edges (min-plus) until
-        converged — pure torch, all envs in parallel (scipy is not available
-        in the cluster env, and CPU Dijkstra would sync per reset anyway).
-        """
-        if self._geo_edges is None or env_ids.numel() == 0:
-            return
-        src, dst, w = self._geo_edges
-        k = env_ids.numel()
-        mask = self._cloth._attach_mask[1, env_ids]              # [k, P]
-        dist = torch.full(
-            (k, self._cloth.num_particles), float("inf"), device=self.device,
-        )
-        dist[mask] = 0.0
-        dst_exp = dst.unsqueeze(0).expand(k, -1)
-        prev_check = dist.clone()
-        for it in range(1, GEO_MAX_ITERS + 1):
-            cand = dist.gather(1, src.unsqueeze(0).expand(k, -1)) + w
-            dist.scatter_reduce_(1, dst_exp, cand, reduce="amin", include_self=True)
-            if it % GEO_CHECK_EVERY == 0:
-                if bool((dist == prev_check).all()):
-                    break
-                prev_check = dist.clone()
-        # Unreachable particles (shouldn't exist on a connected garment) →
-        # large finite value so downstream math stays finite.
-        self._geo_dist[env_ids] = torch.nan_to_num(dist, posinf=10.0)
-
-    # ------------------------------------------------------------------
     # Task-state computation
     # ------------------------------------------------------------------
 
     def _slot_patch_centroids(self, slot: int) -> tuple[torch.Tensor, torch.Tensor]:
-        """Current & flat-rest centroids of one slot's attached patch.
-
-        Returns ``(cur_w [N,3], rest [N,3])``; envs whose slot holds nothing
-        get the all-particle means (callers must gate on attachment).
-        """
+        """Current & flat-rest centroids of one slot's attached patch."""
         mask = self._cloth._attach_mask[slot].float()            # [N, P]
         cnt = mask.sum(dim=1, keepdim=True).clamp(min=1.0)       # [N, 1]
         cur = torch.einsum("np,npc->nc", mask, self._cloth.nodal_pos_w) / cnt
         rest = (mask @ self._cloth.flat_rest_pos) / cnt          # [N, 3]
         return cur, rest
 
-    def _update_task_state(self) -> None:
-        """Recompute the stretch/coverage buffers from the current cloth state.
+    def _holder_to_hand_rest(self) -> torch.Tensor:
+        """FLAT rest distance between the holder and hand grasp patches ``[N]``.
 
-        Stretch ratio: separation of the two attached patch centroids over
-        the GEODESIC rest distance from the holder patch to the hand patch
-        (mesh-edge graph).  A straight taut span reads ≤ 1.0 regardless of
-        which particle pair was grabbed; the flat-Euclidean fallback (graph
-        unavailable) over-reads wrap-around pairs (baseline v2: 1.31–1.58
-        on slack cloth).
+        The heuristics study's ``rest_distance``: the straight-line distance of
+        the two grasp-patch centroids in the flat rest shape — the taut length
+        of the horizontal chord.  Clean for the hem-corner pair (no wrap-around
+        over-reading), so no geodesic graph is needed.
         """
+        _, rest0 = self._slot_patch_centroids(0)
+        _, rest1 = self._slot_patch_centroids(1)
+        return torch.norm(rest0 - rest1, dim=-1)
+
+    def _update_task_state(self) -> None:
+        """Recompute the stretch/coverage buffers from the current cloth state."""
+        # Bound the particle spread before rasterizing: cloth_metrics.silhouette_area
+        # sizes its grid from the GLOBAL max cell index across ALL envs, so a
+        # single yanked/unstable cloth among 512 envs (common early in training
+        # with a random policy) inflates grid_dim toward the 2048 cap and the
+        # per-step rasterization crawls (measured: training stalled at 512 envs
+        # while the 32-env baseline ran fine).  Clamping to a generous ±2 m box
+        # around each env's anchor is a no-op for any physically plausible
+        # hang/stretch (< ~1.2 m from the anchor) and only tames exploded envs
+        # — whose coverage is meaningless anyway.  (Shared cloth_metrics is
+        # read-only, §6, so the guard lives here.)
+        pos = self._cloth.nodal_pos_w
+        box = self._anchor_pos.unsqueeze(1)                       # [N, 1, 3]
+        pos = torch.clamp(pos, box - 2.0, box + 2.0)
         self._coverage_buf = silhouette_coverage(
-            self._cloth.nodal_pos_w, self._ref_area, view_axis=1,
+            pos, self._ref_area, view_axis=1,
         )
         both = self.grasp_active & self.holder_attached
         if both.any():
-            cur0, rest0 = self._slot_patch_centroids(0)
-            cur1, rest1 = self._slot_patch_centroids(1)
+            cur0, _ = self._slot_patch_centroids(0)
+            cur1, _ = self._slot_patch_centroids(1)
             dist = torch.norm(cur0 - cur1, dim=-1)
-            if self._geo_edges is not None:
-                mask0 = self._cloth._attach_mask[0].float()      # [N, P]
-                cnt0 = mask0.sum(dim=1).clamp(min=1.0)
-                rest = (mask0 * self._geo_dist).sum(dim=1) / cnt0
-            else:
-                rest = torch.norm(rest0 - rest1, dim=-1)
+            rest = self._holder_to_hand_rest()
             self._stretch_buf = torch.where(
                 both, dist / rest.clamp(min=1e-6), torch.zeros_like(dist),
             )
@@ -322,46 +345,45 @@ class ShirtPresentEnv(ClothSortingEnvBase):
             self._stretch_buf = torch.zeros_like(self._stretch_buf)
 
     # ------------------------------------------------------------------
-    # Cloth reset: hang from the holder anchor
+    # Cloth reset: hang from the holder anchor (hem-anchored subset)
     # ------------------------------------------------------------------
 
     def _reset_cloth(self, env_ids: torch.Tensor) -> None:
-        """Hang the shirt from the holder anchor, pinned at one random point.
+        """Hang the shirt from the holder anchor, pinned at one hem point.
 
-        Primary path: restore a relaxed random-particle hang from the cached
-        hanging-state bank (slot 1 anchored at ``PRESENTATION_POS``).
-        Fallback without a bank: teleport the flat sheet to the pose and pin
-        its centre patch (it drapes into an idealized centre-hang — NOT
-        settled, so early-episode swing is larger than with the bank).
-        TODO(pipeline): eventually sample from the Task-1 terminal-state bank.
+        Primary path: restore a relaxed hem-anchored hang from the (subset)
+        hanging-state bank (slot 1 anchored at the local presentation pose).
+        Fallback without a bank: teleport the flat sheet and pin its centre.
         """
         n = env_ids.numel()
         if n == 0:
             return
+        # No drum/belt directly below the local anchor -> the only clearance
+        # constraint is the floor; keep long hem drapes (0.74-0.95 m) but stay
+        # above the ground.
+        max_drape = self.present_anchor_local[2] - 0.15
         if self._reset_cloth_hanging_from_bank(
             env_ids, self._anchor_pos, slot=1, radius=HOLDER_ANCHOR_RADIUS,
-            max_drape=MAX_HANG_DRAPE,
+            max_drape=max_drape,
         ):
-            self._update_holder_geodesics(env_ids)
             return
         origins = self.scene.env_origins[env_ids]
         centroids = origins.clone()
-        centroids[:, 0] = origins[:, 0] + PRESENTATION_POS[0]
-        centroids[:, 1] = origins[:, 1] + PRESENTATION_POS[1]
-        centroids[:, 2] = origins[:, 2] + PRESENTATION_POS[2]
+        centroids[:, 0] = origins[:, 0] + self.present_anchor_local[0]
+        centroids[:, 1] = origins[:, 1] + self.present_anchor_local[1]
+        centroids[:, 2] = origins[:, 2] + self.present_anchor_local[2]
         yaw = torch.zeros(n, device=self.device)
         self._cloth.reset_randomized(env_ids, centroids, yaw)
         self._cloth.update()
         self._cloth.attach(env_ids, self._anchor_pos, HOLDER_ANCHOR_RADIUS, slot=1)
-        self._update_holder_geodesics(env_ids)
 
     # ------------------------------------------------------------------
     # Step hook: hand grasp (base machinery) + keep the holder pinned
     # ------------------------------------------------------------------
 
     def _update_grasp(self) -> None:
-        # Base: drive the gripper and attach/hold/detach the hand grasp
-        # (slot 0) at ``shirt_grasp_point_w`` = the lowest hanging point.
+        # Base: drive the gripper and attach/hold/detach the hand grasp (slot 0)
+        # at ``shirt_grasp_point_w`` = the targeted hem corner.
         super()._update_grasp()
         # Hold the pinned patch at the static presentation anchor (slot 1).
         self._cloth.hold(self._anchor_pos, slot=1)
@@ -376,14 +398,26 @@ class ShirtPresentEnv(ClothSortingEnvBase):
 
         self._update_task_state()
 
-        # Record the at-grasp tautness reference on the attach rising edge
-        # (the tip is at the lowest point, the span is gravity-taut).
+        # Record the at-grasp references on the attach rising edge: the flat
+        # rest span (holder->hand, sets the horizontal-pull distance) and the
+        # pull direction (the side the grasped corner sits on — never drags the
+        # cloth across itself).  ``_r0`` stays 1.0 (raw flat-rest tautness).
         newly = self.grasp_active & ~self._prev_attached
         if newly.any():
-            self._r0[newly] = self._stretch_buf[newly].clamp(0.8, 1.6)
+            span = self._holder_to_hand_rest()
+            self._grasp_rest[newly] = span[newly].clamp(0.15, 0.60)
+            hand_x = self.shirt_grasp_point_w[:, 0]
+            self._x_sign[newly] = torch.sign(
+                (hand_x - self._anchor_pos[:, 0])[newly]
+            ).clamp(min=-1.0)  # 0 -> -1 guard (rare exact tie)
+            self._x_sign[newly] = torch.where(
+                self._x_sign[newly] == 0,
+                torch.ones_like(self._x_sign[newly]),
+                self._x_sign[newly],
+            )
 
-        # Drop detection: the hand grasp existed after the previous step but
-        # is gone now (the task never legitimately releases).
+        # Drop detection: the hand grasp existed after the previous step but is
+        # gone now (the task never legitimately releases).
         released = self._prev_attached & ~self.grasp_active
         self._drop_event = released.float()
         self._was_dropped |= released & still_running
@@ -420,13 +454,17 @@ class ShirtPresentEnv(ClothSortingEnvBase):
 
         self._was_presented[env_ids_t] = False
         self._r0[env_ids_t] = 1.0
+        self._grasp_rest[env_ids_t] = 0.37
+        self._x_sign[env_ids_t] = 1.0
         self._present_ring[env_ids_t] = False
         self._drop_event[env_ids_t] = 0.0
         self._was_dropped[env_ids_t] = False
         self._prev_attached[env_ids_t] = False
-        # Refresh the task-state buffers so reset-step observations are
-        # consistent with the restored hang (coverage of the raw hang,
-        # stretch 0 while ungrasped).
+        # Latch the hand target: the more accessible hem corner, chosen ONCE now
+        # from the freshly restored (settled) hang and held for the episode.
+        if len(env_ids_t) > 0:
+            self._target_hem_idx[env_ids_t] = self._far_hem_idx(env_ids_t)
+        # Refresh task-state buffers so reset-step observations are consistent.
         self._update_task_state()
 
         self.extras["log"]["Metrics/present_rate"] = present_rate
@@ -441,13 +479,7 @@ class ShirtPresentEnv(ClothSortingEnvBase):
     # ------------------------------------------------------------------
 
     def snapshot_terminal_states(self) -> dict:
-        """Capture the current per-env state for the shirt_distribute bank.
-
-        Mirrors ``ShirtPickEnv.snapshot_terminal_states`` but includes BOTH
-        grasp states (hand slot 0 + holder slot 1) so Task 3 can restore the
-        bimanual configuration.  Filtering to ``was_presented`` envs is the
-        caller's choice.
-        """
+        """Capture the current per-env state for the shirt_distribute bank."""
         self._cloth.update()
         origins = self.scene.env_origins
         return {
