@@ -6,7 +6,7 @@
 #
 # Initial states: the shirt hangs from a static solver anchor at the
 # presentation pose (slot 1), pinned at ONE RANDOM particle patch — restored
-# from the cached hanging-state bank (``scripts/generate_hanging_bank.py``),
+# from the cached hanging-state bank (``scripts/asset_generation/generate_hanging_bank.py``),
 # standing in for the retrieving robot's grip.  Slot 0 is the learning arm's
 # own deterministic attachment grasp (two-attachment stretch, Stage-0
 # de-risked through tautness ratio 1.15).

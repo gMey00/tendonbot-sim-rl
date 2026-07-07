@@ -9,7 +9,7 @@ task's ``figures/`` directory.  Tensorboard-free (uses the pure-Python reader
 Usage
 -----
     cd src/tensegrity_pick
-    python scripts/plot_shirt_present_training_results.py [--run DIR_NAME] [--label NAME]
+    python scripts/plotting/plot_shirt_present_training_results.py [--run DIR_NAME] [--label NAME]
 
 If ``--run`` is omitted the latest ``*_ppo_torch*`` run under
 ``logs/skrl/shirt_present/`` is used.  ``--label`` selects the output
@@ -29,10 +29,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 _HERE = Path(__file__).resolve()
-sys.path.insert(0, str(_HERE.parent / "model_validation"))
+sys.path.insert(0, str(_HERE.parents[1] / "model_validation"))
 import read_tfevents as tfr  # noqa: E402
 
-sys.path.insert(0, str(_HERE.parents[3] / ".config"))
+sys.path.insert(0, str(_HERE.parents[4] / ".config"))
 import plot_config as pcfg  # noqa: E402
 pcfg.apply_style()
 

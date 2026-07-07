@@ -245,7 +245,7 @@ presented-filtered, both grasp masks included).
 # from src/tensegrity_pick, conda env env_isaaclab (GPU via Slurm on Alex)
 
 # Smoke tests
-python scripts/zero_agent.py   --task=Template-Shirt-Present-UR5e-F140-v0 --num_envs 4 --headless
+python scripts/agents/zero_agent.py --task=Template-Shirt-Present-UR5e-F140-v0 --num_envs 4 --headless
 
 # Scripted baseline + threshold calibration
 python scripts/model_validation/baseline_shirt_present.py --headless --num_envs 16

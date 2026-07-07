@@ -356,4 +356,4 @@ regenerates at any size for shirt_distribute.
 ### Figures
 
 `shirt_present/figures/ur5e_f140/01–06` (run 6, plotted via
-`scripts/plot_shirt_present_training_results.py`).
+`scripts/plotting/plot_shirt_present_training_results.py`).
