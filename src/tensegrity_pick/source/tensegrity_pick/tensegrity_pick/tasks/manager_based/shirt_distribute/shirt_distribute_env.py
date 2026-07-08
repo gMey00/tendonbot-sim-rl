@@ -148,6 +148,19 @@ class ShirtDistributeEnv(ClothSortingEnvBase):
         self._bad_release_event = torch.zeros(self.num_envs, device=self.device)
         # Peak released-cloth fraction inside the commanded drum (metric).
         self._max_target_fraction = torch.zeros(self.num_envs, device=self.device)
+        # ── B5: difficulty-proportional goal sampling (mode-collapse follow-up).
+        # Per-bin success EMA drives non-uniform resampling toward the weakest
+        # bin at reset, so the swing bin gets more updates (research report §B5;
+        # the report's #1 per-goal-critic fix is the prerequisite this pairs
+        # with). Gated OFF by default → stock uniform sampling; the PerGoal
+        # training cfg turns it on, and evaluate_shirt_distribute.py forces it
+        # off so metrics are collected on the uniform goal distribution.
+        self._adaptive_goal_sampling = bool(getattr(self.cfg, "adaptive_goal_sampling", False))
+        self._goal_ema_alpha = float(getattr(self.cfg, "goal_sampling_ema_alpha", 0.05))
+        self._goal_sampling_floor = float(getattr(self.cfg, "goal_sampling_floor", 0.3))
+        self._bin_success_ema = torch.full(
+            (len(DRUM_POSITIONS),), 0.5, device=self.device
+        )
         # Reset-step anchor correction (see ``_update_grasp`` override): the
         # true fingertip of the freshly written holding pose, used instead of
         # the stale ``robot.data`` FK for exactly one step after each reset.
@@ -640,11 +653,29 @@ class ShirtDistributeEnv(ClothSortingEnvBase):
                 "success": fin_dist.clone(),
                 "released": fin_rel.clone(),
             }
-            # Resample the commanded bin BEFORE the parent reset so reset-step
-            # observations already see the new goal.
-            self._target_bin[env_ids_t] = torch.randint(
-                len(DRUM_POSITIONS), (len(env_ids_t),), device=self.device
-            )
+            # B5: update the per-bin success EMA from this finishing batch, then
+            # resample the commanded bin BEFORE the parent reset (so reset-step
+            # observations already see the new goal). Difficulty-proportional
+            # sampling weights p_b ∝ (1 − ema_b) + floor over-samples the weakest
+            # bin; falls back to uniform when disabled (default).
+            n_bins = len(DRUM_POSITIONS)
+            if self._adaptive_goal_sampling:
+                for b in range(n_bins):
+                    m = fin_bin == b
+                    if m.any():
+                        self._bin_success_ema[b] = (
+                            (1.0 - self._goal_ema_alpha) * self._bin_success_ema[b]
+                            + self._goal_ema_alpha * fin_dist[m].mean()
+                        )
+                weights = (1.0 - self._bin_success_ema).clamp(min=0.0) + self._goal_sampling_floor
+                probs = weights / weights.sum()
+                self._target_bin[env_ids_t] = torch.multinomial(
+                    probs, len(env_ids_t), replacement=True
+                )
+            else:
+                self._target_bin[env_ids_t] = torch.randint(
+                    n_bins, (len(env_ids_t),), device=self.device
+                )
         result = super()._reset_idx(env_ids)
         # Metric writes must come AFTER super()._reset_idx(): the manager
         # rebuilds extras["log"] in there — writes made before are silently

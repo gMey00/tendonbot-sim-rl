@@ -72,6 +72,28 @@ class UR5eF140ShirtDistributeEnvCfg_PLAY(UR5eF140ShirtDistributeEnvCfg):
 
 
 @configclass
+class UR5eF140ShirtDistributeB5EnvCfg(UR5eF140ShirtDistributeEnvCfg):
+    """Per-goal PPO + B5 difficulty-proportional goal sampling (robustness).
+
+    Same relative-action MDP as the base; only enables adaptive goal sampling
+    for TRAINING (evaluate_shirt_distribute.py forces it off for uniform-goal
+    metrics). Pairs with skrl_ppo_pergoal_cfg.yaml (per-goal critic + norm).
+    """
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.adaptive_goal_sampling = True
+
+
+@configclass
+class UR5eF140ShirtDistributeB5EnvCfg_PLAY(UR5eF140ShirtDistributeB5EnvCfg):
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.scene.num_envs = 50
+        self.scene.env_spacing = 5.0
+
+
+@configclass
 class UR5eF140ShirtDistributeEMAEnvCfg(UR5eF140ShirtDistributeEnvCfg):
     """EMA joint-position-to-limits action variant (iteration 5).
 

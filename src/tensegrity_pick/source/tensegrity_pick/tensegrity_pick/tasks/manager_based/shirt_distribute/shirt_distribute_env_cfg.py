@@ -363,6 +363,13 @@ class ShirtDistributeEnvCfg(ManagerBasedRLEnvCfg):
     # Cached holding-pose bank (robot-specific; None = per-process sweep).
     # See ShirtDistributeEnv.pose_bank_path for why caching matters.
     pose_bank_path: str | None = None
+    # B5 difficulty-proportional goal sampling (mode-collapse robustness lever).
+    # OFF by default → uniform goal sampling (deployment distribution); a variant
+    # cfg turns it on for TRAINING only, and evaluate_shirt_distribute.py forces
+    # it off so per-bin rates are measured on the uniform distribution.
+    adaptive_goal_sampling: bool = False
+    goal_sampling_ema_alpha: float = 0.05
+    goal_sampling_floor: float = 0.3
     actions: ActionsCfg = ActionsCfg()
     observations: ObservationsCfg = ObservationsCfg()
     rewards: RewardsCfg = RewardsCfg()

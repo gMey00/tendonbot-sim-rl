@@ -59,6 +59,11 @@ import tensegrity_pick.tasks  # noqa: F401, E402
 
 def main() -> None:
     env_cfg = parse_env_cfg(args_cli.task, device=args_cli.device, num_envs=args_cli.num_envs)
+    # Always evaluate on the UNIFORM goal distribution (deployment) even for the
+    # B5 variant that trains with difficulty-proportional goal sampling — per-bin
+    # rates should reflect uniform commands, not the training over-sampling.
+    if hasattr(env_cfg, "adaptive_goal_sampling"):
+        env_cfg.adaptive_goal_sampling = False
     experiment_cfg = load_cfg_from_registry(args_cli.task, "skrl_cfg_entry_point")
     experiment_cfg["seed"] = args_cli.seed
     env_cfg.seed = args_cli.seed
