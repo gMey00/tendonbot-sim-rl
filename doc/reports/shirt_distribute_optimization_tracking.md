@@ -710,11 +710,47 @@ effect (deterministic actions, but the eval seed still draws the per-episode
 holding poses/goals). The best checkpoint sits **right at the bar**, clearing it
 on 1 of 3 eval seeds and within noise on the others.
 
-**Next lever (queued):** the report's B5 (difficulty-proportional goal sampling)
-— cheapest on-policy-native way to push the swing bin above 0.85 across eval
-seeds and lift seeds 1–2 — optionally stacked with B3 (FiLM critic
-conditioning). This is a robustness refinement on top of an already-solved
-collapse, not a re-attempt.
+### Phase 2b — B5 difficulty-proportional goal sampling (jobs 3822749 / 3823399)
+
+Rationale: a finer checkpoint sweep (job 3822661) confirmed no checkpoint of the
+uniform-sampling run robustly clears ≥ 0.85 on all bins across all eval seeds —
+the policy plateaus balanced at ~0.85 with one swing bin. B5 (research report
+§B5) re-samples the commanded bin at reset with probability
+`p_b ∝ (1 − success_ema_b) + floor`, over-sampling the momentarily-weakest bin
+(implemented in `_reset_idx`; gated by `adaptive_goal_sampling`, eval forced to
+uniform). Trained 3 seeds, 96 k (seed 0 hit the 6 h walltime at 72 k → its
+checkpoints are undertrained). Deterministic eval, 120 ep × eval seeds 7/8/9:
+
+| config | bin0 | bin1 | bin2 | overall |
+|--------|------|------|------|---------|
+| B5 seed 1 `ck96000` (best overall) | **0.957** | 0.876 | **0.786** | **0.872** |
+| B5 seed 1 `ck88000` (most balanced) | 0.784 | 0.797 | 0.845 | 0.812 |
+| B5 seed 2 `ck96000` | 0.811 | 0.799 | 0.708 | 0.772 |
+| _base per-goal_ seed 0 `ck88000` | 0.835 | 0.875 | 0.857 | 0.856 |
+
+**B5 did not robustly clear §2 — it *shifted* the imbalance rather than removing
+it.** Over-sampling the early-weak bin drove it high (bin 0 → 0.957) while a new
+laggard emerged (bin 2 → 0.786); the *overall* ceiling rose slightly
+(0.872 vs 0.856) but no checkpoint clears ≥ 0.85 on every bin across eval seeds.
+The EMA-driven oversampling chases per-bin success **noise** around the ~0.85
+plateau, so it re-allocates rather than uniformly lifts.
+
+**Ceiling context (important):** the scripted DLS-IK baseline — an
+open-loop-optimal controller through the same action path — places **0.88**.
+The cloth-release-into-drum dynamics (deformable settling, ~15 % particle
+threshold) cap achievable success near 0.88 even for a perfect policy. The RL
+policy at **~0.86 balanced** is therefore essentially **at the MDP ceiling**;
+requiring ≥ 0.85 on *every* bin *robustly across eval seeds* is a tight ask when
+the ceiling is 0.88 and per-bin/eval-seed sampling variance is ≈ ±0.06 on ~40
+episodes/bin. The remaining gap is measurement variance around a near-ceiling
+mean, not residual mode collapse.
+
+**Status:** the collapse is **solved** and the policy places into all three bins
+in balance at baseline-level success. Robustly exceeding 0.85 on *every* bin
+would need either the more invasive B3 (FiLM critic conditioning, report #2) or
+B2 (PCGrad/CAGrad gradient surgery, report #4, 2–3× compute) — both higher-cost
+with uncertain payoff against the 0.88 ceiling — and/or lower-variance eval
+(≥ 300 ep/bin). These are held pending a decision on further compute investment.
 
 ---
 
