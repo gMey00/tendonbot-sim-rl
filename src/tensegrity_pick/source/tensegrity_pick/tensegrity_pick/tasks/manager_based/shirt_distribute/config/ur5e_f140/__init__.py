@@ -30,3 +30,93 @@ gym.register(
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
     },
 )
+
+gym.register(
+    id="Template-Shirt-Distribute-UR5e-F140-PerGoal-v0",
+    entry_point="tensegrity_pick.tasks.manager_based.shirt_distribute.shirt_distribute_env:ShirtDistributeEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:UR5eF140ShirtDistributeEnvCfg",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_pergoal_cfg.yaml",
+    },
+)
+
+gym.register(
+    id="Template-Shirt-Distribute-UR5e-F140-PerGoal-Play-v0",
+    entry_point="tensegrity_pick.tasks.manager_based.shirt_distribute.shirt_distribute_env:ShirtDistributeEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:UR5eF140ShirtDistributeEnvCfg_PLAY",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_pergoal_cfg.yaml",
+    },
+)
+
+gym.register(
+    id="Template-Shirt-Distribute-UR5e-F140-PerGoal-FiLM-v0",
+    entry_point="tensegrity_pick.tasks.manager_based.shirt_distribute.shirt_distribute_env:ShirtDistributeEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:UR5eF140ShirtDistributeEnvCfg",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_pergoal_film_cfg.yaml",
+    },
+)
+
+gym.register(
+    id="Template-Shirt-Distribute-UR5e-F140-PerGoal-FiLM-Play-v0",
+    entry_point="tensegrity_pick.tasks.manager_based.shirt_distribute.shirt_distribute_env:ShirtDistributeEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:UR5eF140ShirtDistributeEnvCfg_PLAY",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_pergoal_film_cfg.yaml",
+    },
+)
+
+gym.register(
+    id="Template-Shirt-Distribute-UR5e-F140-PerGoal-FiLM-B5-v0",
+    entry_point="tensegrity_pick.tasks.manager_based.shirt_distribute.shirt_distribute_env:ShirtDistributeEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:UR5eF140ShirtDistributeB5EnvCfg",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_pergoal_film_b5_cfg.yaml",
+    },
+)
+
+gym.register(
+    id="Template-Shirt-Distribute-UR5e-F140-PerGoal-B5-v0",
+    entry_point="tensegrity_pick.tasks.manager_based.shirt_distribute.shirt_distribute_env:ShirtDistributeEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:UR5eF140ShirtDistributeB5EnvCfg",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_pergoal_cfg.yaml",
+    },
+)
+
+gym.register(
+    id="Template-Shirt-Distribute-UR5e-F140-PerGoal-B5-Play-v0",
+    entry_point="tensegrity_pick.tasks.manager_based.shirt_distribute.shirt_distribute_env:ShirtDistributeEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:UR5eF140ShirtDistributeB5EnvCfg_PLAY",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_pergoal_cfg.yaml",
+    },
+)
+
+gym.register(
+    id="Template-Shirt-Distribute-UR5e-F140-EMA-v0",
+    entry_point="tensegrity_pick.tasks.manager_based.shirt_distribute.shirt_distribute_env:ShirtDistributeEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:UR5eF140ShirtDistributeEMAEnvCfg",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_ema_cfg.yaml",
+    },
+)
+
+gym.register(
+    id="Template-Shirt-Distribute-UR5e-F140-EMA-Play-v0",
+    entry_point="tensegrity_pick.tasks.manager_based.shirt_distribute.shirt_distribute_env:ShirtDistributeEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:UR5eF140ShirtDistributeEMAEnvCfg_PLAY",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_ema_cfg.yaml",
+    },
+)

@@ -16,6 +16,9 @@ from tensegrity_pick.tasks.manager_based.shared.cloth_sorting_scene_cfg import (
     SECOND_ROBOT_MOUNT_POS,
     SECOND_ROBOT_MOUNT_ROT_UR,
 )
+from tensegrity_pick.tasks.manager_based.shared.proj_base_scene_cfg import (
+    PROJ_ASSETS_PATH,
+)
 from tensegrity_pick.tasks.manager_based.shirt_distribute import mdp
 from tensegrity_pick.tasks.manager_based.shirt_distribute.shirt_distribute_env_cfg import (
     ShirtDistributeEnvCfg,
@@ -29,6 +32,12 @@ class UR5eF140ShirtDistributeEnvCfg(ShirtDistributeEnvCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
 
+        # Cached UR5e holding-pose bank: train + eval share ONE init
+        # distribution (scripts/generate_distribute_pose_bank.py).
+        self.pose_bank_path = (
+            f"{PROJ_ASSETS_PATH}/Props/Cloth/banks/ur5e_f140_distribute_pose_bank.pt"
+        )
+
         self.scene.robot = UR5E_GRIPPER_CFG.replace(
             prim_path="{ENV_REGEX_NS}/Robot",
             init_state=UR5E_GRIPPER_CFG.init_state.replace(
@@ -37,11 +46,14 @@ class UR5eF140ShirtDistributeEnvCfg(ShirtDistributeEnvCfg):
             ),
         )
 
-        self.actions.arm_action = mdp.JointPositionActionCfg(
+        # Relative joint positions (target = current + scale·action): a zero
+        # action HOLDS the sampled far-from-default start pose — the
+        # offset-from-default term would yank the arm home on step 1 (see the
+        # action-space note in shirt_distribute_env_cfg.py).
+        self.actions.arm_action = mdp.RelativeJointPositionActionCfg(
             asset_name="robot",
             joint_names=list(CONTROLLED_JOINT_NAMES),
-            scale=0.5,
-            use_default_offset=True,
+            scale=0.05,
         )
 
         self._set_robot_params(
@@ -53,6 +65,63 @@ class UR5eF140ShirtDistributeEnvCfg(ShirtDistributeEnvCfg):
 
 @configclass
 class UR5eF140ShirtDistributeEnvCfg_PLAY(UR5eF140ShirtDistributeEnvCfg):
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.scene.num_envs = 50
+        self.scene.env_spacing = 5.0
+
+
+@configclass
+class UR5eF140ShirtDistributeB5EnvCfg(UR5eF140ShirtDistributeEnvCfg):
+    """Per-goal PPO + B5 difficulty-proportional goal sampling (robustness).
+
+    Same relative-action MDP as the base; only enables adaptive goal sampling
+    for TRAINING (evaluate_shirt_distribute.py forces it off for uniform-goal
+    metrics). Pairs with skrl_ppo_pergoal_cfg.yaml (per-goal critic + norm).
+    """
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.adaptive_goal_sampling = True
+
+
+@configclass
+class UR5eF140ShirtDistributeB5EnvCfg_PLAY(UR5eF140ShirtDistributeB5EnvCfg):
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.scene.num_envs = 50
+        self.scene.env_spacing = 5.0
+
+
+@configclass
+class UR5eF140ShirtDistributeEMAEnvCfg(UR5eF140ShirtDistributeEnvCfg):
+    """EMA joint-position-to-limits action variant (iteration 5).
+
+    Absolute smoothed joint targets (alpha = 0.2, the reach-grid winner and
+    the shirt_present determinism fix): the policy MEAN encodes a target
+    POSE, so exploration noise does not integrate into a position random
+    walk — the failure mode measured on the relative-action variant
+    (stochastic 0.8 vs deterministic 0.2–0.45).  Requires the
+    ``reset_holding_pose`` EVENT (runs before ``action_manager.reset()``) so
+    the EMA buffer snapshots the sampled holding pose instead of the stale
+    pre-reset pose.
+    """
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.actions.arm_action = mdp.EMAJointPositionToLimitsActionCfg(
+            asset_name="robot",
+            joint_names=list(CONTROLLED_JOINT_NAMES),
+            alpha=0.2,
+        )
+        # action_l2 was the RELATIVE-action anti-saturation fix; in
+        # to-limits space it arbitrarily biases toward mid-range postures.
+        self.rewards.action_l2.weight = 0.0
+        self.curriculum.action_l2 = None
+
+
+@configclass
+class UR5eF140ShirtDistributeEMAEnvCfg_PLAY(UR5eF140ShirtDistributeEMAEnvCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         self.scene.num_envs = 50

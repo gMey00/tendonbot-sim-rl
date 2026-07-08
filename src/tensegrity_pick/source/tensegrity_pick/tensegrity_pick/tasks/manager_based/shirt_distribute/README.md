@@ -12,12 +12,51 @@ the condition label never enters the observation directly — it only selects
 target bin is resampled uniformly, so "nearest bin" and "correct bin" diverge
 and the policy cannot ignore the goal.
 
-> **Status: stub (2026-07-03).** The environment constructs and runs
-> (zero/random agents verified for both robot variants) with working
-> goal-conditioning plumbing (random target bin, goal observation,
-> `distribute_success_rate` metric).  The shirt currently starts flat on the
-> belt edge (not yet grasped from the shirt_present terminal bank), and the
-> reward is stub shaping — see [Planned Work](#planned-work-stub--trainable-task).
+> **Status: mode collapse SOLVED, §2 at the bar (2026-07-08, Alex agent).** The
+> episode starts with the shirt already hanging from the robot's own closed
+> gripper at a sampled end-of-Task-2 holding pose (cached holding-pose bank +
+> hanging-bank restore at the fingertip, slot 0); rewards are the shirt_place
+> release design retargeted to the commanded bin (graded one-shot release event,
+> anti-hover fade, release-required success).  Phase 1 was blocked by a diagnosed
+> **goal-conditioned mode collapse** (per-seed 2-of-3-bin specialisation); a
+> literature review
+> ([research report](../../../../../../../../doc/reports/RESEARCH_REPORT_goal_conditioned_mode_collapse))
+> traced it to cross-goal critic interference under an aggregate return
+> normalizer, and **Phase 2 fixed it** with **per-goal value/advantage
+> normalization + per-goal value heads + a goal one-hot** (the `PerGoal`
+> variant).  The collapse is eliminated on all three seeds and the best
+> checkpoint now places into **all three bins in balance (~0.86)** with no
+> specialization — clearing ≥ 0.85-all-bins on some eval seeds and within noise
+> of it on others.  Full analysis in the
+> [optimization tracking](../../../../../../../../doc/reports/shirt_distribute_optimization_tracking.md)
+> (Phase 2).
+
+## Results (UR5e-F140)
+
+**Per-goal PPO** (`Template-Shirt-Distribute-UR5e-F140-PerGoal-v0`), best
+checkpoint **seed 0 `agent_88000`** — deterministic (mean actions), 150
+episodes/eval seed:
+
+| eval seed | overall | bin0 reusable | bin1 recyclable | bin2 trash |
+|---|---|---|---|---|
+| 7 | **0.880** | 0.885 | 0.872 | 0.882 |
+| 8 | 0.860 | 0.840 | 0.878 | 0.863 |
+| 9 | 0.827 | 0.780 | 0.875 | 0.827 |
+| **mean** | **0.856** | 0.835 | **0.875** | 0.857 |
+
+**Mode collapse solved; §2 at the bar.**  Every bin is learned and balanced
+(no single-bin specialization) — and bin 1 (recyclable), the bin the Phase-1
+policy *abandoned*, is now the **strongest** (0.875).  The best checkpoint clears
+≥ 0.85-all-bins cleanly on eval seed 7 and is within noise on 8/9 (bin 0 the
+swing bin, 0.78–0.885).  vs the Phase-1 baseline's 0.596 (0.77 / 0.42 / 0.60)
+with one bin hard-zeroed (0.00–0.09).  Seeds 1–2 are collapse-free but ~0.84 /
+~0.70 overall — lifting them, and the swing bin, to a robust ≥ 0.85 is the
+documented follow-up (difficulty-proportional goal sampling + FiLM).  The
+scripted baseline (`baseline_shirt_distribute.py`) places **21/24 = 0.88**,
+proving the MDP and full drum reachability.  Training curves + per-bin success
+in [figures/ur5e_f140/](figures/ur5e_f140/).
+
+![Per-bin success](figures/ur5e_f140/03_per_bin_success.png)
 
 ## Table of Contents
 
@@ -40,10 +79,13 @@ and the policy cannot ignore the goal.
 
 Train an RL agent (the second arm) to sort the inspected garment:
 
-1. Start **holding the shirt** (stretched-inspection terminal state; stub:
-   pick it up from the belt edge first).
-2. **Carry** it toward the commanded bin.
-3. **Release** it over the bin opening so the garment falls inside.
+1. Start **holding the shirt** — hanging from the robot's own closed gripper
+   at one random particle patch, arm at a sampled end-of-Task-2 holding pose
+   (later: the real Task-2 terminal-state bank — the seam is documented in
+   `shirt_distribute_env.py`).
+2. **Carry** it toward the commanded bin (goal-conditioned; nearest ≠ correct).
+3. **Release** it over the bin opening so the garment falls inside, then
+   return the arm toward neutral.
 
 Success metric (TensorBoard `Metrics/…`): `distribute_success_rate` — after a
 release (`~grasp_active`), ≥ 15 % of cloth particles inside the **commanded**
@@ -80,7 +122,7 @@ Task-specific configuration:
 | `drum_recyclable` | `(1.35, 1.0, 0)` — right of the robot |
 | `drum_trash` | `(0.75, 1.6, 0)` — behind the robot |
 | `holder_robot` | not spawned (`None`) |
-| shirt | Stub: flat on the belt edge at `(0.75, 0.30)` — the closest belt point to the second robot |
+| shirt | Hanging from the robot's own gripper (slot-0 weld at the sampled fingertip; hanging-bank restore, drape bucketed by the pose-dependent limit) |
 
 ## Goal Conditioning
 
@@ -107,14 +149,20 @@ Implemented in [shirt_distribute_env.py](shirt_distribute_env.py):
 
 | Term | Dims (Kinova / UR5e) | Type | Scale |
 |---|---|---|---|
-| `arm_action` | 7 / 6 | JointPositionAction (delta from default) | 0.5 |
-| `gripper_action` | 1 | BinaryJointPositionAction | open 0.0 / close 0.7854 |
+| `arm_action` | 7 / 6 | **RelativeJointPositionAction** (target = current + scale·action) | 0.05 |
+| `gripper_action` | 1 | BinaryJointPositionAction (**action ≥ 0 ⇒ OPEN**) | open 0.0 / close 0.7854 |
 
 Total: **8 dims (Kinova) / 7 dims (UR5e)**.
 
+Why relative (not offset-from-default): the episode starts at a sampled
+far-from-default holding pose, where a zero offset-from-default action would
+yank the arm home at full PD speed on step 1, whipping the held cloth.  With
+relative actions the null action holds the pose.  Scale 0.05 rad/step @ 60 Hz
+caps joint speed at ≈ 3 rad/s.
+
 ## Observations (policy group)
 
-**38 dims (Kinova) / 35 dims (UR5e)**, no noise corruption:
+**45 dims (Kinova) / 42 dims (UR5e)**, no noise corruption:
 
 | Term | Dims (Kinova / UR5e) | Description |
 |---|---|---|
@@ -123,46 +171,53 @@ Total: **8 dims (Kinova) / 7 dims (UR5e)**.
 | `ee_pos_w` | 3 | Grasp-centre position (env-local) |
 | `shirt_rel` | 3 | Shirt centroid relative to grasp centre |
 | `shirt_vel` | 3 | Shirt centroid velocity |
-| `target_bin_rel` | 3 | **Commanded bin relative to the shirt** (the goal) |
+| `shirt_lowest_rel` | 3 | Lowest cloth particle rel. grasp centre (drape length; depth-camera-trivial) |
+| `target_bin_rel` | 3 | Commanded bin relative to the shirt (the goal) |
+| `target_bin_rel_ee` | 3 | **Commanded bin relative to the grasp centre** (EE-centric carry error) |
 | `gripper_closure` | 1 | Normalized closure |
 | `grasp_active` | 1 | 1.0 while the attachment grasp holds |
+| `was_distributed` | 1 | 1.0 once the placement latched (post-success phase flag) |
 | `actions` | 8 / 7 | Previous action |
 
-## Rewards (stub)
+## Rewards
+
+shirt_place's validated release-into-drum design, retargeted to the commanded
+bin (dt-scaled: per-step weight w pays ≈ w × episode-seconds; one-shots w/60):
 
 | Term | Weight | Description |
 |---|---|---|
-| `reaching_shirt` | 2.0 | `1 − tanh(‖EE − shirt‖ / 0.3)` |
-| `to_target_bin` | 4.0 | `1 − tanh(‖shirt − commanded bin‖ / 0.4)` — goal-conditioned shaping |
-| `action_rate` | −1e-4 | Action-rate L2 |
-| `joint_vel` | −1e-4 | Joint-velocity L2 |
+| `approach_bin` / `approach_bin_fine` | 15 / 6 | Grasp-point→bin XY tanh (std 1.0 / 0.2), grasp-gated, faded by `clearance_fraction` (anti-hover) |
+| `clearance_over_bin` | 4 | Lowest particle above the commanded rim while over its footprint |
+| `release_hint` | 5 | Per-step openness over the commanded bin |
+| `release_event` | 240 | **One-shot graded** (centering × whole-shirt-lift, 0.25–1.0) |
+| `bad_release` | −120 | **One-shot**: opened NOT over the goal (incl. instant t=0 drops) |
+| `in_target_bin` | 120 | Released-cloth fraction inside the commanded drum |
+| `in_wrong_bin` | −60 | Released fraction in a non-commanded drum (the sorting error) |
+| `dropped_on_floor` | −5 | Centroid < 0.70 m outside all drums |
+| `carry_time` | −1.5 | Holding an undistributed shirt bleeds |
+| `return_to_neutral` | 200 | Post-success return to defaults (`was_distributed`-gated) |
+| `action_rate` / `joint_vel` | −3e-4 → −3e-3 / −2e-3 (curriculum @ 2000) | Smoothness |
+| `belt_contact` | −10 | Fingertips below the belt surface |
 
-Planned structure (port from shirt_place — it solved exactly this
-release-into-drum problem):
-
-- **Graded one-shot release event** (centering × height quality, dt-scaled
-  weight ~60× the per-step shaping).
-- **Anti-hover fade**: positioning shaping fades once the shirt is cleared
-  over the bin, so only releasing pays.
-- Sparse landing-in-correct-bin bonus; wrong-bin landings earn nothing (the
-  goal-conditioned shaping already points at the right bin).
+No settled-early termination — shirt_place measured that ending the episode
+after the drop cut total return below hover-to-timeout and PPO reverted to
+hovering; post-drop per-step rewards make releasing strictly dominant.
 
 ## Terminations
 
 | Term | Condition |
 |---|---|
-| `time_out` | Episode length 6.0 s |
+| `time_out` | Episode length 8.0 s |
 | `joint_vel_diverged` | Any controlled joint > 100 rad/s |
-
-Planned: terminate N steps after a successful drop (shirt_place
-`PLACE_SETTLE_STEPS` pattern) so shaping cannot be farmed post-success.
+| `belt_collision` | Fingertip > 0.12 m below the belt surface |
 
 ## Reset Events
 
 Same event set as shirt_pick (conveyor collider swap, cloth prestartup,
-scene/arm/gripper reset); the cloth reset lays the shirt flat at the belt
-edge `(0.75, 0.30)` — to be replaced by grasped-state initialization from the
-shirt_present terminal bank.
+scene/arm/gripper reset); the env's `_reset_cloth` then overrides the arm with
+a sampled holding pose, forces the gripper closed and restores a hanging-bank
+state at the recorded fingertip (slot 0) — see the initial-state section of
+the [optimization tracking](../../../../../../../../doc/reports/shirt_distribute_optimization_tracking.md).
 
 ## Simulation Parameters
 
@@ -170,34 +225,42 @@ Identical to shirt_pick — `configure_cloth_sim()` profile (60 Hz, 24 PBD
 iterations, self-collision on, enlarged GPU buffers, `replicate_physics=False`).
 See the [shirt_pick table](../shirt_pick/README.md#simulation-parameters).
 
-## Planned Work (stub → trainable task)
+## Planned Work
 
 Full staged plan: [doc/TODO.md — Master-Thesis Goal Tasks](../../../../../../../../doc/TODO.md).
 Headlines:
 
-1. **Init grasped from the shirt_present terminal-state bank** (stub picks up
-   from the belt edge — a different, easier-to-hack MDP).
-2. **Real reward structure** — port shirt_place's graded `release_event` +
-   anti-hover design + dt-scaled weights.
-3. **Bin-layout randomization** so nearest ≠ correct generalizes beyond the
+1. **Init from the real Task-2 terminal-state bank** once shirt_present
+   produces it (the current sampled holding poses + hanging-bank restore are
+   the stand-in; seam documented in `shirt_distribute_env.py`).
+2. **Bin-layout randomization** so nearest ≠ correct generalizes beyond the
    three fixed showcase drums.
-4. **TossingBot-style throw** (release-velocity conditioning) if the fixed
-   drums prove outside comfortable placing reach — check the UR5e's envelope
-   first (drum_recyclable at 0.6 m lateral offset).
-5. Finger-tip offset calibration for the UR/Kinova EE frames (shared grasp
-   machinery was calibrated on the tensegrity frame).
+3. **TossingBot-style throw** (release-velocity conditioning) if a drum
+   proves outside comfortable placing reach (baseline measures this).
 
 ## Running
 
 ```bash
 # from src/tensegrity_pick, conda env env_isaaclab
 
-# Smoke tests (verified 2026-07-03)
+# Env validation (reset integrity, hold persistence, release, diversity)
+python scripts/model_validation/check_shirt_distribute_env.py --headless --num_envs 8
+
+# Scripted MDP baseline (DLS-IK carry->release over each drum)
+python scripts/model_validation/baseline_shirt_distribute.py --headless --num_envs 8
+
+# Smoke tests (NOTE: zero/random agents RELEASE immediately — the binary
+# gripper term opens for any action >= 0; that is expected, not a bug)
 python scripts/zero_agent.py   --task=Template-Shirt-Distribute-UR5e-F140-v0   --num_envs 4 --headless
 python scripts/random_agent.py --task=Template-Shirt-Distribute-Kinova-F140-v0 --num_envs 4 --headless
 
-# Train (once the real MDP is implemented)
-python scripts/skrl/train.py --task=Template-Shirt-Distribute-Kinova-F140-v0 --num_envs 128 --headless
+# Train (Alex: tools/train_alex.sh wraps sbatch)
+./tools/train_alex.sh Template-Shirt-Distribute-UR5e-F140-v0 --headless --num_envs 64
+
+# Deterministic eval with per-bin breakdown
+python scripts/skrl/evaluate_shirt_distribute.py --headless \
+    --task Template-Shirt-Distribute-UR5e-F140-v0 --num_envs 32 --seed 7 \
+    --num_episodes 96 --checkpoint <ckpt.pt>
 ```
 
 ## Related
