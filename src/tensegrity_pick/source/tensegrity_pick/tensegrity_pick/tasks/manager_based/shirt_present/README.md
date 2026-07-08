@@ -8,24 +8,26 @@ inspection cameras can assess the garment's condition (reusable / recyclable
 / trash).  Classification itself is a black box — this task only has to make
 the cloth *inspectable*.
 
-> **Status: HEM-TO-HEM REDESIGN, training in progress (2026-07-07).**  After
-> Georg's visual inspection of the first-pass `agent_96000` (naive lowest-point
-> grasp, det. present 0.927), the geometry was rebuilt around the FAPS
+> **Status: PRODUCTION policy = the first pass's naive `agent_96000` (det.
+> present 0.927 @ coverage 0.68).  The hem-to-hem redesign on
+> `project/shirt-present` is a documented NEGATIVE result (2026-07-08).**
+>
+> After Georg's visual inspection, the geometry was rebuilt around the FAPS
 > heuristics study's winning **hem-corner ↔ hem-corner horizontal pull**
-> (scripted coverage 0.820 vs 0.679 for the naive rule) and six visual-
-> inspection findings were fixed.  Phase-2 training runs on `project/shirt-present`;
-> deterministic checkpoint selection (≥ 0.9 present latch at the 0.65 coverage
-> gate) is pending — see the
+> (scripted coverage 0.820 vs 0.679 for the naive rule) and the six visual
+> findings were addressed.  But across five RL runs it did **not** transfer to
+> a policy that beats the naive baseline in-scene: best deterministic
+> **present 0.32 @ coverage 0.61** (seed 43 `agent_104000`).  Two measured
+> reasons: (1) the study's WINNING hem↔hem grasp needs a high second hem corner
+> that RL cannot learn to grasp (grasp_rate < 0.1); (2) the LEARNABLE
+> accessible-low-corner version reaches only ~0.61 coverage — below the naive
+> stretch's 0.68.  Full arc + numbers:
 > [tracking report Phase 2](../../../../../../../../doc/reports/shirt_present_optimization_tracking.md#phase-2-hem-to-hem-presentation-redesign).
 >
-> The shirt hangs pinned at a HEM point (slot-1 solver anchor, restored from the
-> 43 bottom-edge-anchored hanging-bank states) so it hangs upside-down; the
-> learning arm's slot-0 grasp targets the **opposite hem corner** (latched at
-> reset) and pulls it HORIZONTALLY to the holder's height — gravity drapes the
-> body below the taut chord (self-aligning to the camera, study yaw gap 0.003).
-> Success = windowed presented latch (both grasps ∧ taut ∧ silhouette coverage
-> ≥ 0.65 ∧ cloth still).  Two simultaneous attachments are validated stable
-> through tautness ratio 1.15
+> This README documents the hem-to-hem MECHANICS as implemented on the branch.
+> Success predicate = windowed presented latch (both grasps ∧ taut flat-rest
+> ratio ∧ silhouette coverage ≥ the gate ∧ cloth still).  Two simultaneous
+> attachments are validated stable through tautness ratio 1.15
 > ([Stage-0 report](../../../../../../../../doc/reports/cloth_stage0_physics_derisk.md) §2).
 
 ## Table of Contents

@@ -174,21 +174,17 @@ Progress log: [shirt_pick_optimization_tracking.md](reports/shirt_pick_optimizat
   (above the ICRA 0.55–0.60 band).  NB: the RL run's coverage gate (0.50) is below the FAPS
   study's recommended 0.65 — a candidate re-threshold now that both are merged (`final_coverage`
   is logged, so re-scoreable).
-- 🟢 **Hem-to-hem presentation redesign** (2026-07-07, Alex agent, branch `project/shirt-present`):
-  after Georg's visual inspection of `agent_96000` (findings in
-  `logs/skrl/need_visual_verification/shirt_present/findings.md`), replaced the naive lowest-point
-  grasp with the study's **hem-corner↔hem-corner horizontal-pull** geometry + fixed 6 findings.
-  Holder restricted to the 43 bottom-edge-anchored bank states; hand targets the opposite hem
-  corner (latched at reset); directed horizontal-pull reward; **tautness switched to the study's
-  flat rest distance** (the geodesic+r0 scheme mis-read the hang→horizontal config change — a
-  correct pull read 0.82 normalised, below the taut gate); coverage gate **0.50→0.65**; local
-  anchor moved to `(0.50, 0.85, 1.20)` (x=0.8 request rejected — drapes cloth through the robot's
-  own pedestal; z lowered for UR5e reach of the chord).  Silhouette guard: clamp positions to a
-  box before rasterizing (a single exploded env among many blew up the shared grid).  Trained at
-  64 envs (the Stage-0 sweet spot; 512 craters throughput).  Scripted hem↔hem baseline in-scene:
-  present 0.125 / grasp 0.41 / coverage ceiling 0.82 (the same profile the naive baseline had
-  before RL reached 0.927).  **Training in progress** (seeds 43/44, 120k) — deterministic
-  checkpoint selection to follow.  See the tracking report Phase 2 section.
+- ⚪ **Hem-to-hem presentation redesign — NEGATIVE RESULT (do not merge)** (2026-07-08, Alex agent,
+  branch `project/shirt-present`): after Georg's visual inspection of `agent_96000`, tried the
+  study's **hem↔hem horizontal-pull** geometry + fixed the 6 findings.  Across five RL runs it did
+  NOT beat the naive baseline: best deterministic **present 0.32 @ coverage 0.61** (seed43
+  agent_104000) vs the naive **0.927 @ 0.68**.  (1) the study's WINNING hem↔hem grasp needs a high
+  2nd hem corner RL can't learn (grasp_rate <0.1); (2) the learnable low-corner version's coverage
+  (0.61) is below the naive stretch's (0.68).  Keep `agent_96000` in production.  Retained lessons:
+  tautness must use flat rest distance (not geodesic+r0); silhouette grid must be clamped at 512
+  envs (or train at 64); and **never penalise "gripper closed while far" — it teaches the policy to
+  never close the gripper (grasp_rate 0); the attach is target-tied so early-close is cosmetic**.
+  Full arc + numbers: tracking report Phase 2 section.
 - ✅ **Brute-force grasp-pair oracle + 2-grasp/3-grasp heuristic comparison** (2026-07-04,
   FAPS heuristic-study agent): [present_heuristics_study.md](reports/present_heuristics_study.md)
   — horizontal presentation stretch (2nd grasp raised to the holder's height, pulled along the
