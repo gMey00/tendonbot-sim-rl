@@ -186,6 +186,8 @@ class ShirtPresentEnv(ClothSortingEnvBase):
         self._ring_idx = 0
         self._was_presented = torch.zeros(n, dtype=torch.bool, device=dev)
         self._drop_event = torch.zeros(n, device=dev)
+        self._grasp_event = torch.zeros(n, device=dev)
+        self._ever_grasped_ep = torch.zeros(n, dtype=torch.bool, device=dev)
         self._was_dropped = torch.zeros(n, dtype=torch.bool, device=dev)
         self._prev_attached = torch.zeros(n, dtype=torch.bool, device=dev)
 
@@ -267,6 +269,11 @@ class ShirtPresentEnv(ClothSortingEnvBase):
     def drop_event(self) -> torch.Tensor:
         """One-shot ``[N]``: 1.0 the step an established hand grasp was lost."""
         return self._drop_event
+
+    @property
+    def grasp_event(self) -> torch.Tensor:
+        """One-shot ``[N]``: 1.0 the step the hand grasp was newly established."""
+        return self._grasp_event
 
     @property
     def was_presented(self) -> torch.Tensor:
@@ -403,6 +410,14 @@ class ShirtPresentEnv(ClothSortingEnvBase):
         # pull direction (the side the grasped corner sits on — never drags the
         # cloth across itself).  ``_r0`` stays 1.0 (raw flat-rest tautness).
         newly = self.grasp_active & ~self._prev_attached
+        # One-shot grasp-commit signal, fired only for the FIRST grasp of the
+        # episode (mirrors drop_event's one-step delay).  A large weight
+        # overcomes the reach-hover local optimum; gating to the first grasp
+        # prevents a grasp-drop-grasp farming exploit (the big bonus would
+        # otherwise outweigh the light drop penalty per cycle).
+        first_grasp = newly & ~self._ever_grasped_ep
+        self._grasp_event = first_grasp.float()
+        self._ever_grasped_ep |= newly
         if newly.any():
             span = self._holder_to_hand_rest()
             self._grasp_rest[newly] = span[newly].clamp(0.15, 0.60)
@@ -458,6 +473,8 @@ class ShirtPresentEnv(ClothSortingEnvBase):
         self._x_sign[env_ids_t] = 1.0
         self._present_ring[env_ids_t] = False
         self._drop_event[env_ids_t] = 0.0
+        self._grasp_event[env_ids_t] = 0.0
+        self._ever_grasped_ep[env_ids_t] = False
         self._was_dropped[env_ids_t] = False
         self._prev_attached[env_ids_t] = False
         # Latch the hand target: the more accessible hem corner, chosen ONCE now

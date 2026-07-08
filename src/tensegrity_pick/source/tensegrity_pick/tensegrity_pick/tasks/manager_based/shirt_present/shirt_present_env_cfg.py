@@ -204,32 +204,43 @@ class RewardsCfg:
     attachments and by the silhouette (not bbox) coverage metric.
     """
 
-    # 1. Reach: tip → targeted HEM CORNER, paid only with an OPEN gripper
-    # pre-grasp (fixes the premature-close hack — see mdp/rewards.py).
-    reaching = RewTerm(func=task_rew.reaching_target, weight=2.0, params={"std": 0.25})
-    # 2. Grasp: per-step while the hand attachment holds
-    grasp_hold = RewTerm(func=task_rew.grasp_hold, weight=5.0)
-    # 3. Pull: DIRECT the second grasp to the horizontal-pull target (holder
+    # Reward-balance rationale (run 3821927 diagnosis): the first weighting let
+    # the policy FARM `reaching` (0.88/step) and never commit to a grasp
+    # (grasp_rate < 0.05, present 0.0) — a rich, safe reach-hover optimum, made
+    # worse by a -240 drop penalty that punished any grasp attempt.  Rebalanced:
+    # small reach shaping, a big one-shot GRASP bonus, and a much lighter drop
+    # penalty so grasping is attractive and low-risk; pull/coverage/present then
+    # carry it to the presentation.
+    # 1. Reach: small tip → hem-corner approach shaping (weight 2.0 -> 1.0).
+    reaching = RewTerm(func=task_rew.reaching_target, weight=1.0, params={"std": 0.25})
+    # 2. Grasp COMMIT: one-shot bonus for the FIRST grasp of the episode.
+    # dt-scaled to ≈ +10 (weight/60) — deliberately ABOVE the reach-hover return
+    # (~7) so committing to a grasp beats hovering; once-per-episode gating (env)
+    # blocks grasp-drop farming.
+    grasp_event = RewTerm(func=task_rew.grasp_event, weight=600.0)
+    # 3. Grasp hold: per-step while the hand attachment holds.
+    grasp_hold = RewTerm(func=task_rew.grasp_hold, weight=6.0)
+    # 4. Pull: DIRECT the second grasp to the horizontal-pull target (holder
     # height, offset along camera-plane x) — the study's taut horizontal chord.
-    pull = RewTerm(func=task_rew.pulling_horizontal, weight=10.0, params={"std": 0.20})
-    # 4. Stretch: clamped tautness progress (gated on both attachments)
+    pull = RewTerm(func=task_rew.pulling_horizontal, weight=12.0, params={"std": 0.20})
+    # 5. Stretch: clamped tautness progress (gated on both attachments)
     stretch = RewTerm(func=task_rew.stretch_progress, weight=4.0, params={"lo": 0.80, "hi": 1.02})
-    # 5. Coverage: camera-plane silhouette coverage (gated on both attachments).
-    # The hem<->hem geometry lifts scripted median coverage to 0.82, so this
-    # term now has real headroom above the 0.65 gate.
+    # 6. Coverage: camera-plane silhouette coverage (gated on both attachments).
     coverage = RewTerm(func=task_rew.coverage_reward, weight=14.0)
-    # 6. Success: full presentation predicate — dominant per-step term
+    # 7. Success: full presentation predicate — dominant per-step term
     presented = RewTerm(func=task_rew.presented, weight=30.0)
-    # 7. Safety: tautness beyond the validated band (per-step, proportional).
+    # 8. Safety: tautness beyond the validated band (per-step, proportional).
     # Onset 1.10 (band upper 1.15): the study's ≤1.10 sweet spot / ≤1.15 hard
     # limit — penalise before the untested-stability region.
     overstretch = RewTerm(func=task_rew.overstretch_penalty, weight=-40.0, params={"limit": 1.10})
-    # 8. Failure: one-shot when an established hand grasp is lost (dt-scaled
-    # ≈ −4); sized ~60× per-step terms.
-    drop = RewTerm(func=task_rew.drop_event, weight=-240.0)
-    # 9. Anti-hack: penalise commanding the gripper closed while far from the
+    # 9. Failure: one-shot when an established hand grasp is lost.  -240 -> -40:
+    # grasping is the BOTTLENECK now (not keeping it), so the drop penalty must
+    # not deter grasp attempts; paired with grasp_event (+40) so a grasp-drop
+    # cycle nets ~0 rather than a big loss.
+    drop = RewTerm(func=task_rew.drop_event, weight=-40.0)
+    # 10. Anti-hack: penalise commanding the gripper closed while far from the
     # target and ungrasped (the premature-close behaviour, finding #1).
-    early_close = RewTerm(func=task_rew.early_close_penalty, weight=-15.0, params={"clear_dist": 0.12})
+    early_close = RewTerm(func=task_rew.early_close_penalty, weight=-8.0, params={"clear_dist": 0.12})
     # 10. Cosmetic: mild penalty for the arm occluding the −Y camera view of the
     # cloth (finding #5).  Small — it fights the fixed base geometry and the
     # coverage metric cannot see occlusion.

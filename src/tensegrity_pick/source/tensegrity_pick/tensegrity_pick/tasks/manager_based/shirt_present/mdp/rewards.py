@@ -123,23 +123,21 @@ def coverage_obs(env: "ManagerBasedRLEnv") -> torch.Tensor:
 # ---------------------------------------------------------------------------
 
 def reaching_target(env: "ManagerBasedRLEnv", std: float = 0.25) -> torch.Tensor:
-    """1 - tanh(||tip - hem target|| / std), paid only with an OPEN gripper.
+    """1 - tanh(||tip - hem target|| / std); saturates to 1 while grasped.
 
-    Saturates to 1.0 while the hand grasp holds (the hem corner moves once
-    lifted; chasing it post-grasp would fight the pull).  Before the grasp the
-    term is ZEROED whenever the gripper is commanded closed — removing the
-    incentive to close early and drift into the proximity-attach.  The policy
-    must therefore approach OPEN and close at the target.
+    A SMALL approach-shaping term (the hem corner moves once lifted, so chasing
+    it post-grasp would fight the pull — hence saturate-to-1).  The premature-
+    close hack (finding #1) is handled by ``early_close_penalty``, NOT by gating
+    this term on the gripper: an earlier open-gripper gate made "hover near the
+    corner, gripper open" a rich, safe local optimum the policy never left
+    (measured run 3821927: reaching farmed 0.88/step, grasp_rate < 0.05,
+    present_rate 0.0).  Keep the weight small so grasping + pulling dominate.
     """
     if not _ready(env):
         return _zeros(env)
     d = torch.norm(env._finger_tip_pos() - env.shirt_grasp_point_w, dim=-1)
     r = 1.0 - torch.tanh(d / std)
-    # open-gripper gate pre-grasp; full credit once grasped
-    open_pre = (~_gripper_closing(env)) & (~env.grasp_active)
-    r = torch.where(env.grasp_active, torch.ones_like(r),
-                    torch.where(open_pre, r, torch.zeros_like(r)))
-    return r
+    return torch.where(env.grasp_active, torch.ones_like(r), r)
 
 
 def grasp_hold(env: "ManagerBasedRLEnv") -> torch.Tensor:
@@ -200,6 +198,19 @@ def drop_event(env: "ManagerBasedRLEnv") -> torch.Tensor:
     if not _ready(env):
         return _zeros(env)
     return env.drop_event
+
+
+def grasp_event(env: "ManagerBasedRLEnv") -> torch.Tensor:
+    """One-shot: 1.0 the step the hand grasp is newly established (weight ~60x).
+
+    The commit signal that breaks the reach-hover local optimum — grasping the
+    hem corner must be worth far more than hovering near it.  Pairs with the
+    (reduced) drop penalty so grasp-then-drop nets ~0, not a loss that scares
+    the policy off grasping in the first place.
+    """
+    if not _ready(env):
+        return _zeros(env)
+    return env.grasp_event
 
 
 def early_close_penalty(
