@@ -21,6 +21,7 @@ from typing import Any, Type
 from skrl.agents.torch.ppo import PPO_CFG
 from skrl.utils.runner.torch import Runner as _StockRunner
 
+from .goal_film import _film_policy_factory, _film_value_factory
 from .goal_value import goal_multi_head_value_factory
 from .per_goal_ppo import PerGoalPPO
 
@@ -32,6 +33,10 @@ class PerGoalRunner(_StockRunner):
         lname = name.lower()
         if lname == "goalmultiheadvalue":
             return goal_multi_head_value_factory  # type: ignore[return-value]
+        if lname == "filmgoalpolicy":
+            return _film_policy_factory  # type: ignore[return-value]
+        if lname == "filmgoalvalue":
+            return _film_value_factory  # type: ignore[return-value]
         if lname == "pergoalppo":
             return PerGoalPPO  # type: ignore[return-value]
         if lname == "pergoalppo_cfg":

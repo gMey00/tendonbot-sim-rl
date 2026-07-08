@@ -1,0 +1,75 @@
+seed: 42
+
+# ============================================================================
+#  Per-goal PPO + FiLM + per-goal actor/critic heads (mode-collapse round 2)
+# ============================================================================
+#  Phase 2 (per-goal value/adv norm + multi-head critic) BROKE the collapse but
+#  left a *balance* failure: the shared actor drives one bin to ~0.96 while
+#  another sits ~0.79 — residual interference in the shared ACTOR.  This config
+#  maximizes per-goal ACTOR capacity at single-rollout cost (research report §C
+#  decision tree: "actor can't express per-goal behavior → FiLM, #2"):
+#    - policy = FiLMGoalPolicy  (FiLM-gated trunk + per-goal mean/log_std heads)
+#    - value  = FiLMGoalValue   (FiLM-gated trunk + per-goal value heads)
+#    - agent  = PerGoalPPO      (per-bin value + advantage normalization)
+#  All PPO hyperparameters frozen at the Phase-2 baseline for attributability.
+#  Requires the goal one-hot as the LAST 3 obs dims (target_bin_onehot).
+# ============================================================================
+
+models:
+  separate: True
+  policy:
+    class: FiLMGoalPolicy
+    num_bins: 3
+    clip_actions: False
+    clip_log_std: True
+    min_log_std: -3.0
+    max_log_std: 0.5
+    initial_log_std: -0.7
+  value:
+    class: FiLMGoalValue
+    num_bins: 3
+    clip_actions: False
+
+
+memory:
+  class: RandomMemory
+  memory_size: -1
+
+
+agent:
+  class: PerGoalPPO
+  rollouts: 48
+  learning_epochs: 5
+  mini_batches: 8
+  discount_factor: 0.99
+  lambda: 0.95
+  learning_rate: 1.0e-04
+  learning_rate_scheduler: KLAdaptiveLR
+  learning_rate_scheduler_kwargs:
+    kl_threshold: 0.004
+  state_preprocessor: RunningStandardScaler
+  state_preprocessor_kwargs: null
+  value_preprocessor: null
+  value_preprocessor_kwargs: null
+  random_timesteps: 0
+  learning_starts: 0
+  grad_norm_clip: 1.0
+  ratio_clip: 0.2
+  value_clip: 0.2
+  clip_predicted_values: True
+  entropy_loss_scale: 0.003
+  value_loss_scale: 2.0
+  kl_threshold: 0.0
+  rewards_shaper_scale: 0.5
+  time_limit_bootstrap: False
+  experiment:
+    directory: "shirt_distribute"
+    experiment_name: ""
+    write_interval: 200
+    checkpoint_interval: 2000
+
+
+trainer:
+  class: SequentialTrainer
+  timesteps: 96000
+  environment_info: log
