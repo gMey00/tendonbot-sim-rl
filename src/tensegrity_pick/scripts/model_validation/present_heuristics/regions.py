@@ -7,9 +7,10 @@ interpretable garment regions — so region boundaries can be iterated offline
 without re-running any simulation.
 
 Coordinate frame (see the region-map figure produced by ``plot_study.py``):
-the ClothesNet t-shirt laid flat, x = left↔right (sleeve tips at x ≈ −0.26 /
-+0.33 — the mesh is slightly right-shifted, ``X_CENTER`` compensates),
-y = hem (−0.37) ↔ collar (+0.26).
+the ClothesNet t-shirt laid flat, x = left↔right (sleeve tips at x ≈ −0.262 /
++0.333 — the mesh is right-shifted; its axis of bilateral symmetry is
+``X_CENTER`` = 0.0355, the midpoint of the sleeve tips), y = hem (−0.37) ↔
+collar (+0.26).
 
 Also hosts the pure-torch loader used by every offline analysis script.
 
@@ -23,25 +24,37 @@ import os
 
 import numpy as np
 
+# Axis of bilateral symmetry (midpoint of the sleeve tips, x = −0.262 / +0.333).
+# The mesh OUTLINE is symmetric about it (median left-vs-mirrored-right particle
+# distance ≈ 0.003 m ≈ mesh spacing); the tessellation is ~17 % denser on the
+# left, which affects only per-cell particle COUNTS, not the (symmetric) cells.
+X_CENTER = 0.0355
+
+
+def _sym(name: str, dx: float, y: float) -> dict:
+    """A left/right landmark pair mirrored exactly about ``X_CENTER``."""
+    return {f"{name}_l": (X_CENTER - dx, y), f"{name}_r": (X_CENTER + dx, y)}
+
+
 # Nearest-landmark (Voronoi) region assignment.  A pure x/y-threshold scheme
-# fails on this mesh (the left sleeve angles inward and overlaps the shoulder
-# in x), so regions are the Voronoi cells of hand-placed landmarks read off
-# the flat-rest scatter — compact, interpretable, and robust to the mesh's
-# left/right asymmetry.  Landmark placement validated visually via
-# ``plot_study.py``'s region-map figure.
+# fails on this mesh (the sleeves angle inward and overlap the shoulders in x),
+# so regions are the Voronoi cells of hand-placed landmarks read off the
+# flat-rest scatter.  The landmarks are placed SYMMETRICALLY about ``X_CENTER``
+# (every l/r pair is an exact mirror; the central regions sit on the axis), and
+# were tuned so that: the collar owns the neck opening (not the shoulders), the
+# sleeve cells own the whole sleeve INCLUDING the outer tip + underside (the
+# side cells no longer reach into the sleeves), and the shoulder cells own the
+# shoulder seam.  Verified via ``plot_study.py``'s region-map figure.
 REGION_LANDMARKS = {
-    "collar":     (0.03, 0.235),
-    "shoulder_l": (-0.135, 0.205),
-    "shoulder_r": (0.195, 0.205),
-    "sleeve_l":   (-0.235, 0.06),
-    "sleeve_r":   (0.305, 0.06),
-    "chest":      (0.03, 0.05),
-    "belly":      (0.03, -0.18),
-    "side_l":     (-0.17, -0.10),
-    "side_r":     (0.22, -0.10),
-    "hem_l":      (-0.16, -0.34),
-    "hem_c":      (0.03, -0.35),
-    "hem_r":      (0.21, -0.34),
+    "collar":     (X_CENTER, 0.235),
+    **_sym("shoulder", 0.16, 0.20),
+    **_sym("sleeve", 0.26, 0.045),
+    "chest":      (X_CENTER, 0.06),
+    **_sym("side", 0.18, -0.12),
+    "belly":      (X_CENTER, -0.18),
+    "hem_l":      (X_CENTER - 0.185, -0.34),
+    "hem_c":      (X_CENTER, -0.35),
+    "hem_r":      (X_CENTER + 0.185, -0.34),
 }
 REGION_NAMES = list(REGION_LANDMARKS)
 
