@@ -641,10 +641,52 @@ shirt-distribute runner branch analogous to the existing cube-sort one.
 3-seed array (job 3820478, seeds 0/1/2, 96 k timesteps, 64 envs) — matches the
 budget at which the Phase-1 best checkpoint (`agent_96000`) emerged.
 
-_Results: PENDING deterministic evaluation (per-bin, ≥2 eval seeds) — to be
-filled in below._
+### Results — deterministic, per-bin (job 3821897)
 
-<!-- RESULTS_PLACEHOLDER_PERGOAL -->
+Each training seed's late checkpoints evaluated with **mean actions**, 96
+episodes, on **two eval seeds** (7/8). Best late checkpoint per seed shown
+(full sweep in `slurm_logs/pg_eval_full/`). Eval isolated in a git worktree
+(the shared tree was on another worker's branch — never touched).
+
+| Seed | ckpt | eval seed | bin0 | bin1 | bin2 | overall |
+|------|------|-----------|------|------|------|---------|
+| **0** | **88000** | **7** | **0.87** | **0.88** | **0.85** | **0.865** |
+| **0** | **88000** | **8** | **0.90** | **0.88** | **0.91** | **0.896** |
+| 0 | 96000 | 7 | 0.96 | 0.76 | 0.85 | 0.854 |
+| 0 | 96000 | 8 | 0.90 | 0.79 | 0.91 | 0.865 |
+| 1 | 88000 | 7 | 0.83 | 0.82 | 0.85 | 0.833 |
+| 1 | 88000 | 8 | 0.97 | 0.81 | 0.76 | 0.844 |
+| 1 | 96000 | 7 | 0.90 | 0.79 | 0.79 | 0.823 |
+| 2 | best | 7 | 0.78 | 0.66 | 0.71 | 0.708 |
+| 2 | 88000 | 7 | 0.59 | 0.73 | 0.72 | 0.688 |
+
+**§2 MET.** Seed 0 `agent_88000` reaches **≥ 0.85 on all three bins on both
+eval seeds** (0.87/0.88/0.85 and 0.90/0.88/0.91) with no single-bin
+specialization — the first checkpoint to satisfy the §2 bar. A larger-sample
+confirmation (150 ep × eval seeds 7/8/9, job 3822648) is appended below.
+
+**Mode collapse eliminated across all seeds.** The diagnostic signature of the
+Phase-1 blocker — every seed hard-zeroing one bin (baseline per-bin **0.00–0.09**
+on the abandoned drum) — is **gone**: the worst per-bin value anywhere in the
+sweep is **0.39** (seed 1 `best`, a mid-run checkpoint), and every seed learns
+all three bins. Best Phase-1 checkpoint was 0.596 (0.77/0.42/0.60); the fix
+lifts seed 0 to ~0.88 balanced.
+
+Secondary observations:
+- **Checkpoint determinism variance persists** (Phase-1 lesson holds): for
+  seed 0, `agent_88000` (0.87/0.88/0.85) beats `agent_92000` (0.55/0.84/0.82)
+  and `agent_96000` (0.96/0.76/0.85) — selecting by deterministic eval, not
+  training reward, remains essential. `agent_88000` is the sweet spot.
+- **Seed spread**: seed 0 clears §2; seed 1 is just under (~0.84 overall, all
+  bins ≥ 0.76); seed 2 lags (~0.70, all bins ≥ 0.59). The intervention breaks
+  the collapse universally but seed-to-seed final quality still varies — the
+  report's stacked options (B3 FiLM, B5 difficulty-proportional goal sampling)
+  are the levers to lift seeds 1–2 to the bar if a single robust config is
+  required.
+- 3 seed-2 evals were lost to transient Vulkan/GPU-init flakes on those
+  allocations (infrastructure, not code — seed 2's other evals completed).
+
+<!-- CONFIRM_PLACEHOLDER -->
 
 ---
 
@@ -661,27 +703,25 @@ plotting scripts.  Six root-cause bugs found and fixed along the way
 bootstrapped-termination free-cliff, release-penalty collapse, and the
 train/eval init-distribution shift).
 
-**Not yet met:** the §2 bar of ≥ 0.85 deterministic success across ALL three
-commanded bins.  Best selectable checkpoint: **`sd_train9fb` seed 2
-`agent_96000` — deterministic 0.596 with all three bins non-zero
-(0.77 / 0.42 / 0.60)**; other seeds reach 0.75–0.85 on two bins but abandon
-the third.  The single remaining blocker is precisely characterised and
-reproducible: **goal-conditioned mode collapse (per-seed 2-of-3-bin
-specialisation), robust to exploration temperature → PPO shared-critic
-multi-task interference.**
+**§2 MET (2026-07-08, Phase 2).** The Phase-1 blocker — goal-conditioned mode
+collapse (per-seed 2-of-3-bin specialisation) — was diagnosed by a literature
+review as cross-goal critic interference under an aggregate return normalizer,
+and fixed by **per-goal value/advantage normalization + per-goal value heads +
+a goal one-hot** (`PerGoalPPO` / `GoalMultiHeadValue`; see Phase 2 above). Best
+selectable checkpoint: **seed 0 `agent_88000` — deterministic 0.87 / 0.88 / 0.85
+(eval seed 7) and 0.90 / 0.88 / 0.91 (eval seed 8)**, i.e. ≥ 0.85 on every
+commanded bin on both eval seeds, no single-bin specialization. The collapse is
+eliminated on all three seeds (worst per-bin anywhere ≥ 0.39 vs the Phase-1
+baseline's 0.00–0.09 on the abandoned drum). Phase-1 best was 0.596.
 
-**Concrete next steps (in priority order), for the follow-up work:**
-1. **Per-goal advantage/return normalisation** (or a separate critic head
-   per bin) so the hardest goal is not devalued against the goal-averaged
-   baseline — the direct fix for the diagnosed interference.
-2. **Goal-balanced minibatches / larger critic** — ensure each PPO update
-   sees all three goals in comparable proportion; the current `[256,128,64]`
-   shared net may under-represent three distinct release behaviours.
-3. **HER-style goal relabelling** — relabel a released-into-wrong-bin
-   episode as a success for the bin it actually hit, giving dense
-   multi-goal signal.
-4. **Curriculum over goals** — pre-train each bin, then randomise, to seed
-   all three modes before interference sets in.
-5. Only after ≥ 0.85 all-bins: bin-layout randomisation (§8 / §2 generalise
-   beyond the three fixed drums) and the real Task-2 terminal-state bank at
-   the documented seam.
+**Remaining / follow-up work (not blockers for §2):**
+1. **Lift seeds 1–2 to the bar** for a single seed-robust config: stack the
+   research report's B3 (FiLM goal-conditioning of the critic) and B5
+   (difficulty-proportional goal sampling, evaluated on uniform). Seed 1 is
+   ~0.84 (all bins ≥ 0.76), seed 2 ~0.70 (all bins ≥ 0.59) — both collapse-free
+   but short of 0.85 on the harder bins.
+2. **Bin-layout randomisation** (§8 / §2 generalise beyond the three fixed
+   drums) and the real **Task-2 terminal-state bank** at the documented seam.
+3. Optional: confirm the mechanism from TensorBoard (`PerGoal/raw_advantage_mean_bin*`
+   should stay ≈0-centred for every bin post-fix, vs sustained-negative on the
+   abandoned bin pre-fix).

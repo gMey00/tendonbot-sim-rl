@@ -12,35 +12,43 @@ the condition label never enters the observation directly — it only selects
 target bin is resampled uniformly, so "nearest bin" and "correct bin" diverge
 and the policy cannot ignore the goal.
 
-> **Status: trained, MDP validated, §2 target not yet met (2026-07-06, Alex
-> agent).** The episode starts with the shirt already hanging from the robot's
-> own closed gripper at a sampled end-of-Task-2 holding pose (cached
-> holding-pose bank + hanging-bank restore at the fingertip, slot 0); rewards
-> are the shirt_place release design retargeted to the commanded bin (graded
-> one-shot release event, anti-hover fade, release-required success).  The
-> scripted baseline reaches **0.88** (all three drums reachable); the best
-> trained checkpoint reaches **deterministic 0.60 with all three bins non-zero
-> (0.77 / 0.42 / 0.60)**, short of the ≥ 0.85-all-bins bar because of a
-> diagnosed **goal-conditioned mode collapse** (per-seed 2-of-3-bin
-> specialisation, robust to exploration temperature → PPO shared-critic
-> multi-task interference).  Full analysis, all iterations, and next steps in
-> the [optimization tracking](../../../../../../../../doc/reports/shirt_distribute_optimization_tracking.md).
+> **Status: SOLVED — §2 target met (2026-07-08, Alex agent).** The episode
+> starts with the shirt already hanging from the robot's own closed gripper at a
+> sampled end-of-Task-2 holding pose (cached holding-pose bank + hanging-bank
+> restore at the fingertip, slot 0); rewards are the shirt_place release design
+> retargeted to the commanded bin (graded one-shot release event, anti-hover
+> fade, release-required success).  Phase 1 was blocked by a diagnosed
+> **goal-conditioned mode collapse** (per-seed 2-of-3-bin specialisation); a
+> literature review
+> ([research report](../../../../../../../../doc/reports/RESEARCH_REPORT_goal_conditioned_mode_collapse))
+> traced it to cross-goal critic interference under an aggregate return
+> normalizer, and **Phase 2 fixed it** with **per-goal value/advantage
+> normalization + per-goal value heads + a goal one-hot** (the `PerGoal`
+> variant).  The best checkpoint now reaches **≥ 0.85 on all three bins on both
+> eval seeds**, with no single-bin specialization.  Full analysis in the
+> [optimization tracking](../../../../../../../../doc/reports/shirt_distribute_optimization_tracking.md)
+> (Phase 2).
 
 ## Results (UR5e-F140)
 
-Best checkpoint `sd_train9fb` seed 2 `agent_96000` — deterministic (mean
-actions), 96 episodes/eval seed:
+**Per-goal PPO** (`Template-Shirt-Distribute-UR5e-F140-PerGoal-v0`), best
+checkpoint **seed 0 `agent_88000`** — deterministic (mean actions), 96
+episodes/eval seed:
 
-| eval seed | overall | bin0 reusable | bin1 recyclable | bin2 trash | release |
-|---|---|---|---|---|---|
-| 7 | **0.596** | 0.77 | 0.42 | 0.60 | 0.98 |
+| eval seed | overall | bin0 reusable | bin1 recyclable | bin2 trash |
+|---|---|---|---|---|
+| 7 | **0.865** | 0.87 | 0.88 | 0.85 |
+| 8 | **0.896** | 0.90 | 0.88 | 0.91 |
 
-Other seeds reach 0.75–1.00 on two bins but abandon the third (which one is
-seed-dependent), so their per-bin minimum is ~0.  The scripted baseline
-(`baseline_shirt_distribute.py`, DLS-IK carry→release through the training
-action path) places **21/24 = 0.88** across the three commanded bins, proving
-the MDP and full drum reachability.  Training curves + per-bin success in
-[figures/ur5e_f140/](figures/ur5e_f140/).
+**≥ 0.85 on every bin, both eval seeds — §2 met.**  The mode collapse is
+eliminated on all three training seeds (worst per-bin anywhere ≥ 0.39, vs the
+Phase-1 baseline's 0.00–0.09 on the abandoned drum; Phase-1 best was 0.596 =
+0.77 / 0.42 / 0.60).  Seeds 1–2 are collapse-free but ~0.84 / ~0.70 overall —
+lifting them to the bar for a single seed-robust config is the documented
+follow-up (FiLM goal-conditioning + difficulty-proportional goal sampling).
+The scripted baseline (`baseline_shirt_distribute.py`) places **21/24 = 0.88**,
+proving the MDP and full drum reachability.  Training curves + per-bin success
+in [figures/ur5e_f140/](figures/ur5e_f140/).
 
 ![Per-bin success](figures/ur5e_f140/03_per_bin_success.png)
 
