@@ -211,13 +211,12 @@ class RewardsCfg:
     # small reach shaping, a big one-shot GRASP bonus, and a much lighter drop
     # penalty so grasping is attractive and low-risk; pull/coverage/present then
     # carry it to the presentation.
-    # 1. Reach: small tip → hem-corner approach shaping (weight 2.0 -> 1.0).
-    reaching = RewTerm(func=task_rew.reaching_target, weight=1.0, params={"std": 0.25})
-    # 2. Grasp COMMIT: one-shot bonus for the FIRST grasp of the episode.
-    # dt-scaled to ≈ +10 (weight/60) — deliberately ABOVE the reach-hover return
-    # (~7) so committing to a grasp beats hovering; once-per-episode gating (env)
-    # blocks grasp-drop farming.
-    grasp_event = RewTerm(func=task_rew.grasp_event, weight=600.0)
+    # 1. Reach: tip → hem-corner approach shaping (Phase-1 value, no gripper gate).
+    reaching = RewTerm(func=task_rew.reaching_target, weight=2.0, params={"std": 0.25})
+    # 2. Grasp COMMIT: one-shot bonus for the FIRST grasp of the episode
+    # (once-per-episode gating in the env blocks grasp-drop farming) — a gentle
+    # nudge for the hem-corner grasp; Phase-1 learned its grasp without it.
+    grasp_event = RewTerm(func=task_rew.grasp_event, weight=200.0)
     # 3. Grasp hold: per-step while the hand attachment holds.
     grasp_hold = RewTerm(func=task_rew.grasp_hold, weight=6.0)
     # 4. Pull: DIRECT the second grasp to the horizontal-pull target (holder
@@ -233,14 +232,12 @@ class RewardsCfg:
     # Onset 1.10 (band upper 1.15): the study's ≤1.10 sweet spot / ≤1.15 hard
     # limit — penalise before the untested-stability region.
     overstretch = RewTerm(func=task_rew.overstretch_penalty, weight=-40.0, params={"limit": 1.10})
-    # 9. Failure: one-shot when an established hand grasp is lost.  -240 -> -40:
-    # grasping is the BOTTLENECK now (not keeping it), so the drop penalty must
-    # not deter grasp attempts; paired with grasp_event (+40) so a grasp-drop
-    # cycle nets ~0 rather than a big loss.
-    drop = RewTerm(func=task_rew.drop_event, weight=-40.0)
-    # 10. Anti-hack: penalise commanding the gripper closed while far from the
-    # target and ungrasped (the premature-close behaviour, finding #1).
-    early_close = RewTerm(func=task_rew.early_close_penalty, weight=-8.0, params={"clear_dist": 0.12})
+    # 9. Failure: one-shot when an established hand grasp is lost (dt-scaled ≈ -1).
+    # Moderate — the low grasp is reliable once learned, but don't over-deter
+    # grasp exploration (finding-#1 `early_close` penalty REMOVED: it made the
+    # policy never close the gripper -> grasp_rate 0; the attach is target-tied
+    # so an early close is only cosmetic, documented in the tracking report).
+    drop = RewTerm(func=task_rew.drop_event, weight=-60.0)
     # 10. Cosmetic: mild penalty for the arm occluding the −Y camera view of the
     # cloth (finding #5).  Small — it fights the fixed base geometry and the
     # coverage metric cannot see occlusion.
