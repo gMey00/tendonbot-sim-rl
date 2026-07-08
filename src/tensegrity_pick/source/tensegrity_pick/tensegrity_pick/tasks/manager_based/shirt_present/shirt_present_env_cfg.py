@@ -45,7 +45,7 @@ from .mdp import rewards as task_rew
 
 # Local presentation anchor (env-local) — mirrors ShirtPresentEnv.PRESENT_ANCHOR_LOCAL.
 # Kept here (not imported) so the scene cfg has no import cycle with the env.
-_PRESENT_ANCHOR = (0.50, 0.85, 1.20)
+_PRESENT_ANCHOR = (0.50, 0.85, 1.10)
 # Holder-arm rest EE offset below its mount (MEASURED, baseline job 3820849:
 # the tensegrity 5-DOF arm's tool_link_0 sits 0.98 m below the mount at the
 # straight-down joint pose below).  Mount so the gripper sits at the anchor.
