@@ -67,7 +67,7 @@ agent:
     # Distinct name so concurrent same-second array starts never share a log dir
     # (a prior FiLM-uniform vs FiLM-B5 run collided on the 1 s-resolution
     # timestamp and interleaved checkpoints).
-    experiment_name: "filmU"
+    experiment_name: "filmB5"
     write_interval: 200
     checkpoint_interval: 2000
 

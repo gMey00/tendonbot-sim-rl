@@ -77,7 +77,7 @@ gym.register(
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.joint_pos_env_cfg:UR5eF140ShirtDistributeB5EnvCfg",
-        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_pergoal_film_cfg.yaml",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_pergoal_film_b5_cfg.yaml",
     },
 )
 
