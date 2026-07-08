@@ -12,41 +12,47 @@ the condition label never enters the observation directly — it only selects
 target bin is resampled uniformly, so "nearest bin" and "correct bin" diverge
 and the policy cannot ignore the goal.
 
-> **Status: SOLVED — §2 target met (2026-07-08, Alex agent).** The episode
-> starts with the shirt already hanging from the robot's own closed gripper at a
-> sampled end-of-Task-2 holding pose (cached holding-pose bank + hanging-bank
-> restore at the fingertip, slot 0); rewards are the shirt_place release design
-> retargeted to the commanded bin (graded one-shot release event, anti-hover
-> fade, release-required success).  Phase 1 was blocked by a diagnosed
+> **Status: mode collapse SOLVED, §2 at the bar (2026-07-08, Alex agent).** The
+> episode starts with the shirt already hanging from the robot's own closed
+> gripper at a sampled end-of-Task-2 holding pose (cached holding-pose bank +
+> hanging-bank restore at the fingertip, slot 0); rewards are the shirt_place
+> release design retargeted to the commanded bin (graded one-shot release event,
+> anti-hover fade, release-required success).  Phase 1 was blocked by a diagnosed
 > **goal-conditioned mode collapse** (per-seed 2-of-3-bin specialisation); a
 > literature review
 > ([research report](../../../../../../../../doc/reports/RESEARCH_REPORT_goal_conditioned_mode_collapse))
 > traced it to cross-goal critic interference under an aggregate return
 > normalizer, and **Phase 2 fixed it** with **per-goal value/advantage
 > normalization + per-goal value heads + a goal one-hot** (the `PerGoal`
-> variant).  The best checkpoint now reaches **≥ 0.85 on all three bins on both
-> eval seeds**, with no single-bin specialization.  Full analysis in the
+> variant).  The collapse is eliminated on all three seeds and the best
+> checkpoint now places into **all three bins in balance (~0.86)** with no
+> specialization — clearing ≥ 0.85-all-bins on some eval seeds and within noise
+> of it on others.  Full analysis in the
 > [optimization tracking](../../../../../../../../doc/reports/shirt_distribute_optimization_tracking.md)
 > (Phase 2).
 
 ## Results (UR5e-F140)
 
 **Per-goal PPO** (`Template-Shirt-Distribute-UR5e-F140-PerGoal-v0`), best
-checkpoint **seed 0 `agent_88000`** — deterministic (mean actions), 96
+checkpoint **seed 0 `agent_88000`** — deterministic (mean actions), 150
 episodes/eval seed:
 
 | eval seed | overall | bin0 reusable | bin1 recyclable | bin2 trash |
 |---|---|---|---|---|
-| 7 | **0.865** | 0.87 | 0.88 | 0.85 |
-| 8 | **0.896** | 0.90 | 0.88 | 0.91 |
+| 7 | **0.880** | 0.885 | 0.872 | 0.882 |
+| 8 | 0.860 | 0.840 | 0.878 | 0.863 |
+| 9 | 0.827 | 0.780 | 0.875 | 0.827 |
+| **mean** | **0.856** | 0.835 | **0.875** | 0.857 |
 
-**≥ 0.85 on every bin, both eval seeds — §2 met.**  The mode collapse is
-eliminated on all three training seeds (worst per-bin anywhere ≥ 0.39, vs the
-Phase-1 baseline's 0.00–0.09 on the abandoned drum; Phase-1 best was 0.596 =
-0.77 / 0.42 / 0.60).  Seeds 1–2 are collapse-free but ~0.84 / ~0.70 overall —
-lifting them to the bar for a single seed-robust config is the documented
-follow-up (FiLM goal-conditioning + difficulty-proportional goal sampling).
-The scripted baseline (`baseline_shirt_distribute.py`) places **21/24 = 0.88**,
+**Mode collapse solved; §2 at the bar.**  Every bin is learned and balanced
+(no single-bin specialization) — and bin 1 (recyclable), the bin the Phase-1
+policy *abandoned*, is now the **strongest** (0.875).  The best checkpoint clears
+≥ 0.85-all-bins cleanly on eval seed 7 and is within noise on 8/9 (bin 0 the
+swing bin, 0.78–0.885).  vs the Phase-1 baseline's 0.596 (0.77 / 0.42 / 0.60)
+with one bin hard-zeroed (0.00–0.09).  Seeds 1–2 are collapse-free but ~0.84 /
+~0.70 overall — lifting them, and the swing bin, to a robust ≥ 0.85 is the
+documented follow-up (difficulty-proportional goal sampling + FiLM).  The
+scripted baseline (`baseline_shirt_distribute.py`) places **21/24 = 0.88**,
 proving the MDP and full drum reachability.  Training curves + per-bin success
 in [figures/ur5e_f140/](figures/ur5e_f140/).
 

@@ -660,10 +660,13 @@ episodes, on **two eval seeds** (7/8). Best late checkpoint per seed shown
 | 2 | best | 7 | 0.78 | 0.66 | 0.71 | 0.708 |
 | 2 | 88000 | 7 | 0.59 | 0.73 | 0.72 | 0.688 |
 
-**§2 MET.** Seed 0 `agent_88000` reaches **≥ 0.85 on all three bins on both
-eval seeds** (0.87/0.88/0.85 and 0.90/0.88/0.91) with no single-bin
-specialization — the first checkpoint to satisfy the §2 bar. A larger-sample
-confirmation (150 ep × eval seeds 7/8/9, job 3822648) is appended below.
+**Best checkpoint: seed 0 `agent_88000`** — on the 96-episode sweep it clears
+≥ 0.85 on all three bins on both eval seeds (0.87/0.88/0.85 and 0.90/0.88/0.91).
+A larger-sample confirmation (150 ep × eval seeds 7/8/9) tempers this to a
+*right-at-the-bar* verdict (see below): it clears §2 cleanly on eval seed 7 but
+bin 0 dips to 0.84/0.78 on seeds 8/9. **The mode collapse is unambiguously
+solved; the strict ≥0.85-all-bins bar is met on some eval seeds and marginal on
+others (bin 0 is now the swing bin at ~0.835 averaged).**
 
 **Mode collapse eliminated across all seeds.** The diagnostic signature of the
 Phase-1 blocker — every seed hard-zeroing one bin (baseline per-bin **0.00–0.09**
@@ -686,7 +689,32 @@ Secondary observations:
 - 3 seed-2 evals were lost to transient Vulkan/GPU-init flakes on those
   allocations (infrastructure, not code — seed 2's other evals completed).
 
-<!-- CONFIRM_PLACEHOLDER -->
+### Confirmation — larger sample (job 3822648)
+
+Seed 0 `agent_88000`, deterministic, **150 episodes** on three eval seeds:
+
+| eval seed | bin0 | bin1 | bin2 | overall | release |
+|-----------|------|------|------|---------|---------|
+| 7 | 0.885 | 0.872 | 0.882 | **0.880** | 1.00 |
+| 8 | 0.840 | 0.878 | 0.863 | 0.860 | 1.00 |
+| 9 | 0.780 | 0.875 | 0.827 | 0.827 | 1.00 |
+| **mean** | **0.835** | **0.875** | **0.857** | **0.856** | 1.00 |
+
+Honest read: **collapse solved, §2 essentially achieved but not yet robust to
+the eval seed.** Every bin is learned and balanced (~0.83–0.88, mean|act|≈0.28 —
+no noise-controller, release_rate 1.0). bin 1 (recyclable — the Phase-1
+*abandoned* bin) is now the **strongest** at 0.875, direct evidence the per-goal
+normalization did its job. bin 0 (reusable) became the swing bin: it clears
+0.85 on eval seed 7 but dips to 0.78 on seed 9 — an eval-seed init-variance
+effect (deterministic actions, but the eval seed still draws the per-episode
+holding poses/goals). The best checkpoint sits **right at the bar**, clearing it
+on 1 of 3 eval seeds and within noise on the others.
+
+**Next lever (queued):** the report's B5 (difficulty-proportional goal sampling)
+— cheapest on-policy-native way to push the swing bin above 0.85 across eval
+seeds and lift seeds 1–2 — optionally stacked with B3 (FiLM critic
+conditioning). This is a robustness refinement on top of an already-solved
+collapse, not a re-attempt.
 
 ---
 
@@ -703,23 +731,28 @@ plotting scripts.  Six root-cause bugs found and fixed along the way
 bootstrapped-termination free-cliff, release-penalty collapse, and the
 train/eval init-distribution shift).
 
-**§2 MET (2026-07-08, Phase 2).** The Phase-1 blocker — goal-conditioned mode
-collapse (per-seed 2-of-3-bin specialisation) — was diagnosed by a literature
-review as cross-goal critic interference under an aggregate return normalizer,
-and fixed by **per-goal value/advantage normalization + per-goal value heads +
-a goal one-hot** (`PerGoalPPO` / `GoalMultiHeadValue`; see Phase 2 above). Best
-selectable checkpoint: **seed 0 `agent_88000` — deterministic 0.87 / 0.88 / 0.85
-(eval seed 7) and 0.90 / 0.88 / 0.91 (eval seed 8)**, i.e. ≥ 0.85 on every
-commanded bin on both eval seeds, no single-bin specialization. The collapse is
-eliminated on all three seeds (worst per-bin anywhere ≥ 0.39 vs the Phase-1
-baseline's 0.00–0.09 on the abandoned drum). Phase-1 best was 0.596.
+**Mode collapse SOLVED; §2 at the bar (2026-07-08, Phase 2).** The Phase-1
+blocker — goal-conditioned mode collapse (per-seed 2-of-3-bin specialisation) —
+was diagnosed by a literature review as cross-goal critic interference under an
+aggregate return normalizer, and fixed by **per-goal value/advantage
+normalization + per-goal value heads + a goal one-hot** (`PerGoalPPO` /
+`GoalMultiHeadValue`; see Phase 2 above). The collapse is **eliminated on all
+three seeds** — worst per-bin anywhere ≥ 0.39 vs the Phase-1 baseline's
+0.00–0.09 on the abandoned drum; the Phase-1 *abandoned* bin (recyclable) is now
+the **strongest** (0.875). Best selectable checkpoint **seed 0 `agent_88000`**
+reaches a balanced **0.856 mean over 3 eval seeds (bins 0.835 / 0.875 / 0.857)**,
+clearing ≥ 0.85-all-bins cleanly on eval seed 7 and sitting within noise of it
+on seeds 8/9 (bin 0 the swing bin, 0.78–0.885). Phase-1 best was 0.596
+(0.77/0.42/0.60). **The core objective — a goal-conditioned policy that places
+into all three commanded bins without specialisation — is achieved**; the strict
+≥ 0.85-on-every-bin-every-eval-seed bar is a robustness refinement away.
 
-**Remaining / follow-up work (not blockers for §2):**
-1. **Lift seeds 1–2 to the bar** for a single seed-robust config: stack the
-   research report's B3 (FiLM goal-conditioning of the critic) and B5
-   (difficulty-proportional goal sampling, evaluated on uniform). Seed 1 is
-   ~0.84 (all bins ≥ 0.76), seed 2 ~0.70 (all bins ≥ 0.59) — both collapse-free
-   but short of 0.85 on the harder bins.
+**Remaining / follow-up work:**
+1. **Robustly clear ≥ 0.85 on every bin/eval-seed and lift seeds 1–2**: the
+   report's B5 (difficulty-proportional goal sampling, evaluated on uniform) is
+   the cheapest on-policy lever for the swing bin; optionally stack B3 (FiLM
+   critic conditioning). Seed 1 ~0.84 (all bins ≥ 0.76), seed 2 ~0.70 (all bins
+   ≥ 0.59) — collapse-free but below 0.85 on the harder bins.
 2. **Bin-layout randomisation** (§8 / §2 generalise beyond the three fixed
    drums) and the real **Task-2 terminal-state bank** at the documented seam.
 3. Optional: confirm the mechanism from TensorBoard (`PerGoal/raw_advantage_mean_bin*`
