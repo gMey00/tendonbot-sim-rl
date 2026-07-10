@@ -1,96 +1,88 @@
-# Shirt Present — Visual Verification Guide
+# Shirt Present — Visual Verification Guide (HEM-TO-HEM baseline)
 
-The selected `shirt_present` (pipeline Task 2) policy — **watch it regrasp and
-stretch the hanging shirt in the simulator** to confirm the trained behaviour
-matches the reported numbers before reusing it downstream (its stretched
-terminal states seed Task 3, `shirt_distribute`).
+This is the **hem-to-hem** presentation policy — the current `shirt_present`
+env (merged into `project/tendonbot-sim-rl` 2026-07-10 as the new hem↔hem
+baseline; the earlier naive lowest-point env/policy `agent_96000` is superseded,
+its checkpoint kept in `logs/skrl/theses_logs/…2026-07-04…/`).  Play it with
+**the current env** — its observation space is hem-to-hem (`pull_target_rel`
+added, `lowest_point_rel` removed), so it is NOT interchangeable with the old
+`agent_96000` checkpoint.
 
-Selected checkpoint: **UR5e-F140, run `2026-07-04_15-21-09_ppo_torch_seed43`,
-`agent_96000`** — deterministic windowed present latch **0.927** across two
-eval seeds (7 & 11, 96 episodes each), grasp 0.99, drop 0.00, final silhouette
-coverage 0.68. Scripted baseline: 0.125. Full history:
-[shirt_present_optimization_tracking.md](../../../../../../doc/reports/shirt_present_optimization_tracking.md).
+Geometry: the retriever holds the shirt at an arbitrary upper point so it hangs
+hem-down, and the learning arm grasps the **accessible (lowest) hem corner** and
+pulls it up to the holder's height, **horizontally** along the camera-plane x —
+gravity drapes the body below the taut chord.  This is a FIRST STEP toward a
+better hem↔hem policy (present 0.380, below the naive 0.927 — see limitations).
 
-## What was kept / removed
+## Result (deterministic, 2 eval seeds × 96 episodes)
 
-A **copy** — the full training run (all iterations) still lives under
-`logs/skrl/shirt_present/` on the Alex checkout. Here, only the final run,
-pruned to the two converged checkpoints:
+Selected checkpoint: **UR5e-F140, run `2026-07-08_16-03-46_ppo_torch_seed43`,
+`agent_104000`** (a resume from the 8h-wall-cut run 4):
 
-```
-ur5e_f140/<run>/
-├── checkpoints/
-│   ├── agent_96000.pt   ← eval-SELECTED policy — play THIS
-│   └── best_agent.pt    ← highest TRAINING-reward checkpoint (reference only;
-│                           training reward does not predict deterministic
-│                           quality on this task — see the tracking report)
-├── events.out.tfevents… ← TensorBoard curve (convergence sanity)
-├── params/{agent,env}.yaml
-└── run_status.json
-```
+| metric | value |
+|---|---|
+| present latch (windowed) @ coverage gate 0.60 | **0.380** |
+| grasp rate | 0.73 |
+| final silhouette coverage | 0.637 |
+| stretch ratio (flat-rest) | 0.83 |
+| drop rate | 0.04 |
 
-## How to play the checkpoint
+**This is WORKING but BELOW the production policy.**  The first pass's naive
+lowest-point policy (`agent_96000`, on `project/tendonbot-sim-rl`) reaches
+present **0.927 @ coverage 0.68** and remains the recommended production policy.
+The hem-to-hem redesign does not beat it in-scene: the study's *winning* hem↔hem
+grasp needs a high second hem corner RL cannot learn to grasp, and the
+*learnable* accessible-corner version's coverage (0.64) is below the naive
+stretch's (0.68).  Full write-up:
+[tracking report Phase 2](../../../../../../doc/reports/shirt_present_optimization_tracking.md).
 
-⚠️ **Render on a workstation, not on Alex.** Isaac Sim's RTX renderer segfaults
-on the cluster GPU driver (`doc/alex_quickstart.md` §7a). Copy the checkpoint
-over and play locally.
+## How to play
 
 ```bash
+# On the project/shirt-present worktree, in the env_isaaclab conda env,
+# on a WORKSTATION (Alex cannot render — RTX segfaults on the cluster driver).
 cd src/tensegrity_pick
-
-conda run --no-capture-output -n env_isaaclab \
-  python3 scripts/skrl/play.py \
-  --task Template-Shirt-Present-UR5e-F140-Play-v0 \
-  --num_envs 4 \
-  --checkpoint logs/skrl/need_visual_verification/shirt_present/ur5e_f140/*/checkpoints/agent_96000.pt
+PYTHONPATH="$PWD/source/tensegrity_pick:$PYTHONPATH" \
+python scripts/skrl/play.py --task Template-Shirt-Present-UR5e-F140-Play-v0 \
+    --num_envs 16 \
+    --checkpoint logs/skrl/need_visual_verification/shirt_present/ur5e_f140/2026-07-08_16-03-46_ppo_torch_seed43/checkpoints/agent_104000.pt
 ```
 
-`--num_envs 4` keeps the scene readable. The Play task ID and the checkpoint
-must both be the UR5e-F140 variant.
+(The `PYTHONPATH` pin makes imports resolve to this worktree, not any shared
+editable install — see the tracking report's isolation note.)
 
-## The task, in one picture
+## What to watch — PASS criteria
 
-The shirt hangs from a **static anchor at the presentation pose** (a stand-in
-for the retriever robot's grip — the passive tensegrity holder is scenery),
-pinned at one random particle patch, so it drapes into a random hanging shape.
-The UR5e must:
+You should SEE, on most envs:
 
-1. **reach down to the lowest hanging point** of the drape,
-2. **close the gripper** there (a deterministic proximity attach — the cloth
-   "sticks" to the fingertip when the tip is within ~10 cm and closing; it is
-   NOT contact physics), then
-3. **pull the grabbed point out** so the garment spans taut between the two
-   grasps and faces the −Y inspection camera, and **hold it still**.
+1. **Open-gripper approach.**  The arm approaches the lowest hem corner with the
+   gripper OPEN, then closes and grasps AT the corner (the first pass's "closes
+   too early" behaviour is gone).
+2. **Grasp of a HEM CORNER** (a seam-marked bottom corner of the shirt), not the
+   mid-garment lowest point.
+3. **Horizontal pull to the holder's height:** the grasped corner is lifted to
+   the holder anchor's height and pulled sideways so the two grips form a
+   roughly HORIZONTAL taut chord; the body drapes below it toward the camera.
+4. **A held, still presentation** for ~1 s (the windowed latch) on the episodes
+   that succeed (~38 %).
 
-## What to look for in EVERY playback
+## Known limitations (expected — this is the documented shortfall)
 
-**PASS looks like:**
-- The arm drives its fingertip **down onto the lowest point** of the hanging
-  shirt and the shirt snaps onto the fingertip (grasp) — the grabbed point
-  then tracks the gripper.
-- The arm **pulls the shirt open into a stretched, roughly camera-facing
-  sheet** — visibly more spread than the raw hang — and **holds it still** for
-  the rest of the episode (no swinging at the end).
-- **Both** grasps hold throughout: the top stays pinned at the anchor, the
-  hand keeps its point — the cloth spans between them.
-- Full-length episodes: no early freeze, no teleport/explosion (NaN), no arm
-  flinging to a joint limit.
+- **~62 % of episodes do NOT fully present.**  The garment is often
+  under-spread (coverage < 0.60) because a random-point hang bunches more than
+  the naive lowest-point stretch; the horizontal pull only partly recovers it.
+- **Occasional drops** mid-hold (~4 %).
+- **The passive holder arm** is posed above the anchor pointing down so it looks
+  like it grips the anchor patch (finding #3 fix); its fingertip alignment is
+  cosmetic — nudge `_HOLDER_REST_DROP` in the scene cfg if it looks off.
+- **Camera occlusion / cloth-robot brush** may still occur occasionally
+  (findings #2/#5): the coverage metric has no camera sensor and the UR5e has
+  self-collision disabled, so these are best-effort/cosmetic.
 
-**Watch for / known limitations (the ~7 % that miss 0.927):**
-- **Reach miss:** occasionally the fingertip stalls a few cm short of the
-  lowest point and never triggers the attach — that env just holds the raw
-  hang. Expect roughly **3–4 of the 4 envs** to reach a clearly-presented pose.
-- **Marginal coverage:** the RL success gate is silhouette coverage ≥ **0.50**;
-  the FAPS heuristic study recommends **0.65** for a genuinely inspectable
-  garment. Some passing episodes are only *moderately* opened — judge by eye
-  whether the stretch looks camera-inspectable, and note it if many look
-  bunched (candidate re-threshold, tracked in `doc/TODO.md`).
-- **Overstretch:** the pull should stop at a taut sheet, not keep yanking the
-  cloth thin/rippling. A brief over-pull that relaxes is fine; sustained
-  over-tension that distorts the mesh is not.
-- **Cosmetic:** the shirt now renders **FAPS-green** (was red) after the
-  `cloth_object.py` refactor on `tendonbot-sim-rl` — expected, not a fault.
+## Findings from the FIRST pass (what motivated this redesign)
 
-**The stillness gate is on the CLOTH centroid, not the gripper** — the raised
-UR5e posture always has some residual end-effector sway; that is normal and
-does not fail the task as long as the hanging garment itself is settled.
+See [findings.md](findings.md) — Georg's notes from inspecting the naive
+`agent_96000`.  All six were addressed; note in particular that finding #1's
+"gripper closes too early" was found to be **cosmetic** (the deterministic
+attach only fires within 10 cm of the target), and a reward penalty for it
+*broke* grasp learning entirely — so it was removed (tracking report Phase 2).

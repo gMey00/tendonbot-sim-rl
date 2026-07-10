@@ -32,8 +32,6 @@ from ..shared.cloth_object import apply_cloth_startup_event, disable_complex_col
 from ..shared.cloth_sorting_scene_cfg import (
     CLOTH_SORTING_SHIRT_CFG,
     ClothSortingSceneCfg,
-    RETRIEVE_MOUNT_HEIGHT_M,
-    RETRIEVE_MOUNT_XY,
     configure_cloth_sim,
 )
 from . import mdp
@@ -45,20 +43,42 @@ from .mdp import rewards as task_rew
 ##
 
 
+# Local presentation anchor (env-local) — mirrors ShirtPresentEnv.PRESENT_ANCHOR_LOCAL.
+# Kept here (not imported) so the scene cfg has no import cycle with the env.
+_PRESENT_ANCHOR = (0.50, 0.85, 1.10)
+# Holder-arm rest EE offset below its mount (MEASURED, baseline job 3820849:
+# the tensegrity 5-DOF arm's tool_link_0 sits 0.98 m below the mount at the
+# straight-down joint pose below).  Mount so the gripper sits at the anchor.
+_HOLDER_REST_DROP = 0.98
+
+
 @configclass
 class ShirtPresentSceneCfg(ClothSortingSceneCfg):
     """Shirt-present scene: second robot learns; retriever spawns passively.
 
-    The passive holder is visual scenery — the actual "hold" is a static
-    solver anchor at the presentation pose (see ShirtPresentEnv).
-    TODO(pipeline): pose the holder arm at its Task-1 terminal configuration
-    from the state bank and anchor the cloth to its fingertip.
+    Finding #3 fix (visual): the passive holder is posed to GRIP the anchor
+    patch instead of hanging in its far rest pose.  It is mounted directly
+    above the (local) presentation anchor with the arm pointing straight down
+    so its gripper sits at the grasp point.  The actual "hold" is still the
+    static solver anchor (see ShirtPresentEnv); this only makes the retriever
+    visually plausible.  NOTE: exact fingertip alignment is cosmetic and should
+    be GUI-confirmed on a workstation (Alex cannot render); ``_HOLDER_REST_DROP``
+    is the measured rest drop and can be nudged there.
     """
 
     holder_robot: ArticulationCfg = TENS_5DOF_GRIPPER_CFG.replace(
         prim_path="{ENV_REGEX_NS}/HolderRobot",
         init_state=ArticulationCfg.InitialStateCfg(
-            pos=(RETRIEVE_MOUNT_XY[0], RETRIEVE_MOUNT_XY[1], RETRIEVE_MOUNT_HEIGHT_M),
+            pos=(_PRESENT_ANCHOR[0], _PRESENT_ANCHOR[1],
+                 _PRESENT_ANCHOR[2] + _HOLDER_REST_DROP),
+            # Straight-down arm pose so tool_link_0 reaches the anchor below.
+            joint_pos={
+                "base_y_joint": 0.0,
+                "base_z_joint": 0.0,
+                "elbow_joint": 0.0,
+                "wrist_y_joint": 0.0,
+                "wrist_x_joint": 0.0,
+            },
         ),
     )
 
@@ -100,14 +120,16 @@ class ObservationsCfg:
             func=mdp.ee_pos_w,
             params={"asset_cfg": SceneEntityCfg("robot", body_names=MISSING)},
         )
-        # Hanging shirt state (centroid + regrasp target).  The lowest point
-        # is given relative to the DYNAMIC finger tip — the exact geometry the
-        # deterministic attach trigger uses (camera-trivial from depth).
+        # Hanging shirt state (centroid + regrasp target).  The targeted hem
+        # corner AND the horizontal-pull goal are given relative to the DYNAMIC
+        # finger tip — the exact geometry the deterministic attach trigger uses
+        # (camera-trivial from depth) plus where to pull the grasped corner.
         shirt_rel = ObsTerm(
             func=mdp.shirt_rel_pos,
             params={"ee_cfg": SceneEntityCfg("robot", body_names=MISSING)},
         )
-        lowest_point_rel = ObsTerm(func=task_rew.lowest_point_rel_tip)
+        hand_target_rel = ObsTerm(func=task_rew.hand_target_rel_tip)
+        pull_target_rel = ObsTerm(func=task_rew.pull_target_rel_tip)
         shirt_vel = ObsTerm(func=mdp.shirt_velocity)
         # Task state: both grasps, tautness, camera-plane coverage — all
         # camera-derivable in principle (grasp points visible, garment flat
@@ -182,29 +204,44 @@ class RewardsCfg:
     attachments and by the silhouette (not bbox) coverage metric.
     """
 
-    # 1. Reach: tip → lowest hanging point (the deterministic attach geometry)
-    reaching = RewTerm(func=task_rew.reaching_lowest_point, weight=2.0, params={"std": 0.25})
-    # 2. Grasp: per-step while the hand attachment holds
-    grasp_hold = RewTerm(func=task_rew.grasp_hold, weight=5.0)
-    # 3. Stretch: clamped tautness progress (gated on both attachments)
-    stretch = RewTerm(func=task_rew.stretch_progress, weight=8.0, params={"lo": 0.50, "hi": 0.98})
-    # 4. Coverage: camera-plane silhouette coverage (gated on both attachments)
-    # 10 → 14 after run 3/4 diags: coverage was the weakest presented gate
-    # (0.47–0.55 in-gate fraction while holding; some episodes hover just
-    # under the 0.50 threshold).
+    # Reward-balance rationale (run 3821927 diagnosis): the first weighting let
+    # the policy FARM `reaching` (0.88/step) and never commit to a grasp
+    # (grasp_rate < 0.05, present 0.0) — a rich, safe reach-hover optimum, made
+    # worse by a -240 drop penalty that punished any grasp attempt.  Rebalanced:
+    # small reach shaping, a big one-shot GRASP bonus, and a much lighter drop
+    # penalty so grasping is attractive and low-risk; pull/coverage/present then
+    # carry it to the presentation.
+    # 1. Reach: tip → hem-corner approach shaping (Phase-1 value, no gripper gate).
+    reaching = RewTerm(func=task_rew.reaching_target, weight=2.0, params={"std": 0.25})
+    # 2. Grasp COMMIT: one-shot bonus for the FIRST grasp of the episode
+    # (once-per-episode gating in the env blocks grasp-drop farming) — a gentle
+    # nudge for the hem-corner grasp; Phase-1 learned its grasp without it.
+    grasp_event = RewTerm(func=task_rew.grasp_event, weight=200.0)
+    # 3. Grasp hold: per-step while the hand attachment holds.
+    grasp_hold = RewTerm(func=task_rew.grasp_hold, weight=6.0)
+    # 4. Pull: DIRECT the second grasp to the horizontal-pull target (holder
+    # height, offset along camera-plane x) — the study's taut horizontal chord.
+    pull = RewTerm(func=task_rew.pulling_horizontal, weight=12.0, params={"std": 0.20})
+    # 5. Stretch: clamped tautness progress (gated on both attachments)
+    stretch = RewTerm(func=task_rew.stretch_progress, weight=4.0, params={"lo": 0.80, "hi": 1.02})
+    # 6. Coverage: camera-plane silhouette coverage (gated on both attachments).
     coverage = RewTerm(func=task_rew.coverage_reward, weight=14.0)
-    # 5. Success: full presentation predicate — dominant per-step term
+    # 7. Success: full presentation predicate — dominant per-step term
     presented = RewTerm(func=task_rew.presented, weight=30.0)
-    # 6. Safety: tautness beyond the validated band (per-step, proportional).
-    # Penalty onset 1.10 → 1.05: the reward plateau 0.97–1.10 had no gradient,
-    # and diag'd failures held at ratio ~1.13 just past the predicate band
-    # edge — starting the penalty at 1.05 creates a moat under it.
-    overstretch = RewTerm(func=task_rew.overstretch_penalty, weight=-40.0, params={"limit": 1.05})
-    # 7. Failure: one-shot when an established hand grasp is lost (dt-scaled
-    # ≈ −4).  −120 → −240 after run-2 evals: grasp_rate 1.00 but drop_rate
-    # 0.135–0.229 capped deterministic present_rate at 0.65–0.71 (the policy
-    # kept flirting with the gripper-open threshold mid-hold).
-    drop = RewTerm(func=task_rew.drop_event, weight=-240.0)
+    # 8. Safety: tautness beyond the validated band (per-step, proportional).
+    # Onset 1.10 (band upper 1.15): the study's ≤1.10 sweet spot / ≤1.15 hard
+    # limit — penalise before the untested-stability region.
+    overstretch = RewTerm(func=task_rew.overstretch_penalty, weight=-40.0, params={"limit": 1.10})
+    # 9. Failure: one-shot when an established hand grasp is lost (dt-scaled ≈ -1).
+    # Moderate — the low grasp is reliable once learned, but don't over-deter
+    # grasp exploration (finding-#1 `early_close` penalty REMOVED: it made the
+    # policy never close the gripper -> grasp_rate 0; the attach is target-tied
+    # so an early close is only cosmetic, documented in the tracking report).
+    drop = RewTerm(func=task_rew.drop_event, weight=-60.0)
+    # 10. Cosmetic: mild penalty for the arm occluding the −Y camera view of the
+    # cloth (finding #5).  Small — it fights the fixed base geometry and the
+    # coverage metric cannot see occlusion.
+    occlusion = RewTerm(func=task_rew.occlusion_penalty, weight=-2.0)
 
     # Regularisation (curriculum ramps these up, shirt_place profile)
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)

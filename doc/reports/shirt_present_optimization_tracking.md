@@ -357,3 +357,211 @@ regenerates at any size for shirt_distribute.
 
 `shirt_present/figures/ur5e_f140/01–06` (run 6, plotted via
 `scripts/plotting/plot_shirt_present_training_results.py`).
+
+---
+
+## Phase 2: Hem-to-Hem Presentation Redesign
+
+**Date:** 2026-07-07
+
+After Georg's visual inspection of the run-6 checkpoint (findings in
+`logs/skrl/need_visual_verification/shirt_present/findings.md`), the naive
+lowest-point second grasp was replaced with the **hem-corner ↔ hem-corner,
+horizontal-pull** geometry validated by the FAPS heuristics study
+([present_heuristics_study.md](present_heuristics_study.md): scripted hem↔hem
+median camera-plane coverage **0.820** @ ratio 1.05 vs **0.679** for the naive
+lowest-point rule, +0.14).  Six visual-inspection findings were addressed in
+the same pass.
+
+### Findings addressed (visual inspection of agent_96000)
+
+1. **Premature gripper-close reward hack** — `reaching_target` now pays out
+   ONLY while the gripper is open pre-grasp (zeroed when commanded closed) and
+   a new `early_close_penalty` (−15, scaled by distance) punishes closing the
+   gripper while far from the target and ungrasped.  The policy must approach
+   OPEN and close at the target.
+2. **Cloth/robot clipping & wrap-around** — mitigated by the cleaner horizontal
+   geometry (the arm works BESIDE the taut chord instead of reaching through
+   the drape to the lowest point) plus the relocated anchor (shirt hangs in
+   free space, clear of the drum/pedestal).  Residual is a collision-fidelity
+   matter (the UR5e has `enabled_self_collisions=False`); GUI-verify only.
+3. **Passive holder didn't grip the anchor** — the holder arm is now mounted
+   directly above the (local) presentation anchor pointing straight down; the
+   rest EE offset was MEASURED (baseline job 3820849/3821608: tool_link_0 sits
+   0.98 m below the mount) so the gripper sits at the anchor (measured
+   gripper→anchor distance 0.087 m, was 0.207 m at the first guess).
+4. **Shirt self-collision "too far along Y" → requested x=0.8** — reconciled
+   and REJECTED as stated.  The UR5e has self-collision DISABLED, so the fold
+   is cosmetic, not physical.  The literal x=0.8 sits directly above the
+   robot's OWN pedestal (x∈[0.6,0.9], y∈[0.85,1.15]) and would drape the shirt
+   through the robot — regressing finding #2.  Instead the local anchor moved
+   to **x=0.50**, halving the cross-body reach (base at x=0.75) while clearing
+   both the reusable drum (right edge 0.42) and the pedestal.  Coverage is
+   translation-invariant (`cloth_metrics` rasterizes the zero-based
+   silhouette), so relocating the anchor is metric-neutral.
+5. **Arm occludes the −Y inspection camera** — a mild `occlusion_penalty` (−2)
+   discourages the EE sitting on the camera side of the cloth.  Best-effort:
+   the coverage metric has NO camera sensor so it cannot see occlusion, and the
+   fixed base geometry (robot at y=1.0, cloth y=0.85, camera y=2.0) makes some
+   overlap unavoidable.  GUI-verify.
+6. **Cloth "a bit too stretchy"** — investigated, NO change: shirt_present and
+   shirt_pick share the identical `CLOTH_SORTING_SHIRT_CFG`
+   (`stretch_stiffness` 1e5, `mass_kg` 0.30), so it is a shared-cloth property
+   matching the validated shirt_pick, not a task bug.  The directed 1.05 pull +
+   overstretch guard keep the presentation in-band.
+
+### Geometry & MDP changes
+
+* **Holder** restricted to the 43 bottom-edge-anchored hanging-bank states
+  (`present_geometry.holder_region_mask`) so the retriever grips a HEM point —
+  the study's hem↔hem holder.  Set `use_hem_holder=False` to fall back to the
+  full random-anchor bank (the oracle-guided regime, study §5.2, median 0.713).
+* **Hand target** = the opposite hem corner.  The two hem-corner particles
+  (3835, 9696) are found once from the flat-rest shape via the study's landmark
+  scheme (`present_geometry.hem_corner_particle_ids`).  The target is **latched
+  at reset** to the more accessible (farther-from-anchor) corner — recomputing
+  it per step made the argmax flip between the two corners (~0.37 m apart) when
+  they hung at similar distances, a discretely jumping target (measured:
+  scripted reach 2/16 per-step → 8/32 latched).
+* **Directed horizontal pull** (`pulling_horizontal`, weight 10): the hand is
+  shaped toward `anchor + x_sign·(1.05·rest)` at the holder's y/z — the study's
+  taut horizontal chord (gravity drapes the body below).  Replaces the old
+  undirected `stretch_progress`-only shaping.
+* **Tautness** switched from the geodesic + at-grasp-r0 normalisation to the
+  study's **flat rest distance** between the two grasp patches
+  (`cloth_metrics.stretch_ratio` definition).  The r0/geodesic scheme was
+  calibrated for the lowest-point grasp (span already gravity-taut at grasp);
+  hem↔hem CHANGES configuration hang→horizontal, so a correctly executed pull
+  read ~0.82 normalised (below the taut gate) — the flat-rest denominator reads
+  **1.05 raw** at the chord directly (measured baseline 3821608:
+  at-grasp ratio 1.051, p10–p90 1.046–1.057).  Band [0.90, 1.15].
+* **Success threshold** raised to coverage **≥ 0.65** (study recommendation for
+  hem↔hem; was 0.50 for the naive rule).
+* **Local anchor** (0.50, 0.85, 1.20): z lowered 1.60→1.20 so the horizontal
+  chord is within the UR5e envelope (base z=0.75); measured that z=1.35 left
+  the far pull-side at the reach edge (baseline 3820849 reach 6/16) while z=1.20
+  brings both sides inside (8/32).
+
+### Scripted baseline calibration (in-scene, hem↔hem horizontal pull)
+
+`baseline_shirt_present.py` (weak resolved-rate servo — a lower bound, NOT the
+RL ceiling; the original naive baseline scored present 0.125 and RL reached
+0.927 from it):
+
+| baseline | reach<7cm | grasped | present | held coverage (p50 / p90 / max) | at-grasp ratio |
+|---|---|---|---|---|---|
+| v1 (z=1.35, geodesic+r0) | 6/16 | 7/16 | 0/16 | 0.515 / 0.638 / 0.698 | 1.28 (mis-cal) |
+| v2 (z=1.20, flat-rest) | 2/16 | 2/16 | 0/16 | 0.633 / — / — | **1.051** |
+| **v3 (+ latched target)** | **8/32** | **13/32** | **4/32 = 0.125** | **0.629 / 0.744 / 0.817** | 1.05 |
+
+The v3 profile (present 0.125, grasp 0.41, coverage ceiling 0.82) mirrors the
+original naive baseline that RL took to 0.927.  Raw hem-anchored hang coverage
+is already 0.646 (p90 0.787) — the hem hold spreads the garment before any
+stretch; the horizontal pull adds the taut top edge (best envs reach the
+study's 0.82).  In-scene delta vs the robot-free study: the scripted servo
+rarely completes the pull, so median held coverage (0.63) sits below the
+study's 0.82 median — the RL policy is expected to close this gap.
+
+### What LOST / rejected (measured)
+
+* **Geodesic + r0-normalised tautness** — mis-reads the hang→horizontal config
+  change (correct pull → 0.82 normalised, below the 0.92 gate).  Removed the
+  spring-graph Bellman-Ford machinery; flat rest distance is clean for the
+  hem-corner pair.
+* **Anchor x=0.8 (the literal request)** — drapes the shirt through the robot's
+  own pedestal; x=0.50 chosen instead.
+* **Per-step hand-target selection** — jumpy argmax; latched at reset.
+* **Anchor z=1.35** — far pull-side at the reach edge; lowered to 1.20.
+
+### RL training — a five-run debugging arc; a WORKING policy that falls short of the naive baseline
+
+**Headline (measured).**  The hem-to-hem policy **works** — it learns to grasp
+the accessible hem corner and pull it into a taut horizontal presentation — but
+does **NOT** beat the first pass's naive lowest-point policy in-scene.  Best
+deterministic checkpoint (**seed 43 resume, `2026-07-08_16-03-46/agent_104000`,
+2 eval seeds × 96 episodes**): **present 0.380, grasp 0.729, coverage 0.637,
+stretch 0.83, drop 0.041** at the 0.60 gate — vs the first pass's **0.927 at
+coverage 0.68**.  A resume from the 8h-wall-cut run (fresh LR) lifted present
+0.32 → 0.38 and coverage 0.61 → 0.64 (the ~0.85 stochastic present spikes were
+noise; the deterministic mean is 0.38).  seed 44 did not consolidate (present
+~0.10, grasp ~0.4).  Two measured reasons for the shortfall:
+
+1. **The study's WINNING hem↔hem grasp is robot-unlearnable.**  Holding the
+   shirt upside-down by a hem corner (coverage 0.82) puts the *second* hem
+   corner high near the top edge; RL could not learn to grasp it (grasp_rate
+   < 0.1 across two full runs even with a +600 one-shot grasp bonus and a
+   lowered anchor).  The low, accessible grasp is the one Phase-1 learned.
+2. **The LEARNABLE geometry's coverage is lower than the naive stretch's.**
+   Random-anchor holder + accessible low hem corner + horizontal pull reaches
+   only ~0.61 coverage in-scene — below the naive lowest-point + undirected
+   stretch's 0.68.  The bunched random hang (~0.50) plus an imperfect pull does
+   not spread the garment as well as the study's robot-free harness (0.713)
+   suggested, nor as well as the simple stretch the first pass already used.
+
+So the FAPS heuristics study's 0.82 is a robot-free upper bound that does not
+survive the requirement that a real UR5e *reach and grasp* the second point.
+
+**The five-run arc (each failure diagnosed from tfevents, then fixed):**
+
+| run | geometry / reward | result | diagnosis |
+|---|---|---|---|
+| 1 (3821927) | hem-holder, open-gripper reach GATE | grasp < 0.05, present 0 | the gate made "hover near the corner, gripper open" a rich safe optimum |
+| 2 (3822833) | hem-holder, `early_close` penalty | grasp < 0.1 (unstable) | high 2nd-corner grasp unlearnable + early_close suppressed closing |
+| 3 (3822928) | random-holder low corner, `early_close` | grasp **0.00** | `early_close` (any close while far → −8) taught the policy to NEVER close the gripper |
+| 4 (3823022) | random-holder, `early_close` REMOVED | grasp 0.89, present 0.32 (det) | works — grasp learning recovered; coverage-limited |
+| 4-resume (3826501) | resume from agent_108000, fresh LR, +108 k | **present 0.380, grasp 0.729, coverage 0.637 (det, SELECTED)** | best policy; coverage ceiling ~0.64 caps present |
+
+**Reward lessons (the important ones):**
+
+* **Finding-#1 anti-hack terms broke grasp learning.**  Both the open-gripper
+  reach gate (run 1) and the `early_close` penalty (runs 2–3) drove grasp_rate
+  to ~0: the penalty for closing the gripper while far taught the policy to
+  never close it, so it never grasped.  But the deterministic attach only fires
+  within 0.10 m of the target ANYWAY, so an early close is cosmetic, not
+  exploitable — the penalty was all cost, no benefit.  REMOVED; grasp learning
+  recovered immediately (run 4).  Finding #1 is documented as cosmetic.
+* **A one-shot grasp-commit bonus (once per episode, weight 600 ≈ +10 effective)
+  helps** the slightly-harder hem-corner grasp overcome the drop-penalty
+  risk-aversion; once-per-episode gating blocks grasp-drop farming.
+* **512-env silhouette stall:** one exploded cloth among 512 blew up the shared
+  rasterization grid (global-max grid_dim); clamp positions to a box before
+  rasterizing, and train at **64 envs** (the Stage-0 throughput sweet spot).
+
+**Coverage is the ceiling.**  Deterministic grasp (0.73) and tautness (stretch
+0.83) are solid; present is capped because coverage sits at ~0.64 — right at the
+0.60 gate and below the 0.65 study target — so only the better-covered episodes
+latch, and residual drops (~0.04) trim a little more.  More training lifts
+present only marginally: the geometry's coverage ceiling is the binding
+constraint, and it is *below* the naive stretch's 0.68.
+
+**Decision (2026-07-10): MERGED into `project/tendonbot-sim-rl` as the new
+hem↔hem baseline for continued RL exploration.**  Georg's call: this iteration
+is a *first step* toward a better hem↔hem policy (having heuristically ruled out
+the naive random→lowest strategy), so the hem-to-hem env + geometry + the six
+visual-inspection fixes become the working `shirt_present` env, and further RL
+iterates from here.  The naive first-pass policy (`agent_96000`, present 0.927 @
+coverage 0.68) is **superseded as a policy** — its env (naive lowest-point obs
+space) no longer matches — but its checkpoint is preserved under
+`logs/skrl/theses_logs/shirt_present/2026-07-04_15-21-09_ppo_torch_seed43/` for
+reference/benchmarking.  The best hem-to-hem checkpoint (seed 43 resume
+`agent_104000`, present 0.380 @ coverage 0.637) is in
+`need_visual_verification/` for behaviour inspection.
+
+**Two limiters for the next iteration to beat** (to reach the study's 0.82):
+(1) the *winning* hem↔hem grasp (both corners, coverage 0.82) is RL-unlearnable
+because the second corner hangs high — needs a grasp CURRICULUM (start from a
+pre-grasped state / lower the target progressively) or a reachable proxy
+second-grasp; (2) the *learnable* random-holder→low-corner PAIR spreads the
+garment less (coverage 0.64) than even the naive stretch (0.68) — needs a better
+holder/second-grasp pair (the study's `side→hem_c` 0.83 and `hem↔hem` 0.72–0.82
+cells beat random pairs; biasing the upstream Task-1 pick toward a hem/side grip
+would unlock them).
+
+**Visual-verification note.**  The hem-to-hem policy MUST be played with the
+`project/shirt-present` env (its observation space differs from the naive env —
+`pull_target_rel` added, `lowest_point_rel` removed), so it is NOT
+interchangeable with the merged naive `agent_96000`.  Expect to SEE: the arm
+open-approaches the low hem corner, closes and grasps it, lifts it to the
+holder's height and pulls horizontally into a taut chord (~38 % of episodes
+reach the full present latch); the failure modes are a bunched/under-spread
+garment (coverage < 0.60) and occasional drops.

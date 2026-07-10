@@ -59,12 +59,12 @@ agent:
   rewards_shaper_scale: 0.5
   time_limit_bootstrap: false
   experiment:
-    directory: /home/hpc/iwfa/iwfa131h/studentische-arbeiten-present/src/tensegrity_pick/logs/skrl/shirt_present
-    experiment_name: 2026-07-04_15-21-09_ppo_torch_seed43
+    directory: /home/woody/iwfa/iwfa131h/wt-shirt-present/src/tensegrity_pick/logs/skrl/shirt_present
+    experiment_name: 2026-07-08_16-03-46_ppo_torch_seed43
     write_interval: 200
     checkpoint_interval: 2000
 trainer:
   class: SequentialTrainer
-  timesteps: 96000
+  timesteps: 120000
   environment_info: log
   close_environment_at_exit: false

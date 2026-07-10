@@ -8,22 +8,31 @@ inspection cameras can assess the garment's condition (reusable / recyclable
 / trash).  Classification itself is a black box — this task only has to make
 the cloth *inspectable*.
 
-> **Status: TRAINED & VALIDATED (2026-07-04).**  Selected checkpoint
-> `logs/skrl/shirt_present/2026-07-04_15-21-09_ppo_torch_seed43/checkpoints/agent_96000.pt`
-> (UR5e-F140): deterministic windowed present latch **0.927** on both eval
-> seeds (7 & 11, 96 episodes each), grasp 0.990, drop 0.000, final coverage
-> 0.68 — above the ICRA-2024 reference band.  Scripted baseline: 0.125.
-> Full iteration history in the tracking report.
+> **Status: PRODUCTION policy = the first pass's naive `agent_96000` (det.
+> present 0.927 @ coverage 0.68).  The hem-to-hem redesign on
+> `project/shirt-present` is a WORKING-BUT-WEAKER alternative (2026-07-08):
+> det. present 0.380 @ coverage 0.637.**
 >
-> The shirt hangs pinned at ONE RANDOM particle patch (356-state hanging bank,
-> slot-1 solver anchor at the presentation pose); the learning arm's slot-0
-> deterministic grasp is ENABLED and targets the **lowest hanging point**.
-> Success = windowed presented latch (both grasps ∧ taut ∧ silhouette
-> coverage ∧ cloth still).  Two simultaneous attachments are validated stable
-> through tautness ratio 1.15
+> After Georg's visual inspection, the geometry was rebuilt around the FAPS
+> heuristics study's winning **hem-corner ↔ hem-corner horizontal pull**
+> (scripted coverage 0.820 vs 0.679 for the naive rule) and the six visual
+> findings were addressed.  Across five RL runs + a resume, the policy learns
+> to grasp the accessible hem corner and pull a taut horizontal presentation,
+> reaching **det. present 0.380 @ coverage 0.637, grasp 0.73** (seed 43 resume
+> `agent_104000`, 2 eval seeds × 96 ep) — but it does **not** beat the naive
+> baseline: (1) the study's WINNING hem↔hem grasp needs a high second hem corner
+> RL cannot learn to grasp (grasp_rate < 0.1); (2) the LEARNABLE
+> accessible-low-corner version's coverage (0.64) is below the naive stretch's
+> 0.68.  Full arc + numbers:
+> [tracking report Phase 2](../../../../../../../../doc/reports/shirt_present_optimization_tracking.md#phase-2-hem-to-hem-presentation-redesign).
+> The best hem-to-hem checkpoint is in `logs/skrl/need_visual_verification/`
+> (play with THIS branch's env — its obs space differs from the naive one).
+>
+> This README documents the hem-to-hem MECHANICS as implemented on the branch.
+> Success predicate = windowed presented latch (both grasps ∧ taut flat-rest
+> ratio ∧ silhouette coverage ≥ the gate ∧ cloth still).  Two simultaneous
+> attachments are validated stable through tautness ratio 1.15
 > ([Stage-0 report](../../../../../../../../doc/reports/cloth_stage0_physics_derisk.md) §2).
-> Training/eval results: see the
-> [tracking report](../../../../../../../../doc/reports/shirt_present_optimization_tracking.md).
 
 ## Table of Contents
 
@@ -46,29 +55,37 @@ the cloth *inspectable*.
 
 Train an RL agent (the second arm) to maximize garment inspectability:
 
-1. **Reach** the hanging shirt (held by the retriever at the presentation pose).
-2. **Regrasp** a second point — literature standard: the hanging shirt's
-   **lowest point** (Maitin-Shepard 2010; Doumanoglou 2014; camera-trivial
-   from depth). Shoulder-shoulder only if keypoints prove reliable.
-3. **Stretch** the cloth taut-but-not-overstretched so front and back cameras
-   see a maximal spanned area.
+1. **Reach** the hanging shirt (held by the retriever, gripping a HEM point at
+   the presentation pose, so the garment hangs upside-down).
+2. **Regrasp** the OPPOSITE **hem corner** — the study's winning grasp pair
+   (hem-edge chords span the garment's longest continuous edge; +0.14 median
+   coverage over the naive lowest-point rule).  The two hem corners are found
+   deterministically from the flat-rest shape (landmark Voronoi scheme,
+   `mdp/present_geometry.py`); the accessible one is latched at reset.
+3. **Stretch HORIZONTALLY**: pull the grasped corner to the holder's HEIGHT,
+   offset along the camera-plane x by ~1.05 × the flat rest span, so the taut
+   chord is horizontal and gravity drapes the body below it.
 
 **Success predicate** (`presented_now`, latched over a window — ≥ 80 % of the
 last 60 steps): `grasp_active(slot 0) ∧ holder_attached(slot 1) ∧
-stretch_ratio/r0 ∈ [0.92, 1.10] ∧ silhouette_coverage ≥ 0.50 ∧ cloth-centroid
+stretch_ratio ∈ [0.90, 1.15] ∧ silhouette_coverage ≥ 0.65 ∧ cloth-centroid
 speed < 0.20 m/s`.  Rationale (measured decisions):
 
 - **Silhouette coverage** = rasterized projection of all particles onto the
   camera (world-XZ) plane / flat one-sided rest area
   (`shared/cloth_metrics.py`) — folds count once, so bunching/hiding cannot
   score.  A front+back inspection sees the SAME occluding silhouette, so one
-  area serves both viewpoints.  Reference band: ICRA-2024 cloth-competition
-  top-three coverage ≈ 0.55–0.60.
-- **Stretch ratio** = ‖patch-centroid₀ − patch-centroid₁‖ / GEODESIC rest
-  distance from the holder patch (PBD spring graph, GPU multi-source
-  Bellman-Ford per reset), normalised by the at-grasp value r0 (the
-  lowest-point span is already gravity-taut at grasp: raw r0 = 1.10–1.43
-  measured).  < 0.92·r0 = slack, > 1.10·r0 = overstretch (Stage-0 margin).
+  area serves both viewpoints.  Reference band: the FAPS heuristics study puts
+  scripted hem↔hem median coverage at 0.820 (p25 0.701), so **0.65** is a
+  learnable success gate (0.75 curriculum goal); ICRA-2024 top-three ≈ 0.55–0.60.
+- **Stretch ratio** = ‖patch-centroid₀ − patch-centroid₁‖ / **FLAT rest
+  distance** between the two grasp patches (`cloth_metrics.stretch_ratio` — the
+  heuristics study's definition; clean for the hem-corner pair, no wrap-around
+  over-reading).  At the horizontal chord it reads ~1.05 (measured baseline:
+  1.051); band [0.90, 1.15] (Stage-0 stability margin).  NB: the first pass
+  normalised a GEODESIC ratio by the at-grasp r0, which mis-read the hem↔hem
+  hang→horizontal configuration change (a correct pull → 0.82 normalised, below
+  the taut gate) — hence the switch.
 - **Speed gate on the cloth centroid, never the EE** (shirt_pick Phase-3
   lesson: residual PD sway at raised postures is 0.24–0.27 m/s while the
   hanging garment low-pass filters to 0.06–0.20; the camera inspects the
@@ -103,24 +120,27 @@ entity table).  Task-specific additions:
 | Entity | Description |
 |---|---|
 | `robot` | Second robot on the pedestal at `(0.75, 1.0, 0.75)` — the validated F140 reach workspace-analysis pose; UR5e yaw-rotated +90° per the showcase |
-| `holder_robot` | Passive 5-DOF tensegrity at its hanging mount `(0.15, 0.0, 2.30)` — visual scenery in the stub (the actual hold is the solver anchor); planned: posed from the shirt_pick terminal bank |
-| shirt | Hangs from the anchor at `PRESENTATION_POS = (0.15, 0.50, 1.10)` |
+| `holder_robot` | Passive 5-DOF tensegrity, now mounted directly above the local anchor pointing straight down so its gripper GRIPS the anchor patch (finding #3 fix; measured rest drop 0.98 m; the actual hold is still the solver anchor) |
+| shirt | Hangs from the LOCAL anchor `(0.50, 0.85, 1.20)` — a shirt_present-only override of the shared `PRESENTATION_POS (0.15, 0.90, 1.60)`: x=0.50 halves the cross-body reach (base at 0.75) and clears the drum+pedestal; z=1.20 keeps the horizontal chord in the UR5e envelope.  Coverage is translation-invariant, so this is metric-neutral. |
 
 ## Reset Mechanics: the Hanging Bank
 
 At each reset ([shirt_present_env.py](shirt_present_env.py)):
 
-1. A relaxed random-particle hang is restored from the 356-state bank
-   (`res/Props/Cloth/banks/tshirt_hanging_bank.pt`, yaw+mirror augmented,
-   `max_drape` filtered to clear the drum under the pose); the pinned patch
-   is re-attached at the anchor on **slot 1** (`ClothObject.attach`, radius
-   0.07 m).  Missing bank → idealized centre-hang fallback.
-2. Each control step re-pins the holder patch (`ClothObject.hold`, slot 1)
-   while the base env runs the learning arm's deterministic attach/hold/
-   detach on **slot 0**, retargeted to the lowest hanging point.
-3. Per reset, the holder-patch **geodesic distance field** over the PBD
-   spring graph is recomputed (GPU multi-source Bellman-Ford) — the rest
-   normaliser of the stretch ratio.
+1. A relaxed hang is restored from the **hem-anchored subset** of the bank
+   (`present_geometry.holder_region_mask` keeps the 43 of 356 states pinned on
+   the garment bottom edge, so the retriever grips a HEM point → upside-down
+   hang), yaw+mirror augmented; the pinned patch is re-attached at the local
+   anchor on **slot 1** (`ClothObject.attach`, radius 0.07 m).  Set
+   `use_hem_holder=False` to fall back to the full random-anchor bank.
+2. The **hand target is latched**: the more accessible of the two hem-corner
+   particles (farther from the anchor) is chosen once from the settled hang and
+   held for the episode (per-step selection flip-flops between the corners).
+3. Each control step re-pins the holder patch (`ClothObject.hold`, slot 1)
+   while the base env runs the learning arm's deterministic attach/hold/detach
+   on **slot 0**, targeting the latched hem corner.  The stretch ratio's rest
+   normaliser is the FLAT rest distance between the two grasp patches (no
+   geodesic graph — clean for the hem pair).
 
 Two simultaneous attachments are Stage-0 validated (stable through +15 %
 tautness, `scripts/model_validation/test_two_attachments.py`).
@@ -143,7 +163,8 @@ Total: **8 dims (Kinova) / 7 dims (UR5e)**.
 
 ## Observations (policy group)
 
-**41 dims (Kinova) / 38 dims (UR5e)**, no noise corruption:
+**44 dims (Kinova) / 41 dims (UR5e)**, no noise corruption (the hem-to-hem
+redesign added `pull_target_rel`, +3 vs the first pass):
 
 | Term | Dims (Kinova / UR5e) | Description |
 |---|---|---|
@@ -151,7 +172,8 @@ Total: **8 dims (Kinova) / 7 dims (UR5e)**.
 | `joint_vel_rel` | 8 / 7 | Controlled joint velocities |
 | `ee_pos_w` | 3 | Grasp-centre position (env-local) |
 | `shirt_rel` | 3 | Shirt centroid relative to grasp centre |
-| `lowest_point_rel` | 3 | **Lowest cloth particle** relative to the DYNAMIC finger tip — the exact geometry the deterministic attach trigger uses |
+| `hand_target_rel` | 3 | **Targeted hem corner** relative to the DYNAMIC finger tip — the exact geometry the deterministic attach trigger uses |
+| `pull_target_rel` | 3 | **Horizontal-pull goal** (holder height, offset along camera-plane x) relative to the finger tip |
 | `shirt_vel` | 3 | Shirt centroid velocity |
 | `grasp_active` | 1 | Hand grasp (slot 0) attached |
 | `holder_attached` | 1 | Holder anchor (slot 1) still pinned |
@@ -173,13 +195,16 @@ Sequential shirt_pick pattern.  dt-scaling: per-step weight *w* earns
 
 | Term | Weight | Description |
 |---|---|---|
-| `reaching` | 2.0 | `1 − tanh(‖tip − lowest point‖ / 0.25)`; **saturates to 1 while grasped** (the lowest point migrates post-grasp — chasing it would fight the stretch) |
+| `reaching` | 2.0 | `1 − tanh(‖tip − hem corner‖ / 0.25)`; paid ONLY with an OPEN gripper pre-grasp (fixes finding #1's premature-close hack), saturates to 1 while grasped |
 | `grasp_hold` | 5.0 | Per-step while the slot-0 attachment holds |
-| `stretch` | 8.0 | Maintain-tautness on the at-grasp-normalised ratio (0.80 → 0.97 ramp), gated on BOTH attachments |
-| `coverage` | 14.0 | Camera-plane silhouette coverage, gated on both attachments (anti-fling/bunch); 10→14 after gate diagnosis (weakest gate) |
-| `presented` | 30.0 | Full success predicate per step — dominant term; no anti-hover fade needed (holding IS the task) |
-| `overstretch` | −40.0 | Proportional above normalised ratio 1.05 — gradient moat under the 1.10 predicate edge (validated stability ends at +15 %) |
-| `drop` | −240.0 | One-shot when an established hand grasp is lost (≈ −4 after dt); −120→−240 after run-2 drops capped present at 0.65–0.71 |
+| `pull` | 10.0 | `1 − tanh(‖tip − horizontal-pull target‖ / 0.20)`, gated on BOTH grasps — DIRECTS the stretch into the study's horizontal chord (replaces the old undirected tautness-only shaping) |
+| `stretch` | 4.0 | Maintain-tautness on the flat-rest ratio (0.80 → 1.02 ramp), gated on both attachments |
+| `coverage` | 14.0 | Camera-plane silhouette coverage, gated on both attachments (anti-fling/bunch) |
+| `presented` | 30.0 | Full success predicate per step — dominant term; no anti-hover fade (holding IS the task) |
+| `overstretch` | −40.0 | Proportional above ratio 1.10 — moat under the 1.15 predicate edge (Stage-0 stability) |
+| `drop` | −240.0 | One-shot when an established hand grasp is lost (≈ −4 after dt) |
+| `early_close` | −15.0 | Per-step (distance-scaled) for commanding the gripper closed while far + ungrasped (finding #1) |
+| `occlusion` | −2.0 | Mild: EE on the camera side of the cloth (finding #5; cosmetic — the coverage metric has no camera sensor) |
 | `action_rate` | −1e-4 → −3e-3 | Curriculum ramp at 2000 trainer steps (shirt_place profile) |
 | `joint_vel` | −1e-4 → −2e-3 | 〃 |
 
@@ -223,21 +248,35 @@ Headlines:
    pairs) for an upper bound and second-grasp region labels.
 6. Decide: does the retriever keep holding throughout (open question #2)?
 
-## Results (UR5e-F140, RTX PRO 6000, 2026-07-04)
+## Findings addressed (2026-07 visual inspection)
 
-| Stage | det. present_rate | Notes |
-|---|---|---|
-| Scripted baseline (v4.1) | 0.125 | 11/16 grasped; coverage is what the blind ray-pull cannot raise |
-| Run 1 (20 k) | 0.625 | still climbing at cap |
-| Run 3 (drop −240) | 0.750 | drops 0.23 → 0.00 |
-| Run 5 (coverage 14, overstretch moat 1.05) | 0.833 | |
-| **Run 6 (96 k, seed 43) — agent_96000** | **0.927 / 0.927** (eval seeds 7 / 11) | grasp 0.990, drop 0.000, coverage 0.682 |
+Six findings from live playback of the first-pass `agent_96000`
+(`logs/skrl/need_visual_verification/shirt_present/findings.md`):
 
-Figures: [figures/ur5e_f140/](figures/ur5e_f140/) (total reward, task metrics,
-cloth metrics, reward decomposition, penalties, episode length).
-Terminal-state bank hook validated:
-`scripts/model_validation/snapshot_shirt_present_terminal.py` (58-state sample,
-presented-filtered, both grasp masks included).
+1. **Premature gripper-close hack** — `reaching` pays only with an OPEN gripper
+   pre-grasp + `early_close_penalty`.
+2. **Cloth/robot clipping** — mitigated by the horizontal geometry (arm works
+   beside the chord, not through the drape) + the relocated anchor; residual is
+   collision-fidelity (UR5e self-collision is off), GUI-verify only.
+3. **Holder didn't grip the anchor** — holder mounted above the anchor pointing
+   down (measured rest drop 0.98 m → gripper at the anchor, 0.087 m).
+4. **"Self-collision, move to x=0.8"** — reconciled/REJECTED: x=0.8 drapes the
+   shirt through the robot's own pedestal; anchor moved to x=0.50 (halves the
+   cross-body reach), the real self-fold driver.  Self-collision is disabled so
+   the fold is cosmetic.
+5. **Arm occludes the −Y camera** — mild `occlusion_penalty` (best-effort; the
+   coverage metric has no camera sensor).
+6. **Cloth too stretchy** — investigated, no change (shared cloth identical to
+   the validated shirt_pick).
+
+## Results
+
+**First pass (naive lowest-point, superseded):** det. present **0.927**
+(agent_96000, run 6) — kept for the terminal-bank hook and as the ceiling
+reference.  **Hem-to-hem redesign (Phase 2):** scripted in-scene baseline
+present 0.125 / grasp 0.41 / coverage ceiling 0.82; RL training in progress
+(job 3821742).  Full history + deterministic checkpoint selection:
+[tracking report Phase 2](../../../../../../../../doc/reports/shirt_present_optimization_tracking.md#phase-2-hem-to-hem-presentation-redesign).
 
 ## Running
 
@@ -250,9 +289,9 @@ python scripts/agents/zero_agent.py --task=Template-Shirt-Present-UR5e-F140-v0 -
 # Scripted baseline + threshold calibration
 python scripts/model_validation/baseline_shirt_present.py --headless --num_envs 16
 
-# Train (64 envs = measured RTX PRO 6000 sweet spot, see tracking report)
-python scripts/skrl/train.py --task=Template-Shirt-Present-UR5e-F140-v0 \
-    --algorithm=PPO --num_envs 64 --headless --max_iterations 2000
+# Train (Alex/Slurm; 512 envs, 2-seed array — see tools/train_alex.sh)
+./tools/train_alex.sh -s "43 44" -t 08:00:00 -i 2500 \
+    Template-Shirt-Present-UR5e-F140-v0 --headless --num_envs 512
 
 # Deterministic evaluation / gate diagnosis / terminal-state bank
 python scripts/skrl/evaluate_shirt_present.py --headless --num_envs 32 \
