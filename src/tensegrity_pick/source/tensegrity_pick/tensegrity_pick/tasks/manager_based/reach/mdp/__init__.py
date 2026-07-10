@@ -9,5 +9,13 @@ from isaaclab.envs.mdp import *  # noqa: F401, F403
 
 from .events import clamp_infinite_joint_limits  # noqa: F401
 from .fk_sampled_pose_command import FKSampledPoseCommand, FKSampledPoseCommandCfg  # noqa: F401
-from .observations import joint_pos_sin_cos  # noqa: F401
+from .observations import (  # noqa: F401
+    joint_pos_sin_cos,
+    lower_arm_ang_vel,
+    lower_arm_angle,
+    tendon_applied_tensions,
+    tendon_cable_length_rates,
+    tendon_cable_lengths,
+)
 from .rewards import *  # noqa: F401, F403
+from .terminations import linkage_closure_broken  # noqa: F401

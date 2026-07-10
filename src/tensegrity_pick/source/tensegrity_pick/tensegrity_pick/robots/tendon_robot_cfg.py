@@ -30,7 +30,7 @@ References
 """
 
 import isaaclab.sim as sim_utils
-from isaaclab.actuators import IdealPDActuatorCfg
+from isaaclab.actuators import IdealPDActuatorCfg, ImplicitActuatorCfg
 from isaaclab.assets.articulation import ArticulationCfg
 
 from .tensegrity_robot_cfg import PROJ_ASSETS_PATH, TENS_3DOF_CFG, TENS_5DOF_GRIPPER_CFG
@@ -86,6 +86,7 @@ TENS_5DOF_GRIPPER_TENDON_CFG = TENS_5DOF_GRIPPER_CFG.replace(
     },
 )
 """5-DOF tensegrity with gripper — arm is tendon-driven, base + gripper are PD."""
+
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -144,7 +145,7 @@ _PHYSICAL_WRIST_ACTUATOR = IdealPDActuatorCfg(
 
 # ── 3-DOF physical tendon-driven (arm only) ───────────────────────────────
 
-_PHYSICAL_3DOF_USD = f"{PROJ_ASSETS_PATH}/Tensegrity/threedof_arm/tensegrity_threedof_arm_physical.usd"
+_PHYSICAL_3DOF_USD = f"{PROJ_ASSETS_PATH}/Tensegrity/threedof_arm/tensegrity_threedof_arm_physical_awake.usd"
 
 TENS_3DOF_PHYSICAL_TENDON_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
@@ -160,6 +161,15 @@ TENS_3DOF_PHYSICAL_TENDON_CFG = ArticulationCfg(
             enabled_self_collisions=False,
             solver_position_iteration_count=16,
             solver_velocity_iteration_count=4,
+            # The arm is driven purely by external body forces; a sleeping
+            # body ignores them (tensor-API forces do not wake it), freezing
+            # the arm mid-episode.  This articulation-root setting proved
+            # INSUFFICIENT on Isaac Lab 0.54 / PhysX GPU — the operative fix is
+            # the *_awake.usd bake, which zeroes the threshold on every rigid
+            # body (see tools/make_physical_awake_usd.py).  Kept here as
+            # belt-and-braces.
+            sleep_threshold=0.0,
+            stabilization_threshold=0.0,
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
@@ -196,7 +206,7 @@ TENS_3DOF_PHYSICAL_TENDON_LO_CFG = TENS_3DOF_PHYSICAL_TENDON_CFG.replace(
 
 _PHYSICAL_5DOF_USD = (
     f"{PROJ_ASSETS_PATH}/Tensegrity/fivedof_manipulator/"
-    "fivedof_linear_base_physical_robotiq2f140.usd"
+    "fivedof_linear_base_physical_robotiq2f140_awake.usd"
 )
 
 TENS_5DOF_GRIPPER_PHYSICAL_TENDON_CFG = ArticulationCfg(
@@ -213,6 +223,10 @@ TENS_5DOF_GRIPPER_PHYSICAL_TENDON_CFG = ArticulationCfg(
             enabled_self_collisions=False,
             solver_position_iteration_count=16,
             solver_velocity_iteration_count=4,
+            # Body-force-driven arm: PhysX sleep would freeze it (see 3-DOF cfg).
+            # Operative fix is the *_awake.usd per-body bake; this is redundant.
+            sleep_threshold=0.0,
+            stabilization_threshold=0.0,
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(

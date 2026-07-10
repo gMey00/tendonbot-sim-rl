@@ -17,6 +17,7 @@
 #   tensegrity                  Template-Reach-Tensegrity-v0                  (5-DOF PD)
 #   tensegrity_tendon           Template-Reach-Tensegrity-Tendon-v0           (5-DOF tendon)
 #   tensegrity_physical_tendon  Template-Reach-Tensegrity-Physical-Tendon-v0  (5-DOF physical tendon)
+#   tensegrity_physical_hier    Template-Reach-Tensegrity-Physical-Hierarchical-v0 (5-DOF physical, inner PID)
 #   ur10e                       Template-Reach-UR10e-v0                       (6-DOF PD)
 #   kinova                      Template-Reach-Kinova-v0                      (7-DOF PD)
 
@@ -25,12 +26,13 @@ set -uo pipefail
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-ALL_VARIANTS=(tensegrity tensegrity_tendon tensegrity_physical_tendon ur10e kinova)
+ALL_VARIANTS=(tensegrity tensegrity_tendon tensegrity_physical_tendon tensegrity_physical_hier ur10e kinova)
 
 declare -A TASK_IDS=(
     [tensegrity]="Template-Reach-Tensegrity-v0"
     [tensegrity_tendon]="Template-Reach-Tensegrity-Tendon-v0"
     [tensegrity_physical_tendon]="Template-Reach-Tensegrity-Physical-Tendon-v0"
+    [tensegrity_physical_hier]="Template-Reach-Tensegrity-Physical-Hierarchical-v0"
     [ur10e]="Template-Reach-UR10e-v0"
     [kinova]="Template-Reach-Kinova-v0"
 )

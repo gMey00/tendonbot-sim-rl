@@ -149,6 +149,8 @@ import tensegrity_pick.tasks  # noqa: F401
 def _variant_from_task(task: str) -> str:
     """Short tag used in the JSON output and default file name."""
     t = task.lower()
+    if "physical-hierarchical" in t or "hier" in t:
+        return "tensegrity_physical_hier"
     if "physical-tendon" in t or "phystendon" in t:
         return "tensegrity_physical_tendon"
     if "tendon" in t:
@@ -180,11 +182,12 @@ class HeuristicIKAgent:
     """
 
     def __init__(self, env, task: str):
-        if "tendon" in task.lower():
+        if "tendon" in task.lower() or "hierarchical" in task.lower():
             raise SystemExit(
-                f"[evaluate] --agent heuristic only supports the PD reach variant; "
-                f"got task={task!r}. The tendon variants act in cable-tension "
-                f"space and require a separate torque->tension controller (out of scope)."
+                f"[evaluate] this DLS-IK heuristic only supports the PD reach variant; "
+                f"got task={task!r}. Use the hierarchical physical variant for the "
+                f"IK+PID heuristic (scripts/skrl/heuristic_physical_ik.py); the direct "
+                f"tension variant has no scripted baseline (torque->tension IK out of scope)."
             )
 
         u = env.unwrapped
@@ -317,8 +320,13 @@ def _build_checkpoint_agent(env, task: str, experiment_cfg: dict, checkpoint_pat
     runner = Runner(env, experiment_cfg)
     resume_path = os.path.abspath(checkpoint_path)
     if os.path.isdir(resume_path):
-        # accept a run-dir; pick the latest checkpoint inside
-        ckpts = sorted(Path(resume_path).glob("checkpoints/agent_*.pt"))
+        # accept a run-dir; pick the latest checkpoint inside.
+        # NOTE: sort numerically by step — lexicographic sort would rank
+        # agent_9600.pt after agent_48000.pt and load a stale checkpoint.
+        ckpts = sorted(
+            Path(resume_path).glob("checkpoints/agent_*.pt"),
+            key=lambda p: int(p.stem.split("_")[1]),
+        )
         if not ckpts:
             raise FileNotFoundError(f"No checkpoints under {resume_path}/checkpoints/")
         resume_path = str(ckpts[-1])
@@ -441,7 +449,10 @@ def _run_eval(env, agent_callable, target_first_per_env: list[float | None]) -> 
         not_done = ~done_t
 
         # Action-rate (||a_t - a_{t-1}||) per non-done step.
-        a_t = actions.detach().to(device)
+        # .clone() (outside inference_mode) turns the action — an inference
+        # tensor produced inside the inference_mode block above — into a normal
+        # tensor, so the per-env reset `prev_actions[i] = 0.0` below is legal.
+        a_t = actions.detach().to(device).clone()
         a_diff = (a_t - prev_actions).abs().mean(dim=-1)
         action_rate_sum[not_done] += a_diff[not_done]
         action_rate_count[not_done] += 1.0
@@ -572,7 +583,25 @@ def _action_random_factory(env):
 
 
 def _action_heuristic_factory(env):
-    agent = HeuristicIKAgent(env, args_cli.task)
+    t = args_cli.task.lower()
+    if "physical-hierarchical" in t or "hier" in t:
+        # IK + inner-PID heuristic for the physical hierarchical variant.
+        # Loaded by file path: scripts/skrl/ is not a package and must not
+        # shadow the installed skrl library.
+        import importlib.util as _ilu
+
+        _path = Path(__file__).parent / "heuristic_physical_ik.py"
+        _spec = _ilu.spec_from_file_location("heuristic_physical_ik", str(_path))
+        _mod = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        agent = _mod.HeuristicHierarchicalIKAgent(env)
+    elif "tendon" in t:
+        raise SystemExit(
+            "[evaluate] no scripted heuristic for the direct tension variant; "
+            "use the PD task (DLS-IK) or the physical hierarchical task (IK+PID)."
+        )
+    else:
+        agent = HeuristicIKAgent(env, args_cli.task)
 
     def _act(obs=None):
         return agent.act(env)
@@ -628,6 +657,11 @@ def _main_checkpoint() -> None:
 
             # Drive the run via the *wrapped* env so observations stay in sync.
             _write_result(variant, _factory, env_wrapped, env_cfg.scene.num_envs)
+        except Exception:  # noqa: BLE001 — surface the real traceback (hydra swallows it)
+            import traceback
+            print("[evaluate][TRACEBACK]", flush=True)
+            traceback.print_exc()
+            raise
         finally:
             env.close()
 

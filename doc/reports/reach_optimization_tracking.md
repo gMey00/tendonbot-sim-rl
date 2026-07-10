@@ -918,3 +918,106 @@ footnote this variant.
 - 23/24 variants ≤ 5.8 cm and ≥ 67 % success (bar: ≤ ~8 cm, > ~60 %); the one
   miss is the documented seed-42 outlier above.
 - Reward (IsaacLab reference), target box, observation structure: unchanged.
+
+---
+
+## Iteration 16 (2026-07-09) — Physical variant rework: cable limits, linkage integrity, hierarchical control
+
+**Scope:** Physical tendon variant + NEW physical hierarchical variant.
+PD and Tendon remain LOCKED. Full change log with measurements:
+[physical_variant_fix_report.md](physical_variant_fix_report.md).
+
+### Problem
+
+The 2026-05 seed study ([reach_evaluation_findings.md](reach_evaluation_findings.md))
+left the physical variant at 31.4 % ± 14.4 % success. Visual inspection showed
+a reward hack: sustained max tension tears the PhysX loop-closure joint open
+(maximal-coordinate constraint) and the policy steers the dangling forearm
+with the linear base. A subtler mode was found during verification: the
+four-bar can re-close in the *parallelogram branch* (closure satisfied, but
+the forearm decoupled from the rods).
+
+### Changes (model security + sim fidelity)
+
+| Change | Where | Detail |
+|---|---|---|
+| Cable length limits | `robots/tendon_actuator.py` | [0.0913, 0.2577] m between attachment points (±70° workspace geometry); wind-up stop + 20 kN/m / 200 N·s/m stretch stop |
+| Per-tendon saturation | 〃 | `[480, 480, 80, 80, 80]` N hardware limits (was scalar 500 N) — M2 for this variant |
+| Motor/spool lag | 〃 | 50 ms first-order filter on tensions/efforts (kills constraint-impulse spikes from 0→480 N action steps) |
+| Linkage integrity **penalty** | `reach/mdp/terminations.py` + `rewards.py` | closure gap > 3 cm OR branch flip \|elbow − (rod_L+rod_R)\| > 0.3 rad → **−1/step reward penalty**. First retrain attempt used a failure *termination*: with the net-negative reach reward this is a suicide exit — both variants collapsed to 5-step episodes within 2 k timesteps. Sanity gate now also asserts episode length > 150. |
+| Correct elbow measurement | `reach/mdp/observations.py` | `lower_arm_angle`/`_ang_vel` from forearm body twist (elbow = rod_L + rod_R, not any single joint); + `cable_lengths`/`cable_length_rates` obs (eval report §9 #1); raw linkage joints removed from obs |
+| 120 Hz physics | `joint_pos_env_cfg_physical.py` | closure drifts cm under 480 N at 60 Hz; decimation 4 keeps control at 30 Hz; `enable_external_forces_every_iteration`, min 2 velocity iterations |
+| PhysX sleep disabled | `robots/tendon_robot_cfg.py` | body-force-driven arm freezes when asleep (tensor-API forces don't wake it) |
+| joint_vel_diverged 100 → 500 rad/s | env cfg | 1-gram wrist dummy link spikes on reset transients → silent truncation reset-loops at 100 (likely a contributor to the 2026-05 instability) |
+| Hierarchical variant (NEW) | `robots/tendon_controllers.py` | `Template-Reach-Tensegrity-Physical-Hierarchical-v0`: 3 joint set-points tracked by the step-response-validated PID (75/6/3, 10/1.5/0.6) + gravity comp (recalibrated to measured 5-DOF static balance: m·g·l 6.35 → ≈ 2.8 N·m) + block-wise tension distribution → same body-force channel |
+
+Verified before training (see fix report §4): sustained 480 N now parks the
+elbow at the ~70° stop with the closure intact (< 1 mm gap); 600-step random
+run with partial resets shows no NaN, no frozen dynamics, full ±78° coverage;
+hierarchical set-point tracking < 1° steady-state elbow error.
+
+Also fixed: `evaluate_reach.py` picked the "latest" checkpoint from a run dir
+by **lexicographic** sort — the 2026-05 evaluation actually scored
+`agent_9600` (PD/Tendon, of 48 k) and `agent_90000` (Physical, of 150 k)
+instead of the final checkpoints. Now numeric.
+
+### Training setup
+
+| Parameter | 2026-05 (physical) | Iter 16 (both physical variants) |
+|---|---|---|
+| Timesteps | 150 000 | **48 000** (standard reach budget — the secured task should no longer need 3× budget) |
+| Physics / control | 60 Hz / 30 Hz | **120 Hz** / 30 Hz |
+| Seeds | 0–4 | 0–4 |
+| Everything else | rollouts 48, [64, 64], margin 0.01, FK reference robot | unchanged |
+
+Pipeline: [run_physical_reach_pipeline.sh](../../src/tensegrity_pick/scripts/training/run_physical_reach_pipeline.sh)
+(resumable train → eval → plots; eval figures now scripted in
+[plot_reach_eval_results.py](../../src/tensegrity_pick/scripts/plotting/plot_reach_eval_results.py)).
+
+### Results (local, partial — full 5-seed matrix moved to the cluster)
+
+Local training was stopped after seeds 0–2 (direct) / 0–1 (hierarchical) for
+GUI review; full training + evaluation runs on the cluster (see the pipeline
+script and the cluster section of the reach README).
+
+Seed 0 (48 k steps, before the 2026-07-10 controller/RL fixes below):
+
+| Metric (last 10 %) | Direct | Hierarchical |
+|---|---:|---:|
+| Total reward | −1.01 | −1.25 |
+| position_reached (per-step) | 0.20 | 0.09 |
+| Episode length | 180 (full) | 180 (full) |
+| linkage_broken fraction | 0.018 | 0.029 |
+| Policy σ (final) | 1.28 | 1.57 |
+
+The σ plateau (exploration noise never collapsing) + the GUI review
+("oscillates around the target, sometimes does not approach") triggered
+iteration 16b.
+
+### Iteration 16b (2026-07-10) — controller retune, PhysX forensics, RL profile
+
+Full detail: [fix report addendum](physical_variant_fix_report.md#addendum--2026-07-10-gui-review-findings-controller-retune-physx-forensics).
+Summary of applied changes:
+
+- **Inner PID**: set-point slew limiting (1.2/5/5 rad/s), per-joint integrator
+  clamps (2.0/0.8/0.8), elbow integral zone 0.35 rad; set-point ranges
+  clamped to the *achievable* workspace (elbow ±60°, wrist ±40°); target
+  sampling margin 0.01 → 0.10.  Set-point sweep tracks ±60° within 6–11°.
+- **Scripted IK+PID heuristic** (`heuristic_physical_ik.py` + `--agent
+  heuristic` for the hierarchical Play task): DLS-IK on the FK reference
+  robot + command ramping.  Local: reach 0.56, best-err 0.12 m over 128
+  episodes.  Wired into the eval pipeline (5 seeds on the cluster).
+- **PhysX forensics**: three measured closed-chain artifacts (closure elastic
+  drift, absorbing branch flips, ~10–20 N·m quasi-static solver breakaway —
+  the latter unresolved, `solver_dither` knob experimental).  Two dead ends
+  (mimic-drive closure, rigid-elbow rebase) tried and reverted — the model
+  stays the true four-bar per user directive.  `*_awake.usd` bakes in use.
+- **RL profile**: entropy 0, max_log_std 0, initial_log_std −0.5 (σ-plateau
+  fix, shirt-task profile); new `applied_tensions` observation (obs 28 → 30
+  direct, 26 → 28 hierarchical); random-phase smoke: hierarchical shows ZERO
+  linkage flags under random set-points (slew-limited inner loop).
+- **Harness fixes**: run-dir checkpoint selection now numeric (the 2026-05
+  study actually evaluated agent_9600/agent_90000, not the final
+  checkpoints); eval inference-tensor crash fixed (`prev_actions` clone) —
+  `action_rate_mean`/`success_held` fields become populated for the first
+  time.

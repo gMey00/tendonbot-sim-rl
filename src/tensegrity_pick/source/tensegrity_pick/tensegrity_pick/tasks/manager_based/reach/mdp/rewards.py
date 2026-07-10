@@ -204,3 +204,41 @@ def joint_vel_l2_clamped(
     asset = env.scene[asset_cfg.name]
     clamped = torch.clamp(asset.data.joint_vel[:, asset_cfg.joint_ids], -max_velocity, max_velocity)
     return torch.sum(clamped**2, dim=1)
+
+
+def linkage_integrity_penalty(
+    env: ManagerBasedRLEnv,
+    gap_threshold: float = 0.03,
+    branch_angle_tolerance: float = 0.3,
+    rod_cfg: SceneEntityCfg = SceneEntityCfg("robot", body_names=["rod_right_link"]),
+    forearm_cfg: SceneEntityCfg = SceneEntityCfg("robot", body_names=["forearm_link"]),
+    root_cfg: SceneEntityCfg = SceneEntityCfg("robot", body_names=["root_link"]),
+    rod_joints_cfg: SceneEntityCfg = SceneEntityCfg(
+        "robot", joint_names=["rod_left_joint", "rod_right_joint"]
+    ),
+) -> torch.Tensor:
+    """Per-step 1.0 while the four-bar linkage is torn open or branch-flipped.
+
+    Use as a *reward penalty* (large negative weight), NOT as a termination:
+    the reach reward is net-negative per step, so a failure termination lets
+    the policy end episodes early — during the 2026-07 retrain both physical
+    variants immediately learned to break the linkage as a suicide exploit
+    (episode length collapsed 180 → 5 steps).  A strong per-step penalty makes
+    breaking strictly unprofitable with nothing to escape to, while the cable
+    stops keep the state recoverable so the episode continues meaningfully.
+
+    Detection logic is shared with
+    :func:`~..mdp.terminations.linkage_closure_broken` (closure-anchor gap +
+    parallelogram branch flip); see there for the threshold calibration.
+    """
+    from .terminations import linkage_closure_broken
+
+    return linkage_closure_broken(
+        env,
+        gap_threshold=gap_threshold,
+        branch_angle_tolerance=branch_angle_tolerance,
+        rod_cfg=rod_cfg,
+        forearm_cfg=forearm_cfg,
+        root_cfg=root_cfg,
+        rod_joints_cfg=rod_joints_cfg,
+    ).float()

@@ -57,6 +57,7 @@ VARIANT_NAMES: Final[list[str]] = [
     "tensegrity",
     "tensegrity_tendon",
     "tensegrity_physical_tendon",
+    "tensegrity_physical_hier",
     # 6 F140 comparison arms x 4 action spaces = 24 grid variants.
     *(f"{arm}{space}" for arm in _F140_ARM_LABELS for space in _ACTION_SPACE_LABELS),
 ]
@@ -72,6 +73,7 @@ VARIANT_LABELS: Final[dict[str, str]] = {
     "tensegrity": "Tensegrity 5-DOF (PD)",
     "tensegrity_tendon": "Tensegrity 5-DOF (Tendon)",
     "tensegrity_physical_tendon": "Tensegrity 5-DOF (Physical Tendon)",
+    "tensegrity_physical_hier": "Tensegrity 5-DOF (Physical Hierarchical)",
     **{
         f"{arm}{space}": f"{arm_label} — {space_label}"
         for arm, arm_label in _F140_ARM_LABELS.items()

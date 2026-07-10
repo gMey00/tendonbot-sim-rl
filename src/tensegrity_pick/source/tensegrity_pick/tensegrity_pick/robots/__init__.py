@@ -19,6 +19,14 @@ from .tendon_actuator import (  # noqa: F401
     WRIST_JACOBIAN_TRANSPOSE,
     ELBOW_TENDON_ROOT_OFFSETS,
     ELBOW_TENDON_FOREARM_OFFSETS,
+    ELBOW_CABLE_LENGTH_RANGE,
+    HW_TENDON_MAX_TENSIONS,
+    antiparallelogram_closure_angle,
+    compute_lower_arm_angle_and_rate,
+)
+from .tendon_controllers import (  # noqa: F401
+    HierarchicalPhysicalTendonAction,
+    HierarchicalPhysicalTendonActionCfg,
 )
 from .tendon_robot_cfg import (  # noqa: F401
     TENS_3DOF_TENDON_CFG,

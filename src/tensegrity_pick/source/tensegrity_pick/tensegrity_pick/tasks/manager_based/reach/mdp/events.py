@@ -57,3 +57,4 @@ def clamp_infinite_joint_limits(
     limits[..., 1] = torch.where(bad_mask, new_upper, upper)
 
     asset.write_joint_position_limit_to_sim(limits)
+

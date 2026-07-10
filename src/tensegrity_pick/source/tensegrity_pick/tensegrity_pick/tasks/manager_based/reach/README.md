@@ -11,8 +11,8 @@ share the same MDP (rewards, terminations, curriculum, sim parameters):
   ([research brief](../../../../../../../../doc/reports/RESEARCH_BRIEF_action_spaces.md)).
   Targets are a uniform position box; orientation is intentionally loose.
 - **Tensegrity family** — the original 5-DOF tensegrity manipulator (PD,
-  Tendon, Physical Tendon). Targets are FK-sampled full poses, reachable by
-  construction.
+  Tendon, Physical Tendon, Physical Hierarchical). Targets are FK-sampled
+  full poses, reachable by construction.
 
 ![Task Scene](figures/scene_setup.png)
 
@@ -20,7 +20,7 @@ share the same MDP (rewards, terminations, curriculum, sim parameters):
 
 - [Variants](#variants)
   - [F140 comparison grid (24 variants)](#f140-comparison-grid-24-variants)
-  - [Tensegrity family (3 variants)](#tensegrity-family-3-variants)
+  - [Tensegrity family (4 variants)](#tensegrity-family-4-variants)
 - [Documentation Map](#documentation-map)
 - [Directory Structure](#directory-structure)
 - [Shared MDP](#shared-mdp)
@@ -66,19 +66,50 @@ definitions: [`robots/`](../../../robots/) (`ur5e`, `ur10`, `kinova_gen3`,
 The four action spaces (controllers, gains, PPO differences, fairness rules)
 are documented in **[action_spaces.md](action_spaces.md)**.
 
-### Tensegrity family (3 variants)
+### Tensegrity family (4 variants)
 
-| Environment ID | Robot | DOF | Actuation | Config |
-|---|---|---|---|---|
-| `Template-Reach-Tensegrity-v0` | Tensegrity 5-DOF | 5 | PD (joint position) | [`config/tensegrity/`](config/tensegrity/) |
-| `Template-Reach-Tensegrity-Tendon-v0` | Tensegrity 5-DOF | 5 | Tendon (Jacobian-transpose) | [`config/tensegrity_tendon/`](config/tensegrity_tendon/) |
-| `Template-Reach-Tensegrity-Physical-Tendon-v0` | Tensegrity 5-DOF (physical 4-bar elbow) | 7 | Body-force tendons | [`config/tensegrity_tendon/`](config/tensegrity_tendon/) |
+| Environment ID | Robot | DOF | Actuation | Action dim | Config |
+|---|---|---|---|---|---|
+| `Template-Reach-Tensegrity-v0` | Tensegrity 5-DOF | 5 | PD (joint position) | 5 | [`config/tensegrity/`](config/tensegrity/) |
+| `Template-Reach-Tensegrity-Tendon-v0` | Tensegrity 5-DOF | 5 | Tendon (Jacobian-transpose) | 5 | [`config/tensegrity_tendon/`](config/tensegrity_tendon/) |
+| `Template-Reach-Tensegrity-Physical-Tendon-v0` | Tensegrity 5-DOF (physical 4-bar elbow) | 7 | Body-force tendons (direct tension control) | 7 (2 base + 5 tensions) | [`config/tensegrity_tendon/`](config/tensegrity_tendon/) |
+| `Template-Reach-Tensegrity-Physical-Hierarchical-v0` | Tensegrity 5-DOF (physical 4-bar elbow) | 7 | Body-force tendons via inner PID→tension loop | 5 (2 base + 3 set-points) | [`config/tensegrity_tendon/`](config/tensegrity_tendon/) |
 
 Each also has a `…-Play-v0` twin. Details: controlled joints and tendon
 actuation are documented in the
-[physical elbow spec](config/tensegrity_tendon/physical_elbow_spec.md); the
-Physical Tendon variant uses a hidden PD **FK reference robot** for target
+[physical elbow spec](config/tensegrity_tendon/physical_elbow_spec.md); both
+physical variants use a hidden PD **FK reference robot** for target
 sampling (see tracking log, iteration 13).
+
+**Physical-variant specifics (2026-07-09 rework** — full change log in
+[physical_variant_fix_report.md](../../../../../../../../doc/reports/physical_variant_fix_report.md)**):**
+
+- Cable min/max length limits between the attachment points
+  ([0.0913, 0.2577] m over the ±70° elbow workspace): wind-up stop +
+  spring–damper stretch stop (cap 500 N); per-tendon hardware tension
+  saturation `[480, 480, 80, 80, 80]` N; 50 ms motor/spool tension lag.
+- `linkage_integrity_penalty` reward term, −1/step while the closure-anchor
+  gap exceeds 3 cm OR the chain is parallelogram-branch-flipped — closes the
+  "break the linkage" reward hack. (A *termination* here is itself exploitable:
+  the net-negative reach reward makes early termination a suicide exit —
+  measured episode-length collapse 180 → 5 steps.)
+- Observations measure the lower-arm rotation from the **forearm body twist**
+  (`lower_arm_angle`/`lower_arm_ang_vel`, not raw linkage joints) and expose
+  per-cable length/rate plus the applied (lag-filtered) tensions to the
+  policy (obs 30 direct / 28 hierarchical).
+- 120 Hz physics / decimation 4 (policy still 30 Hz); `*_awake.usd` bakes
+  (per-body sleep thresholds zeroed — a sleeping articulation ignores body
+  forces). Known open issue: a GPU-solver quasi-static breakaway
+  (~10–20 N·m) documented in the fix-report addendum.
+- Targets sample the *achievable* workspace (`joint_range_margin = 0.10`):
+  boundary poses cannot be held by the cable drives (wrist under-actuated
+  near ±50° with the gripper mass; elbow stop-grinding at ±70°).
+- The hierarchical variant tracks 3 joint set-points (elbow ±60°, wrist ±40°)
+  with the retuned step-response PID (slew 1.2/5/5 rad/s, per-joint integral
+  clamps, anti-windup zones) → block-wise tension distribution → the same
+  body-force channel. A scripted **IK+PID heuristic baseline**
+  (`scripts/skrl/heuristic_physical_ik.py`, `--agent heuristic` in
+  `evaluate_reach.py`) validates the controller separately from RL.
 
 > The former ceiling-mounted `Template-Reach-UR10e-v0` / `Template-Reach-Kinova-v0`
 > variants were superseded by the F140 comparison grid and are no longer
@@ -191,7 +222,8 @@ Success metrics (logging only, weight 1×10⁻⁶ — divide the TensorBoard val
 | Term | Condition |
 |---|---|
 | `time_out` | episode length exceeded |
-| `joint_vel_diverged` | any *controlled* joint velocity > 100 rad/s (physics divergence guard) |
+| `joint_vel_diverged` | any *controlled* joint velocity > 100 rad/s (physics divergence guard; 500 rad/s on the physical variants — the near-massless wrist frame link spikes harmlessly on reset transients) |
+
 
 Reset: controlled joints to default ± 0.125 rad offset, zero velocity;
 `clamp_infinite_joint_limits` replaces infinite/oversized joint limits
@@ -201,8 +233,8 @@ Reset: controlled joints to default ± 0.125 rad offset, zero velocity;
 
 | Parameter | Value |
 |---|---|
-| Physics dt | 1/60 s |
-| Decimation | 2 (control at 30 Hz) |
+| Physics dt | 1/60 s (physical variants: **1/120 s**) |
+| Decimation | 2 (physical variants: 4) — control always at 30 Hz |
 | Episode length | **6.0 s (180 control steps)** |
 | num_envs | 4 096 (train) / 50 (play) |
 | Gravity | disabled on the robot (kinematic task) |
