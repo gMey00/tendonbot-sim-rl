@@ -203,8 +203,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
     experiment_cfg["agent"]["experiment"]["write_interval"] = 0  # don't log to TensorBoard
     experiment_cfg["agent"]["experiment"]["checkpoint_interval"] = 0  # don't generate checkpoints
     # R6: cube_sort uses a custom DeepSets-encoder Runner subclass.
-    if args_cli.task and "cube-sort" in args_cli.task.lower():
+    # shirt_distribute uses the per-goal PPO Runner (multi-head critic, FiLM
+    # policy); it falls back to stock behaviour for a stock (agent.class: PPO)
+    # yaml, so every shirt-distribute variant can route through it safely.
+    _task_lc = args_cli.task.lower() if args_cli.task else ""
+    if "cube-sort" in _task_lc:
         from tensegrity_pick.agents import CubeSetRunner as _Runner
+    elif "shirt-distribute" in _task_lc:
+        from tensegrity_pick.tasks.manager_based.shirt_distribute.learning import PerGoalRunner as _Runner
     else:
         _Runner = Runner
     runner = _Runner(env, experiment_cfg)

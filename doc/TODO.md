@@ -294,16 +294,26 @@ Progress log: [shirt_pick_optimization_tracking.md](reports/shirt_pick_optimizat
 - ✅ **Scripted baseline validates the MDP** (2026-07-06): `baseline_shirt_distribute.py`
   places **21/24 = 0.88** across the three bins; all drums reachable through the training action
   path (no throw needed). Env-count benchmark: peak 357 env·steps/s @ 64 envs on RTX PRO 6000.
-- 🔴 **§2 not yet met: ≥ 0.85 across ALL three bins.** Best trained checkpoint deterministic
-  **0.60, all bins non-zero (0.77/0.42/0.60)** (`sd_train9fb` s2). Blocker precisely diagnosed:
-  **goal-conditioned mode collapse** (per-seed 2-of-3-bin specialisation, robust to exploration
-  temperature ⇒ PPO shared-critic multi-task interference). Next: per-goal advantage/return
-  normalisation or separate critic head; goal-balanced minibatches; HER goal relabelling; goal
-  curriculum — see the [tracking conclusion](reports/shirt_distribute_optimization_tracking.md#conclusion--status-vs-2).
+- ✅ **Goal-conditioned mode collapse SOLVED** (2026-07-10). The §2 blocker — every PPO seed
+  hard-zeroing one of {recyclable, trash} (best 0.596 = 0.77/0.42/0.60) — was diagnosed by a
+  [literature review](reports/RESEARCH_REPORT_goal_conditioned_mode_collapse) as cross-goal
+  critic interference under an aggregate return normalizer, and fixed with the report's stacked
+  levers (all in `shirt_distribute/learning/`): **per-goal value/advantage normalization +
+  per-goal (multi-head) critic + goal one-hot** (`PerGoalPPO`/`GoalMultiHeadValue`), then **FiLM
+  goal-gating + per-goal actor heads** (`FiLMGoalPolicy`, `…-PerGoal-FiLM-v0`). Monotonic
+  **0.596 → 0.856 → 0.882**; collapse gone on all seeds.
+- 🟡 **§2 met on 2 of 3 bins; bin 2 at a task ceiling.** Best checkpoint `seed1_filmU/agent_92000`
+  (1080-ep eval): mean **0.882**, bins **0.910 / 0.899 / 0.832** — bins 0/1 clear ≥ 0.85 robustly,
+  all three on eval seed 8. Holdout is **bin 2 (trash, behind the pedestal arm) at 0.83**, a
+  single-drum reachability ceiling (persists across FiLM seeds + B5; scripted baseline itself
+  0.88). Full record: [tracking Phases 2/2b/2c](reports/shirt_distribute_optimization_tracking.md).
+- 🟢 Selected policy staged for playback:
+  [logs/skrl/need_visual_verification/shirt_distribute/](../src/tensegrity_pick/logs/skrl/need_visual_verification/shirt_distribute/README.md).
+- 🟡 **Lift bin 2 over 0.85 (task-side, not a learning lever):** TossingBot-style release-velocity
+  conditioning for the far/behind drum, a bin-2-specific approach/release reward, or wider
+  holding-pose coverage for reaching behind the base.
 - 🟡 **Bin-layout randomization** so nearest ≠ correct generalizes (target >85 % correct-bin
-  across labels and layouts) — after the mode collapse is resolved.
-- 🟡 TossingBot-style throw (release-velocity conditioning) — NOT needed for reach (baseline hit
-  all bins); only if a later layout puts a drum outside the envelope.
+  across labels and layouts).
 - 🟢 Retire/merge the old [shirt_sort](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shirt_sort/shirt_sort_env_cfg.py) template — superseded by shirt_distribute.
 
 ### Cross-cutting
