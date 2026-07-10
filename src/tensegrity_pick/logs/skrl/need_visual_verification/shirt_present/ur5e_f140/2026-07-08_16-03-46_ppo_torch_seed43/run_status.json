@@ -1,0 +1,8 @@
+{
+  "status": "running",
+  "task": "Template-Shirt-Present-UR5e-F140-v0",
+  "target_timesteps": 120000,
+  "run_dir": "/home/woody/iwfa/iwfa131h/wt-shirt-present/src/tensegrity_pick/logs/skrl/shirt_present/2026-07-08_16-03-46_ppo_torch_seed43",
+  "algorithm": "ppo",
+  "framework": "torch"
+}

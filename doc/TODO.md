@@ -174,13 +174,16 @@ Progress log: [shirt_pick_optimization_tracking.md](reports/shirt_pick_optimizat
   (above the ICRA 0.55–0.60 band).  NB: the RL run's coverage gate (0.50) is below the FAPS
   study's recommended 0.65 — a candidate re-threshold now that both are merged (`final_coverage`
   is logged, so re-scoreable).
-- ⚪ **Hem-to-hem presentation redesign — NEGATIVE RESULT (do not merge)** (2026-07-08, Alex agent,
-  branch `project/shirt-present`): after Georg's visual inspection of `agent_96000`, tried the
-  study's **hem↔hem horizontal-pull** geometry + fixed the 6 findings.  Across five RL runs it did
-  NOT beat the naive baseline: best deterministic **present 0.32 @ coverage 0.61** (seed43
-  agent_104000) vs the naive **0.927 @ 0.68**.  (1) the study's WINNING hem↔hem grasp needs a high
-  2nd hem corner RL can't learn (grasp_rate <0.1); (2) the learnable low-corner version's coverage
-  (0.61) is below the naive stretch's (0.68).  Keep `agent_96000` in production.  Retained lessons:
+- ⚪ **Hem-to-hem presentation redesign — WORKS BUT WEAKER; keep naive in production (do not merge)**
+  (2026-07-08, Alex agent, branch `project/shirt-present`): after Georg's visual inspection of
+  `agent_96000`, tried the study's **hem↔hem horizontal-pull** geometry + fixed the 6 findings.  The
+  policy learns to grasp the accessible hem corner + pull a taut horizontal presentation, reaching
+  **det. present 0.380 @ coverage 0.637, grasp 0.73** (seed43 resume `agent_104000`, 2 eval seeds×96ep)
+  — but does NOT beat the naive baseline's **0.927 @ 0.68**.  (1) the study's WINNING hem↔hem grasp
+  needs a high 2nd hem corner RL can't learn (grasp_rate <0.1); (2) the learnable low-corner version's
+  coverage (0.64) is below the naive stretch's (0.68).  Best checkpoint copied to
+  `need_visual_verification/` (play with THIS branch's env).  Keep `agent_96000` in production.
+  Retained lessons:
   tautness must use flat rest distance (not geodesic+r0); silhouette grid must be clamped at 512
   envs (or train at 64); and **never penalise "gripper closed while far" — it teaches the policy to
   never close the gripper (grasp_rate 0); the attach is target-tied so early-close is cosmetic**.

@@ -10,19 +10,23 @@ the cloth *inspectable*.
 
 > **Status: PRODUCTION policy = the first pass's naive `agent_96000` (det.
 > present 0.927 @ coverage 0.68).  The hem-to-hem redesign on
-> `project/shirt-present` is a documented NEGATIVE result (2026-07-08).**
+> `project/shirt-present` is a WORKING-BUT-WEAKER alternative (2026-07-08):
+> det. present 0.380 @ coverage 0.637.**
 >
 > After Georg's visual inspection, the geometry was rebuilt around the FAPS
 > heuristics study's winning **hem-corner ↔ hem-corner horizontal pull**
 > (scripted coverage 0.820 vs 0.679 for the naive rule) and the six visual
-> findings were addressed.  But across five RL runs it did **not** transfer to
-> a policy that beats the naive baseline in-scene: best deterministic
-> **present 0.32 @ coverage 0.61** (seed 43 `agent_104000`).  Two measured
-> reasons: (1) the study's WINNING hem↔hem grasp needs a high second hem corner
-> that RL cannot learn to grasp (grasp_rate < 0.1); (2) the LEARNABLE
-> accessible-low-corner version reaches only ~0.61 coverage — below the naive
-> stretch's 0.68.  Full arc + numbers:
+> findings were addressed.  Across five RL runs + a resume, the policy learns
+> to grasp the accessible hem corner and pull a taut horizontal presentation,
+> reaching **det. present 0.380 @ coverage 0.637, grasp 0.73** (seed 43 resume
+> `agent_104000`, 2 eval seeds × 96 ep) — but it does **not** beat the naive
+> baseline: (1) the study's WINNING hem↔hem grasp needs a high second hem corner
+> RL cannot learn to grasp (grasp_rate < 0.1); (2) the LEARNABLE
+> accessible-low-corner version's coverage (0.64) is below the naive stretch's
+> 0.68.  Full arc + numbers:
 > [tracking report Phase 2](../../../../../../../../doc/reports/shirt_present_optimization_tracking.md#phase-2-hem-to-hem-presentation-redesign).
+> The best hem-to-hem checkpoint is in `logs/skrl/need_visual_verification/`
+> (play with THIS branch's env — its obs space differs from the naive one).
 >
 > This README documents the hem-to-hem MECHANICS as implemented on the branch.
 > Success predicate = windowed presented latch (both grasps ∧ taut flat-rest

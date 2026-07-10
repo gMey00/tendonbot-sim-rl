@@ -473,13 +473,18 @@ study's 0.82 median — the RL policy is expected to close this gap.
 * **Per-step hand-target selection** — jumpy argmax; latched at reset.
 * **Anchor z=1.35** — far pull-side at the reach edge; lowered to 1.20.
 
-### RL training — a five-run debugging arc, and a NEGATIVE result
+### RL training — a five-run debugging arc; a WORKING policy that falls short of the naive baseline
 
-**Headline (measured):** the hem-to-hem redesign does **NOT** transfer to better
-in-scene RL than the naive lowest-point policy.  Best deterministic checkpoint
-(seed 43, `agent_104000`, 2 eval seeds × 96 episodes): **present 0.323, grasp
-0.813, coverage 0.614, drop 0.151** at the 0.60 gate — well below the first
-pass's **0.927 at coverage 0.68**.  Two measured reasons:
+**Headline (measured).**  The hem-to-hem policy **works** — it learns to grasp
+the accessible hem corner and pull it into a taut horizontal presentation — but
+does **NOT** beat the first pass's naive lowest-point policy in-scene.  Best
+deterministic checkpoint (**seed 43 resume, `2026-07-08_16-03-46/agent_104000`,
+2 eval seeds × 96 episodes**): **present 0.380, grasp 0.729, coverage 0.637,
+stretch 0.83, drop 0.041** at the 0.60 gate — vs the first pass's **0.927 at
+coverage 0.68**.  A resume from the 8h-wall-cut run (fresh LR) lifted present
+0.32 → 0.38 and coverage 0.61 → 0.64 (the ~0.85 stochastic present spikes were
+noise; the deterministic mean is 0.38).  seed 44 did not consolidate (present
+~0.10, grasp ~0.4).  Two measured reasons for the shortfall:
 
 1. **The study's WINNING hem↔hem grasp is robot-unlearnable.**  Holding the
    shirt upside-down by a hem corner (coverage 0.82) puts the *second* hem
@@ -503,8 +508,8 @@ survive the requirement that a real UR5e *reach and grasp* the second point.
 | 1 (3821927) | hem-holder, open-gripper reach GATE | grasp < 0.05, present 0 | the gate made "hover near the corner, gripper open" a rich safe optimum |
 | 2 (3822833) | hem-holder, `early_close` penalty | grasp < 0.1 (unstable) | high 2nd-corner grasp unlearnable + early_close suppressed closing |
 | 3 (3822928) | random-holder low corner, `early_close` | grasp **0.00** | `early_close` (any close while far → −8) taught the policy to NEVER close the gripper |
-| 4 (3823022) | random-holder, `early_close` REMOVED | **grasp 0.89, present 0.37 (stoch), 0.32 (det)** | works — grasp learning recovered; coverage-limited |
-| 4-resume (3826501) | resume from agent_108000, fresh LR | _in progress_ | pushing past the 8h-wall cut |
+| 4 (3823022) | random-holder, `early_close` REMOVED | grasp 0.89, present 0.32 (det) | works — grasp learning recovered; coverage-limited |
+| 4-resume (3826501) | resume from agent_108000, fresh LR, +108 k | **present 0.380, grasp 0.729, coverage 0.637 (det, SELECTED)** | best policy; coverage ceiling ~0.64 caps present |
 
 **Reward lessons (the important ones):**
 
@@ -522,20 +527,31 @@ survive the requirement that a real UR5e *reach and grasp* the second point.
   rasterization grid (global-max grid_dim); clamp positions to a box before
   rasterizing, and train at **64 envs** (the Stage-0 throughput sweet spot).
 
-**Coverage is the ceiling.**  Deterministic grasp (0.81) and tautness (stretch
-1.04) are solid; present is capped because coverage sits right at the gate
-(~0.61) and drops (~0.15) break the windowed latch.  More training or a lower
-gate lifts present only marginally — the geometry's coverage ceiling is the
-binding constraint.
+**Coverage is the ceiling.**  Deterministic grasp (0.73) and tautness (stretch
+0.83) are solid; present is capped because coverage sits at ~0.64 — right at the
+0.60 gate and below the 0.65 study target — so only the better-covered episodes
+latch, and residual drops (~0.04) trim a little more.  More training lifts
+present only marginally: the geometry's coverage ceiling is the binding
+constraint, and it is *below* the naive stretch's 0.68.
 
 **Recommendation.**  Keep the first pass's naive lowest-point policy
-(`agent_96000`, present 0.927 @ coverage 0.68) as the production shirt_present
-policy.  The hem-to-hem redesign is retained on `project/shirt-present` as a
-documented negative result: the geometry, metrics, holder-pose fix and the six
-visual-inspection fixes are implemented and validated, but the study's grasp
-pair does not transfer to a robot-reachable, RL-learnable policy that beats the
-naive baseline.  The isolated worktree checkpoints are kept for reference; the
-`need_visual_verification` dir continues to point at `agent_96000`.
+(`agent_96000`, present 0.927 @ coverage 0.68) as the **production**
+shirt_present policy.  The hem-to-hem redesign is retained on
+`project/shirt-present` as a **working-but-weaker** alternative
+(present 0.380 @ coverage 0.637): the geometry, metrics, holder-pose fix and the
+six visual-inspection fixes are implemented and validated, and the policy DOES
+grasp the hem corner and pull a taut horizontal presentation — but the study's
+robot-free 0.82 does not transfer to a policy that beats the naive baseline,
+because its winning grasp is robot-unlearnable and its learnable coverage
+(0.64) is below the naive stretch's (0.68).  The best hem-to-hem checkpoint
+(seed 43 resume `agent_104000`) is copied into `need_visual_verification/` for
+inspection of the behaviour and the coverage limitation.
 
-_(Run 4-resume numbers to be appended when it completes; the recommendation
-stands regardless — a marginal resume gain does not close the 0.32 → 0.93 gap.)_
+**Visual-verification note.**  The hem-to-hem policy MUST be played with the
+`project/shirt-present` env (its observation space differs from the naive env —
+`pull_target_rel` added, `lowest_point_rel` removed), so it is NOT
+interchangeable with the merged naive `agent_96000`.  Expect to SEE: the arm
+open-approaches the low hem corner, closes and grasps it, lifts it to the
+holder's height and pulls horizontally into a taut chord (~38 % of episodes
+reach the full present latch); the failure modes are a bunched/under-spread
+garment (coverage < 0.60) and occasional drops.
