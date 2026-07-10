@@ -261,8 +261,14 @@ export no_proxy=localhost,127.0.0.1,.nhr.fau.de,.fau.de
 export NO_PROXY=localhost,127.0.0.1,.nhr.fau.de,.fau.de
 
 cd "{project_path}/src/tensegrity_pick"
+# Shadow any editable `tensegrity_pick` install with THIS checkout's package, so a
+# worktree (or any checkout != the env's pip -e target) benchmarks its own code.
+# The pip editable install is a sys.meta_path finder queried AFTER PathFinder, so a
+# PYTHONPATH prepend wins without touching the shared conda env.
+export PYTHONPATH="{project_path}/src/tensegrity_pick/source/tensegrity_pick:${{PYTHONPATH:-}}"
 {stage_block}
 echo "point ${{SLURM_ARRAY_TASK_ID}} on $(hostname)"
+python -c "import tensegrity_pick as t; print('[shadow] tensegrity_pick ->', t.__file__)" || true
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true
 
 srun --ntasks=1 python {bench_core} --headless \\

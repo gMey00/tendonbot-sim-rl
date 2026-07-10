@@ -1,0 +1,22 @@
+name: optimization_levers
+description: "Ablate control decimation \xD7 PBD solver iterations at fixed env count."
+research_questions:
+- E11
+base:
+  task: Template-Tensegrity-Shirt-Place-v0
+  num_envs: 64
+  warmup_steps: 30
+  bench_steps: 240
+  seed: 0
+  cloth_cfg_ref: tensegrity_pick.tasks.manager_based.shirt_place.shirt_place_scene_cfg:SHIRT_CLOTH_CFG
+axes:
+  decimation:
+  - 1
+  - 2
+  cloth.pbd_params.solver_position_iterations:
+  - 8
+  - 16
+  - 24
+repeats: 2
+filters:
+  exclude: []

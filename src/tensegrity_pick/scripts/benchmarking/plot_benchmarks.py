@@ -368,12 +368,85 @@ def fig_optimization_levers(runs: dict[str, list[dict]], out_dir: Path):
     _save(fig, out_dir, "optimization_levers")
 
 
+# ---------------------------------------------------------------------------
+# Cross-GPU overlay (§4.7): A6000 vs Alex on one axis, WITHOUT touching the
+# single-machine §4.x figures. Run dir names are "{machine}_{date}_{time}".
+# ---------------------------------------------------------------------------
+MACHINE_LABEL = {"pve-robotik-humble": "RTX A6000", "alex": "RTX PRO 6000"}
+
+
+def _machine_of(run_dir: Path) -> str:
+    return run_dir.name.rsplit("_", 2)[0]
+
+
+def discover_by_machine(spec: str) -> dict[str, Path]:
+    """{machine: newest run_dir} for one spec (newest wins per machine)."""
+    out: dict[str, Path] = {}
+    sd = DATA_ROOT / spec
+    if not sd.is_dir():
+        return out
+    runs = sorted([d for d in sd.iterdir()
+                   if (d / "results.jsonl").exists() or (d / "points").exists()])
+    for d in runs:
+        out[_machine_of(d)] = d
+    return out
+
+
+def fig_crossgpu_throughput(out_dir: Path,
+                            machines=("pve-robotik-humble", "alex")) -> None:
+    """Rigid + cloth throughput vs N for both GPUs on one log-log axis.
+    Colour encodes the task (rigid/cloth); line style / marker encodes the GPU."""
+    cloth_spec = next((c for c in CLOTH_SPEC_CANDIDATES if (DATA_ROOT / c).is_dir()), None)
+    specs = [(RIGID_SPEC, "Rigid", OKABE["blue"]), (cloth_spec, "Cloth", OKABE["vermillion"])]
+    style = {"pve-robotik-humble": dict(marker="o", linestyle="--"),
+             "alex": dict(marker="s", linestyle="-")}
+    fig, ax = plt.subplots(figsize=(6.2, 4.0))
+    xs_all: list[int] = []
+    for spec, task_label, c in specs:
+        if not spec:
+            continue
+        bym = discover_by_machine(spec)
+        for m in machines:
+            if m not in bym:
+                continue
+            a = agg(load_run(bym[m]), lambda r: "s", "env_steps_per_s")
+            if "s" not in a:
+                continue
+            xs, med, lo, hi = a["s"]
+            xs_all += xs
+            st = style.get(m, dict(marker="o", linestyle="-"))
+            ax.plot(xs, med, color=c, zorder=3,
+                    label=f"{task_label} · {MACHINE_LABEL.get(m, m)}", **st)
+            ax.fill_between(xs, lo, hi, color=c, alpha=0.10, linewidth=0)
+    if not xs_all:
+        print("  crossgpu: no data found for either machine")
+        plt.close(fig)
+        return
+    ax.set_yscale("log")
+    _logx(ax, xs_all)
+    ax.set_xlabel("parallel environments $N$")
+    ax.set_ylabel("throughput  (env·steps / s)")
+    ax.set_title("Cross-GPU throughput: RTX A6000 vs. RTX PRO 6000 (Blackwell)")
+    ax.legend(frameon=False, fontsize=7.5, loc="lower right")
+    _save(fig, out_dir, "crossgpu_throughput")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Render thesis figures from benchmark results.")
     ap.add_argument("--auto", action="store_true", help="Discover latest run per spec under DATA_ROOT.")
+    ap.add_argument("--crossgpu", action="store_true",
+                    help="Render ONLY the cross-GPU overlay (A6000 vs Alex); leaves §4.x figures untouched.")
     ap.add_argument("--runs", nargs="*", default=[], help="Explicit run dirs (glob ok).")
     ap.add_argument("--out", default=str(REPO_ROOT / "doc/reports/figures/benchmarks"))
     args = ap.parse_args()
+
+    if args.crossgpu:
+        set_thesis_style()
+        out_dir = Path(args.out)
+        print(f"Rendering cross-GPU overlay → {out_dir}")
+        fig_crossgpu_throughput(out_dir)
+        print("done.")
+        return
 
     set_thesis_style()
     runs: dict[str, list[dict]] = {}

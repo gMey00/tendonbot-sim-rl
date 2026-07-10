@@ -1,0 +1,16 @@
+{
+  "machine": "alex",
+  "hostname": "alex1.nhr.fau.de",
+  "python": "3.11.15",
+  "platform": "Linux-5.14.0-687.23.3rrze.el9.x86_64-x86_64-with-glibc2.34",
+  "torch": "2.7.0+cu128",
+  "cuda_runtime": "12.8",
+  "cudnn": null,
+  "isaaclab": "0.54.4",
+  "isaacsim": null,
+  "skrl": "2.1.0",
+  "gymnasium": "1.2.1",
+  "git_commit": "48e6061539ecb56c85b8b799dd6537b249f6a3c6",
+  "git_branch": "project/tendonbot-sim-rl",
+  "git_dirty": true
+}
