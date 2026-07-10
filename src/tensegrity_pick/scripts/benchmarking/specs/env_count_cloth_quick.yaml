@@ -1,0 +1,20 @@
+# Research Question A (cloth arm) — PRAGMATIC reduced env-count knee for the PBD
+# cloth task. The full study (env_count_sweep.yaml, 11 N × 5+ repeats) is ~5-9 h of
+# wall time because each cloth point pays a heavy construction + pre-settle cost;
+# this reduced grid (6 N × 3 repeats) resolves the peak (~32-64) and the
+# decline/overflow regime (256-512) in ~2-3 h on the A6000. Extend to the full
+# spec + >=5 repeats for the final thesis numbers (a one-line change).
+name: env_count_cloth_quick
+description: Reduced PBD-cloth throughput/memory/overflow vs. env count (knee + decline).
+research_questions: [A1, A2, B]
+
+base:
+  task: Template-Tensegrity-Shirt-Place-v0
+  warmup_steps: 20
+  bench_steps: 120
+  seed: 0
+
+axes:
+  num_envs: [16, 32, 64, 128, 256, 512]
+
+repeats: 3

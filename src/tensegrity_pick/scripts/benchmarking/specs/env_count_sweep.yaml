@@ -1,0 +1,22 @@
+# Research Question A — throughput vs. parallel env count (the "ideal env count").
+# Finds the env·steps/s knee: where throughput saturates and starts to decline.
+# Runnable as-is (task + num_envs only, no config overrides).
+#
+# Ranges below reproduce the Stage-0 observation (cloth peak ~32-64, decline past
+# 128) with finer resolution and the full metric set. TODO(research): confirm the
+# grid and repeat count against the throughput-reporting methodology in
+# doc/reports/RESEARCH_PROMPT_benchmarking_suite.md.
+name: env_count_sweep
+description: Throughput / memory / power vs. parallel environment count for one cloth task.
+research_questions: [A1, A2, A3]
+
+base:
+  task: Template-Tensegrity-Shirt-Place-v0
+  warmup_steps: 30
+  bench_steps: 240
+  seed: 0
+
+axes:
+  num_envs: [8, 16, 32, 48, 64, 96, 128, 192, 256, 384, 512]
+
+repeats: 3   # median + spread across seeds; throughput has run-to-run variance
