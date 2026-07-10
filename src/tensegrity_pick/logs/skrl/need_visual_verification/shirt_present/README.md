@@ -1,15 +1,18 @@
-# Shirt Present — Visual Verification Guide (HEM-TO-HEM redesign)
+# Shirt Present — Visual Verification Guide (HEM-TO-HEM baseline)
 
-**Play this on the `project/shirt-present` branch/worktree** — its observation
-space differs from the merged naive env (`pull_target_rel` added,
-`lowest_point_rel` removed), so the checkpoint is NOT interchangeable with the
-production `agent_96000`.
+This is the **hem-to-hem** presentation policy — the current `shirt_present`
+env (merged into `project/tendonbot-sim-rl` 2026-07-10 as the new hem↔hem
+baseline; the earlier naive lowest-point env/policy `agent_96000` is superseded,
+its checkpoint kept in `logs/skrl/theses_logs/…2026-07-04…/`).  Play it with
+**the current env** — its observation space is hem-to-hem (`pull_target_rel`
+added, `lowest_point_rel` removed), so it is NOT interchangeable with the old
+`agent_96000` checkpoint.
 
-This is the **hem-to-hem** presentation policy (pipeline Task 2, Phase 2): the
-retriever holds the shirt at an arbitrary upper point so it hangs hem-down, and
-the learning arm grasps the **accessible (lowest) hem corner** and pulls it up
-to the holder's height, **horizontally** along the camera-plane x — gravity
-drapes the body below the taut chord.
+Geometry: the retriever holds the shirt at an arbitrary upper point so it hangs
+hem-down, and the learning arm grasps the **accessible (lowest) hem corner** and
+pulls it up to the holder's height, **horizontally** along the camera-plane x —
+gravity drapes the body below the taut chord.  This is a FIRST STEP toward a
+better hem↔hem policy (present 0.380, below the naive 0.927 — see limitations).
 
 ## Result (deterministic, 2 eval seeds × 96 episodes)
 

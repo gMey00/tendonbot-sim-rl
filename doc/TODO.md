@@ -174,15 +174,20 @@ Progress log: [shirt_pick_optimization_tracking.md](reports/shirt_pick_optimizat
   (above the ICRA 0.55–0.60 band).  NB: the RL run's coverage gate (0.50) is below the FAPS
   study's recommended 0.65 — a candidate re-threshold now that both are merged (`final_coverage`
   is logged, so re-scoreable).
-- ⚪ **Hem-to-hem presentation redesign — WORKS BUT WEAKER; keep naive in production (do not merge)**
-  (2026-07-08, Alex agent, branch `project/shirt-present`): after Georg's visual inspection of
-  `agent_96000`, tried the study's **hem↔hem horizontal-pull** geometry + fixed the 6 findings.  The
-  policy learns to grasp the accessible hem corner + pull a taut horizontal presentation, reaching
-  **det. present 0.380 @ coverage 0.637, grasp 0.73** (seed43 resume `agent_104000`, 2 eval seeds×96ep)
-  — but does NOT beat the naive baseline's **0.927 @ 0.68**.  (1) the study's WINNING hem↔hem grasp
-  needs a high 2nd hem corner RL can't learn (grasp_rate <0.1); (2) the learnable low-corner version's
-  coverage (0.64) is below the naive stretch's (0.68).  Best checkpoint copied to
-  `need_visual_verification/` (play with THIS branch's env).  Keep `agent_96000` in production.
+- 🟡 **Hem-to-hem presentation — MERGED into `project/tendonbot-sim-rl` (2026-07-10) as the new
+  hem↔hem baseline for continued RL exploration** (redesign 2026-07-08, Alex agent).  After Georg's
+  visual inspection of `agent_96000`, replaced the naive lowest-point grasp with the study's
+  **hem↔hem horizontal-pull** geometry + fixed the 6 findings.  The policy learns to grasp the
+  accessible hem corner + pull a taut horizontal presentation, reaching **det. present 0.380 @
+  coverage 0.637, grasp 0.73** (seed43 resume `agent_104000`, 2 eval seeds×96ep) — a first step,
+  BELOW the naive lowest-point's **0.927 @ 0.68** but the chosen direction for the "perfect hem↔hem"
+  policy.  The `shirt_present` env is now the hem↔hem geometry; the naive `agent_96000` (0.927) is
+  superseded as a policy (its env changed) but its checkpoint is kept in `theses_logs/` for
+  reference.  Best hem↔hem checkpoint in `need_visual_verification/` (play with the current env).
+  **Next (open — better hem↔hem strategies):** the two limiters to beat are (1) the high 2nd-hem-corner
+  grasp is RL-unlearnable (grasp_rate <0.1) — needs a curriculum or a different second-grasp target;
+  (2) the random-holder→low-corner coverage (0.64) is below the naive stretch's (0.68) — needs a
+  better holder/second-grasp PAIR (the study's side→hem_c / hem↔hem cells score 0.73–0.82).
   Retained lessons:
   tautness must use flat rest distance (not geodesic+r0); silhouette grid must be clamped at 512
   envs (or train at 64); and **never penalise "gripper closed while far" — it teaches the policy to

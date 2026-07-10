@@ -534,18 +534,28 @@ latch, and residual drops (~0.04) trim a little more.  More training lifts
 present only marginally: the geometry's coverage ceiling is the binding
 constraint, and it is *below* the naive stretch's 0.68.
 
-**Recommendation.**  Keep the first pass's naive lowest-point policy
-(`agent_96000`, present 0.927 @ coverage 0.68) as the **production**
-shirt_present policy.  The hem-to-hem redesign is retained on
-`project/shirt-present` as a **working-but-weaker** alternative
-(present 0.380 @ coverage 0.637): the geometry, metrics, holder-pose fix and the
-six visual-inspection fixes are implemented and validated, and the policy DOES
-grasp the hem corner and pull a taut horizontal presentation — but the study's
-robot-free 0.82 does not transfer to a policy that beats the naive baseline,
-because its winning grasp is robot-unlearnable and its learnable coverage
-(0.64) is below the naive stretch's (0.68).  The best hem-to-hem checkpoint
-(seed 43 resume `agent_104000`) is copied into `need_visual_verification/` for
-inspection of the behaviour and the coverage limitation.
+**Decision (2026-07-10): MERGED into `project/tendonbot-sim-rl` as the new
+hem↔hem baseline for continued RL exploration.**  Georg's call: this iteration
+is a *first step* toward a better hem↔hem policy (having heuristically ruled out
+the naive random→lowest strategy), so the hem-to-hem env + geometry + the six
+visual-inspection fixes become the working `shirt_present` env, and further RL
+iterates from here.  The naive first-pass policy (`agent_96000`, present 0.927 @
+coverage 0.68) is **superseded as a policy** — its env (naive lowest-point obs
+space) no longer matches — but its checkpoint is preserved under
+`logs/skrl/theses_logs/shirt_present/2026-07-04_15-21-09_ppo_torch_seed43/` for
+reference/benchmarking.  The best hem-to-hem checkpoint (seed 43 resume
+`agent_104000`, present 0.380 @ coverage 0.637) is in
+`need_visual_verification/` for behaviour inspection.
+
+**Two limiters for the next iteration to beat** (to reach the study's 0.82):
+(1) the *winning* hem↔hem grasp (both corners, coverage 0.82) is RL-unlearnable
+because the second corner hangs high — needs a grasp CURRICULUM (start from a
+pre-grasped state / lower the target progressively) or a reachable proxy
+second-grasp; (2) the *learnable* random-holder→low-corner PAIR spreads the
+garment less (coverage 0.64) than even the naive stretch (0.68) — needs a better
+holder/second-grasp pair (the study's `side→hem_c` 0.83 and `hem↔hem` 0.72–0.82
+cells beat random pairs; biasing the upstream Task-1 pick toward a hem/side grip
+would unlock them).
 
 **Visual-verification note.**  The hem-to-hem policy MUST be played with the
 `project/shirt-present` env (its observation space differs from the naive env —
