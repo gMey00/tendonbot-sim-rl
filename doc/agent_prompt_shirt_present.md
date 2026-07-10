@@ -76,7 +76,7 @@ Shared: `.../tasks/manager_based/shared/` — **read-only for you** (§8).
     (`cloth.is_attached_slot(1)`); `ShirtPresentEnv._update_grasp` already re-pins it each step.
 - **Hanging-state bank** (initial-state distribution, already wired): 356-state bank at
   `res/Props/Cloth/banks/tshirt_hanging_bank.pt` (regenerate on Alex with
-  `scripts/generate_hanging_bank.py --headless --num_envs 32 --rounds 12` if the `.pt` is not in
+  `scripts/asset_generation/generate_hanging_bank.py --headless --num_envs 32 --rounds 12` if the `.pt` is not in
   your checkout), restored per reset by
   `ClothSortingEnvBase._reset_cloth_hanging_from_bank` with yaw+mirror augmentation and a
   `max_drape` filter (`MAX_HANG_DRAPE` in `shirt_present_env.py` keeps long hangs out of the
@@ -141,7 +141,7 @@ Shared: `.../tasks/manager_based/shared/` — **read-only for you** (§8).
    (a) prove the second grasp + stretch is physically achievable from bank states, (b) measure
    achievable coverage/tautness → success thresholds, (c) catch kinematic-reach problems early.
 3. **Zero/random agent checks** after every MDP change (PASS = "Gym observation space" printed +
-   ≥45 s stepping, `scripts/zero_agent.py --num_envs 4 --headless`; they loop forever — kill).
+   ≥45 s stepping, `scripts/agents/zero_agent.py --num_envs 4 --headless`; they loop forever — kill).
 4. **Train** (`tools/train_alex.sh Template-Shirt-Present-UR5e-F140-v0 --headless --num_envs 64`,
    adjust after your env-count re-benchmark). Diagnose stalls with a gate-fraction diagnostic
    (copy `diag_shirt_pick_policy.py`) BEFORE touching weights blindly.

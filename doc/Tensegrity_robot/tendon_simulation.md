@@ -295,7 +295,7 @@ bash scripts/model_validation/run_validation.sh --tendon-physical-only
 
 ```bash
 cd /home/robot/Isaac/IsaacLab
-./isaaclab.sh -p /home/robot/studentische-arbeiten/src/tensegrity_pick/scripts/step_response_test.py \
+./isaaclab.sh -p /home/robot/studentische-arbeiten/src/tensegrity_pick/scripts/diagnostics/step_response_test.py \
     --headless --num-envs 1 --output-dir ./step_response_results
 ```
 

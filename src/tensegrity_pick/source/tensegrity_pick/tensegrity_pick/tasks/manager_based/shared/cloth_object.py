@@ -186,11 +186,18 @@ class XPBDClothParams:
     """
 
     # Young's modulus: 5e4 diverged (NaN on step 1); 5000 is the validated
-    # cotton-soft value (the FEM default solver is ~50 MPa, so this is much
-    # softer).  Lower = floppier.
-    youngs_modulus: float = 5000.0
+    # cotton-soft floor.  Raised to 7000 for a slightly firmer in-plane sheet
+    # (less gravity sag) while staying well below the diverging value.
+    youngs_modulus: float = 7000.0
     poissons_ratio: float = 0.3
-    thickness: float = 1.0e-3          # shell thickness (m)
+    # Shell thickness (m).  A corotational-FEM surface deformable's *bending*
+    # stiffness scales with E·t³, so the original 1 mm shell had almost no bending
+    # resistance and buckled into the heavy wrinkling the PBD cloth never shows.
+    # 3 mm gives ~27× the bending stiffness (a smooth, sheet-like drape matching
+    # the PBD shirt) and — since mass = density·t·area — also lifts the garment
+    # mass from ~0.09 kg to ~0.26 kg, near the PBD shirt's 0.30 kg, so it falls
+    # and settles with the same weight instead of floating.
+    thickness: float = 3.0e-3
     dynamic_friction: float = 0.3
     density: float = 350.0             # cotton ~300-400 kg/m^3
     presettle_drop_height_m: float = 0.03
@@ -472,14 +479,14 @@ def _apply_pbd_cloth(env: object, cloth_cfg: ClothObjectCfg) -> None:
     vis_mat = UsdShade.Material.Define(stage, vis_mat_path)
     shader = UsdShade.Shader.Define(stage, f"{vis_mat_path}/PreviewSurface")
     shader.CreateIdAttr("UsdPreviewSurface")
-    # A vivid, slightly emissive red so the (thin, flat) shirt reads clearly as
-    # a garment against the blue/grey belt and drum under the bright dome light,
-    # and is easy to follow during grasp/transport.
+    # FAPS-Grün (#97C139) with a slight matching emissive so the (thin, flat)
+    # shirt reads clearly as a garment against the blue/grey belt and drum under
+    # the bright dome light, and is easy to follow during grasp/transport.
     shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(
-        Gf.Vec3f(0.85, 0.06, 0.06),
+        Gf.Vec3f(0.592, 0.757, 0.224),
     )
     shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(
-        Gf.Vec3f(0.25, 0.0, 0.0),
+        Gf.Vec3f(0.12, 0.16, 0.04),
     )
     shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.8)
     shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
@@ -592,20 +599,20 @@ def _apply_xpbd_cloth(env: object, cloth_cfg: ClothObjectCfg) -> None:
                 if a:
                     a.Set(val)
 
-    # Visible red material (bound for the *default* render purpose so it does not
-    # clash with the physics-purpose deformable material binding).
-    _bind_red_visual(stage, mesh_paths)
+    # Visible FAPS-green material (bound for the *default* render purpose so it
+    # does not clash with the physics-purpose deformable material binding).
+    _bind_cloth_visual(stage, mesh_paths)
     logger.info("XPBD surface-deformable cloth applied to %d envs", len(mesh_paths))
 
 
-def _bind_red_visual(stage, mesh_paths: list[str]) -> None:
-    """Bind a vivid red UsdPreviewSurface to each cloth mesh (default purpose)."""
+def _bind_cloth_visual(stage, mesh_paths: list[str]) -> None:
+    """Bind a FAPS-green UsdPreviewSurface to each cloth mesh (default purpose)."""
     vis_mat_path = "/World/clothVisualMaterial"
     if not stage.GetPrimAtPath(Sdf.Path(vis_mat_path)).IsValid():
         vis_mat = UsdShade.Material.Define(stage, vis_mat_path)
         shader = UsdShade.Shader.Define(stage, f"{vis_mat_path}/PreviewSurface")
         shader.CreateIdAttr("UsdPreviewSurface")
-        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.85, 0.06, 0.06))
+        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0.592, 0.757, 0.224))
         shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.8)
         shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
         vis_mat.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")

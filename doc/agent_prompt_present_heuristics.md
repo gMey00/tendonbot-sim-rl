@@ -59,7 +59,7 @@ you try.
   `attach(env_ids, centers, radius, slot)` (pad-sized radius 0.07 = "one grasp point"),
   `hold(centers, slot)` per step to move an anchor along a scripted trajectory (that IS the
   stretch), `detach`, `is_attached_slot`. Static anchors need no robot.
-- **The generation pattern to copy:** `scripts/generate_hanging_bank.py` — boots
+- **The generation pattern to copy:** `scripts/asset_generation/generate_hanging_bank.py` — boots
   `Template-Shirt-Pick-Tensegrity-v0`, sets `episode_length_s = 1e6`, steps the sim manually
   (`scene.write_data_to_sim(); sim.step(render=False); scene.update(dt); cloth.update()`),
   hangs the shirt from a random particle at a clean UPSTREAM anchor (away from all scene

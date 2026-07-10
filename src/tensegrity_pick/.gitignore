@@ -61,6 +61,7 @@ _build
 !**/logs/skrl/
 **/logs/skrl/*
 !**/logs/skrl/theses_logs/
+!**/logs/skrl/need_visual_verification/
 **/recordings/*
 
 # Pre-Trained Checkpoints

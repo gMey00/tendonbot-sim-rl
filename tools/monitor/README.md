@@ -2,10 +2,13 @@
 
 Live training dashboard for SKRL training runs. Automatically discovers all
 training runs in the workspace, reads TensorBoard event files, and displays
-all reward terms, learning metrics, and training progress — without any
+all reward terms, learning metrics, training progress, **live GPU/CPU/memory
+performance**, and a **job switcher** to flip between running jobs — without any
 pre-configuration.
 
-Works with any task (Reach, Cube Place, Cube Sort, …) and any robot variant.
+Works with any task (Reach, Cube Place, Cube Sort, Shirt Present, …) and any
+robot variant, on both the **FAPS workstation** and the **Alex cluster** (run it
+on the compute node via `tools/watch_alex.sh` — see below).
 
 ---
 
@@ -14,8 +17,16 @@ Works with any task (Reach, Cube Place, Cube Sort, …) and any robot variant.
 Install once into the `env_isaaclab` conda environment:
 
 ```bash
-conda run -n env_isaaclab pip install rich plotext streamlit
+conda run -n env_isaaclab pip install rich plotext psutil tbparse streamlit
 ```
+
+- `rich` + `plotext` + `tbparse` — terminal dashboard and TensorBoard parsing.
+- `psutil` — CPU / RAM / process metrics for the **Performance** tab. The GPU
+  panel shells out to `nvidia-smi` (already present wherever a GPU is), so a
+  missing `psutil` only disables the CPU/RAM section, never crashes the monitor.
+- `streamlit` — optional, only for the `--web` browser dashboard.
+
+On Alex these are installed automatically by `tools/install_IsaacLab_Alex.sh`.
 
 ---
 
@@ -120,20 +131,58 @@ conda run --no-capture-output -n env_isaaclab python -u -m tools.monitor --web \
 
 ---
 
+## Keyboard navigation (terminal dashboard)
+
+The terminal dashboard is a live full-screen TUI with **five views** and an
+in-place **job switcher** — no need to restart to look at another run.
+
+| Key | Action |
+|-----|--------|
+| `1` … `5` | Switch view: **1** Overview · **2** Reward Charts · **3** Policy · **4** Performance · **5** Runs |
+| `[` / `]` (or `,` / `.`) | Switch the active job to the **previous / next** discovered run — works from any view |
+| `←` / `→` | Same as `[` / `]` (quick job cycling) |
+| `↑` / `↓` | Move the highlight in the **Runs** view |
+| `Enter` | Jump to the highlighted run (Runs view) |
+| `q` / `Ctrl+C` | Quit |
+
+The active job is shown in the nav bar; the **Runs** tab lists every discovered
+run (task, status, age) with the active row marked `▶` and scrolls to keep the
+selection visible when there are many runs.
+
 ## What is displayed
 
 ### Terminal dashboard (Rich)
 
-| Panel | Content |
+| View / Panel | Content |
 |-------|---------|
-| **Header** | Task name, algorithm, run directory, status |
-| **Progress bar** | Current step / target steps, %, speed (steps/s), elapsed time, ETA |
+| **1 · Overview** | Header (task, algorithm, run dir, status), progress bar, and the tables below |
 | **Reward Terms** | All `Episode_Reward/*` tags — latest value + trend arrow (▲/▼/─) |
 | **Learning & Policy** | Total reward (mean/min/max), policy std, losses, learning rate, episode length |
-| **Custom Metrics** | `Info/Metrics/*` tags — grasp rate, success rate, etc. |
-| **Total Reward plot** | plotext line chart of mean ± min/max over training steps |
-| **Reward Decomposition** | plotext multi-line chart of top reward terms over steps |
-| **Policy Diagnostics** | plotext chart of policy loss, value loss, learning rate |
+| **Custom Metrics** | `Metrics/*` tags — grasp rate, success rate, etc. |
+| **2 · Reward Charts** | plotext line chart of total reward (mean ± min/max) + reward decomposition of top terms |
+| **3 · Policy** | plotext chart of policy loss, value loss, learning rate |
+| **4 · Performance** | Live **GPU** (util %, memory, temp, power, util sparkline per GPU), **CPU/RAM** (usage bars + sparklines, load avg, swap), and detected **training processes** (PID, CPU %, RSS) |
+| **5 · Runs** | Job switcher: all discovered runs with status + age, active/highlighted markers |
+
+> **Reward/metric tags:** both the old `Info / Episode_Reward/*` /
+> `Info / Metrics/*` naming (skrl ≤ 2.0) **and** the current
+> `Episode_Reward/*` / `Metrics/*` naming are recognised, so historical and
+> new runs both decompose correctly. (The dropped `Info / ` prefix was why
+> per-term rewards stopped showing.)
+
+### Performance tab on Alex
+
+`nvidia-smi` and `psutil` report the resources of **whatever host the monitor
+runs on**. On Alex the login node has no GPU, so launch the monitor **on the
+compute node** through the documented overlap attach:
+
+```bash
+./tools/watch_alex.sh              # auto-pick your running job → monitor (train mode)
+./tools/watch_alex.sh 1234567_3    # a specific array task / seed
+```
+
+There the Performance tab shows that job's GPU, the node's CPU/RAM, and the
+training process. (`SLURM_JOB_ID`, when set, is shown in the CPU/Memory panel.)
 
 ### Web dashboard (Streamlit + Plotly)
 
@@ -153,7 +202,8 @@ tools/monitor/
     __init__.py         Package marker
     __main__.py         CLI entry point
     core.py             Data layer: run discovery, TensorBoard parsing, ETA
-    terminal.py         Rich Live terminal dashboard with plotext charts
+    sysmetrics.py       GPU (nvidia-smi) + CPU/RAM (psutil) sampling for Performance tab
+    terminal.py         Rich Live terminal dashboard: 5 views + job switcher + plotext charts
     web.py              Streamlit web dashboard with Plotly charts
     monitor.sh          Convenience wrapper (uses --no-capture-output)
 ```

@@ -40,7 +40,7 @@ Recommended reset recipe (all pieces exist):
 3. `self._reset_cloth_hanging_from_bank(env_ids, tip_pos_w, slot=0, max_drape=...)` — restores a
    relaxed random-particle hang at the fingertip and re-attaches slot 0 (bank:
    `res/Props/Cloth/banks/tshirt_hanging_bank.pt`, 356 states; regenerate on Alex with
-   `scripts/generate_hanging_bank.py --headless --num_envs 32 --rounds 12` if missing).
+   `scripts/asset_generation/generate_hanging_bank.py --headless --num_envs 32 --rounds 12` if missing).
    Pick `max_drape` so the hang clears the drum tops (z ≈ 0.88) and belt from your sampled poses.
 4. Beware: the policy's gripper action overwrites the finger target from the first action step —
    an "open" command releases immediately. That is legitimate (release IS the task's final act),
@@ -124,7 +124,7 @@ Shared: `.../tasks/manager_based/shared/` — **read-only for you** (§8).
 
 1. **Grasped-hang reset** (§1 recipe) + obs set: `target_bin_rel` (exists), shirt-centroid rel
    EE, `grasp_active`, joint pos/vel, previous action, gripper closure. Verify with
-   `scripts/zero_agent.py`/`random_agent.py --num_envs 4 --headless` (PASS = "Gym observation
+   `scripts/agents/zero_agent.py`/`random_agent.py --num_envs 4 --headless` (PASS = "Gym observation
    space" + ≥45 s stepping; they loop forever — kill) and confirm in logs that the hang restore
    + closed gripper survives ≥ 100 zero-action steps without dropping.
 2. **Scripted baseline** (`scripts/model_validation/baseline_shirt_distribute.py`): P-servo
@@ -146,7 +146,7 @@ Shared: `.../tasks/manager_based/shared/` — **read-only for you** (§8).
   entries — goal, changes, experiments (including losers, kept for the record), results tables,
   root-cause analyses. Update as you go.
 - **`shirt_distribute/README.md`** (stub exists): task definition, MDP tables, decisions with
-  rationale, final results + figures (port `scripts/plot_shirt_pick_training_results.py`;
+  rationale, final results + figures (port `scripts/plotting/plot_shirt_pick_training_results.py`;
   figures under `shirt_distribute/figures/<variant>/`).
 - **Revalidation scripts** with usage-comment headers in `scripts/model_validation/` for every
   claim (baseline, diagnostics, eval).

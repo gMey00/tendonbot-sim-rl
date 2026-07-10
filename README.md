@@ -122,10 +122,10 @@ cd src/tensegrity_pick
 python -m pip install -e source/tensegrity_pick
 
 # 6. Verify all environments are registered
-python scripts/list_envs.py
+python scripts/diagnostics/list_envs.py
 
 # 7. Run a quick smoke test
-python scripts/zero_agent.py --task=Template-Reach-Tensegrity-v0 --num_envs=2 --headless
+python scripts/agents/zero_agent.py --task=Template-Reach-Tensegrity-v0 --num_envs=2 --headless
 ```
 
 ### Training
@@ -148,7 +148,7 @@ python scripts/skrl/play.py --task=Template-Reach-Tensegrity-Play-v0 --num_envs=
 
 ```bash
 cd /home/robot/Isaac/IsaacLab
-./isaaclab.sh -p /path/to/src/tensegrity_pick/scripts/step_response_test.py \
+./isaaclab.sh -p /path/to/src/tensegrity_pick/scripts/diagnostics/step_response_test.py \
     --headless --num-envs 1 --output-dir ./step_response_results
 ```
 
@@ -163,6 +163,7 @@ cd /home/robot/Isaac/IsaacLab
 |----------|-------------|
 | [`doc/README.md`](doc/README.md) | Documentation index |
 | [`doc/nv_isaac.md`](doc/nv_isaac.md) | NVIDIA Isaac Sim / Isaac Lab resources and links |
+| [`doc/Alex_cluster/README.md`](doc/Alex_cluster/README.md) | Alex NHR@FAU GPGPU cluster: quickstart, RTX PRO 6000 hardware, Tier3 application |
 | [`doc/Tensegrity_robot/README.md`](doc/Tensegrity_robot/README.md) | Tensegrity robot documentation: kinematics, tendon simulation, model validation, workspace analysis |
 | [`doc/Tensegrity_robot/tendon_simulation.md`](doc/Tensegrity_robot/tendon_simulation.md) | Tendon simulation: physics, architecture, validation |
 | [`doc/remote_desktop_setup.md`](doc/remote_desktop_setup.md) | Remote desktop setup (Tailscale + RustDesk) |

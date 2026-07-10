@@ -1,0 +1,18 @@
+# Research experiment (i) — cloth-free RIGID baseline throughput-vs-N.
+# Provides the rigid-body scaling reference so cloth-specific costs read as a
+# delta over rigid. Expect near-linear env·steps/s scaling to far higher N than
+# cloth (Isaac Gym: thousands of envs; Makoviychuk et al. 2021). Runnable as-is.
+name: rigid_baseline
+description: Rigid (reach) throughput / memory / power vs. env count — cloth-free reference.
+research_questions: [i, A1]
+
+base:
+  task: Template-Reach-UR5e-F140-v0
+  warmup_steps: 30
+  bench_steps: 240
+  seed: 0
+
+axes:
+  num_envs: [16, 32, 64, 128, 256, 512, 1024, 2048, 4096]
+
+repeats: 3

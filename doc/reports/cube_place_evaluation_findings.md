@@ -512,9 +512,9 @@ release height.
   (1.000 success over 150 episodes).
 - **Full 5-seed × 3-variant × 3-agent evaluation** — 45 cells, 500
   episodes each, driven by
-  [run_place_eval_matrix.sh](../../src/tensegrity_pick/scripts/run_place_eval_matrix.sh).
+  [run_place_eval_matrix.sh](../../src/tensegrity_pick/scripts/training/run_place_eval_matrix.sh).
 - **Aggregation + figures** —
-  [plot_place_eval_results.py](../../src/tensegrity_pick/scripts/plot_place_eval_results.py).
+  [plot_place_eval_results.py](../../src/tensegrity_pick/scripts/plotting/plot_place_eval_results.py).
 
 ---
 
@@ -522,8 +522,8 @@ release height.
 
 ### Code
 - [src/tensegrity_pick/scripts/skrl/evaluate_place.py](../../src/tensegrity_pick/scripts/skrl/evaluate_place.py)
-- [src/tensegrity_pick/scripts/run_place_eval_matrix.sh](../../src/tensegrity_pick/scripts/run_place_eval_matrix.sh)
-- [src/tensegrity_pick/scripts/plot_place_eval_results.py](../../src/tensegrity_pick/scripts/plot_place_eval_results.py)
+- [src/tensegrity_pick/scripts/training/run_place_eval_matrix.sh](../../src/tensegrity_pick/scripts/training/run_place_eval_matrix.sh)
+- [src/tensegrity_pick/scripts/plotting/plot_place_eval_results.py](../../src/tensegrity_pick/scripts/plotting/plot_place_eval_results.py)
 
 ### Data
 - Training runs (git-tracked): `logs/skrl/theses_logs/cube_place/{tensegrity,tensegrity_tendon,tensegrity_physical_tendon}/2026-06-22_*_ppo_torch_seed{0..4}/` — the 15 evaluated runs, each with all 61 checkpoints, the TensorBoard event file and `params/`. Copied here from the gitignored working tree `logs/skrl/cube_place/...` so they are versioned with the report.

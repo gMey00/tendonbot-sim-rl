@@ -1,0 +1,25 @@
+# Research Question C7 — per-step compute cost of the action space / controller.
+# Holds robot (UR5e-F140) and task (reach) fixed, sweeps the four control modes so
+# the delta is attributable to the controller (joint PD vs. differential-IK vs.
+# absolute-IK vs. operational-space control). Runnable as-is.
+#
+# Sweep a couple of env counts so the controller cost is seen both where it
+# dominates (small N) and where sim/solver dominates (large N).
+name: action_space_cost
+description: Reach step-cost across joint / IK-Rel / IK-Abs / OSC, robot & task fixed.
+research_questions: [C7]
+
+base:
+  warmup_steps: 30
+  bench_steps: 300
+  seed: 0
+
+axes:
+  task:
+    - Template-Reach-UR5e-F140-v0          # joint-space position
+    - Template-Reach-UR5e-F140-IK-Rel-v0   # differential (relative) IK
+    - Template-Reach-UR5e-F140-IK-Abs-v0   # absolute-pose IK
+    - Template-Reach-UR5e-F140-OSC-v0      # operational-space control
+  num_envs: [256, 1024, 4096]
+
+repeats: 2

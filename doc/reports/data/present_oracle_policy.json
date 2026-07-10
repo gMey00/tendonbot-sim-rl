@@ -1,0 +1,10 @@
+{
+ "collar": "sleeve",
+ "shoulder": "hem_corner",
+ "sleeve": "hem_corner",
+ "chest": "hem_c",
+ "side": "hem_c",
+ "belly": "side",
+ "hem_corner": "hem_corner",
+ "hem_c": "hem_corner"
+}

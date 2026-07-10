@@ -1,5 +1,25 @@
 # Reach Task — Comprehensive Evaluation Report (2026-05-23)
 
+> **Status update (2026-07-10):** the physical-tendon variant was reworked
+> (cable length limits, per-tendon hardware saturation, motor lag,
+> linkage-integrity penalty, corrected lower-arm measurement, 120 Hz physics,
+> retuned inner PID) and a **second physical variant with hierarchical
+> control** (`tensegrity_physical_hier`, inner PID→tension loop) plus a
+> **scripted IK+PID heuristic baseline** for it were added — see
+> [physical_variant_fix_report.md](physical_variant_fix_report.md) and the
+> [tracking log](reach_optimization_tracking.md) iterations 16/16b.
+> The 5-seed retraining + evaluation of both reworked physical variants runs
+> on the cluster; §11 below carries the result stubs and the regeneration
+> commands.  The PD / sim-tendon numbers in this report remain valid.
+> **Methodology correction:** the "final checkpoint" loading in §1.2 was
+> affected by a lexicographic-sort bug — the 2026-05 cells actually scored
+> `agent_9600` (PD / sim-tendon, of 48 k) and `agent_90000` (physical, of
+> 150 k).  Both are within the post-convergence plateau of their runs (PD
+> converges by ~12 k, physical by ~90 k of 150 k), so the reported numbers
+> stand, but checkpoint identity matters for reproduction.  Fixed (numeric
+> sort) for all future runs.  A second harness fix (inference-tensor crash)
+> means `success_held` / `action_rate_mean` are populated from now on.
+
 This report covers the seed-aggregated training and evaluation of the
 PPO policy on the three reach-task variants of the tensegrity arm, plus
 three baselines (zero-action, uniform random, damped-least-squares
@@ -459,7 +479,7 @@ prioritised against compute budget.
 - **Plot-07 right panel was empty** — root cause was a plot-script
   tag-name mismatch (`Episode_Reward/goal_reached` vs the actual
   `Info / Episode_Reward/position_reached`). Fixed in
-  [plot_reach_training_results.py](../../src/tensegrity_pick/scripts/plot_reach_training_results.py).
+  [plot_reach_training_results.py](../../src/tensegrity_pick/scripts/plotting/plot_reach_training_results.py).
   Re-running the plotter against the existing event files produces
   a populated right panel without any new training.
 - **`metric_term["success_rate"]` zeroed after reset** — fixed in
@@ -481,10 +501,10 @@ prioritised against compute budget.
   A rerun of `evaluate.py` populates the new field. (§8.5)
 - **Scripts wrote figures to a stray top-level `source/` tree** —
   fixed in
-  [plot_reach_training_results.py](../../src/tensegrity_pick/scripts/plot_reach_training_results.py),
-  [plot_place_training_results.py](../../src/tensegrity_pick/scripts/plot_place_training_results.py)
+  [plot_reach_training_results.py](../../src/tensegrity_pick/scripts/plotting/plot_reach_training_results.py),
+  [plot_place_training_results.py](../../src/tensegrity_pick/scripts/plotting/plot_place_training_results.py)
   and
-  [plot_sort_training_results.py](../../src/tensegrity_pick/scripts/plot_sort_training_results.py)
+  [plot_sort_training_results.py](../../src/tensegrity_pick/scripts/plotting/plot_sort_training_results.py)
   so they now write to the canonical extension tree
   `src/tensegrity_pick/source/tensegrity_pick/.../figures`. The
   already-generated `aggregate/` figures were moved into the
@@ -505,12 +525,46 @@ prioritised against compute budget.
 - [src/tensegrity_pick/scripts/run_reach_pipeline.sh](../../src/tensegrity_pick/scripts/run_reach_pipeline.sh)
 - [src/tensegrity_pick/scripts/rerun_all_evals.sh](../../src/tensegrity_pick/scripts/rerun_all_evals.sh)
 - [src/tensegrity_pick/scripts/skrl/evaluate.py](../../src/tensegrity_pick/scripts/skrl/evaluate.py)
-- [src/tensegrity_pick/scripts/plot_reach_training_results.py](../../src/tensegrity_pick/scripts/plot_reach_training_results.py)
+- [src/tensegrity_pick/scripts/plotting/plot_reach_training_results.py](../../src/tensegrity_pick/scripts/plotting/plot_reach_training_results.py)
 
 ### Data
 - Training runs: `logs/skrl/reach/{tensegrity,tensegrity_tendon,tensegrity_physical_tendon}/2026-05-22_*_ppo_torch/`
 - Eval JSONs: `logs/skrl/reach/eval/*.json` (50 files)
 - Pipeline log: `logs/skrl/reach/_pipeline.log`
+
+## 11 Reworked physical variants — evaluation stubs (cluster, pending)
+
+The 2026-07 rework replaces the old `tensegrity_physical_tendon` cell family
+and adds `tensegrity_physical_hier`.  To be filled from the cluster run:
+
+| Variant | Agent | Success rate | Success held | Pos err [m] | Ori err | Reach time [s] |
+|---|---|---:|---:|---:|---:|---:|
+| Physical tendon (reworked) | zero | _pending_ | | | | |
+| Physical tendon (reworked) | random | _pending_ | | | | |
+| Physical tendon (reworked) | PPO | _pending_ | | | | |
+| Physical hier. | zero | _pending_ | | | | |
+| Physical hier. | random | _pending_ | | | | |
+| Physical hier. | **IK+PID heuristic** | _pending_ (local single-seed reference: 0.56, best-err 0.12 m) | | | | |
+| Physical hier. | PPO | _pending_ | | | | |
+
+Reference bars: old physical PPO 0.314 ± 0.144; sim-tendon PPO 0.979; PD PPO
+0.997.  Interpretation caveats for the new cells: targets now sample the
+*achievable* workspace (`joint_range_margin` 0.10 vs 0.01), so success rates
+are not directly comparable to the 2026-05 physical row; the known PhysX
+quasi-static breakaway (fix-report addendum §A2.3) bounds the achievable
+precision of *all* agents on this variant family.
+
+Regeneration (after the cluster batch lands in ``logs/skrl/reach/eval/``):
+
+```bash
+cd src/tensegrity_pick
+python scripts/plotting/plot_reach_eval_results.py          # table + figures 08–12
+python scripts/plotting/plot_reach_training_results.py --seeds \
+    logs/skrl/reach/tensegrity/2026-05-22_*_ppo_torch \
+    logs/skrl/reach/tensegrity_tendon/2026-05-22_*_ppo_torch \
+    logs/skrl/reach/tensegrity_physical_tendon/*_ppo_torch_seed[0-4] \
+    logs/skrl/reach/tensegrity_physical_hier/*_ppo_torch_seed[0-4]   # figure 07
+```
 
 ### Figures
 - [07_seed_aggregated.png](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/07_seed_aggregated.png)
