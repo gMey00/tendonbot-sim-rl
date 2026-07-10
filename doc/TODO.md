@@ -4,6 +4,70 @@ Priority markers: 🔴 High · 🟡 Medium · 🟢 Low · ⬛ Blocked (requires 
 
 ---
 
+## Physical Tendon Variant — Reach Rework (2026-07-09)  🔴
+
+Fixes for the RL failure of the body-force (physical antiparallelogram) variant
+(reach eval 2026-05-23: 31.4 % ± 14.4 % success; policies "hacked" the task by
+tearing the loop-closure joint open and steering the dangling forearm with the
+linear base).  Full change log:
+[physical_variant_fix_report.md](reports/physical_variant_fix_report.md).
+
+- ✅ ~~**Per-tendon cable saturation for the physical action**~~\
+  **DONE (2026-07-09):** `PhysicalTendonEffortActionCfg.max_tension` defaults to the
+  hardware-derived `[480, 480, 80, 80, 80]` N (`HW_TENDON_MAX_TENSIONS`); both tendon
+  action terms now accept scalar or per-tendon lists (M2 mechanism).
+- ✅ ~~**Cable min/max length between the attachment points**~~\
+  **DONE (2026-07-09):** geometric range over the ±70° elbow workspace computed from the
+  four-bar closure: **[0.0913, 0.2577] m** (0.1775 m at 0°). Wind-up stop (tension fades
+  to zero at min length) + passive spring–damper stretch stop at max length in
+  `PhysicalTendonEffortAction._apply_tendon_forces`.
+- ✅ ~~**Linkage-breaking exploit**~~\
+  **DONE (2026-07-09):** `linkage_closure_broken` termination — closure-anchor gap > 3 cm
+  (elastic solver drift under full 480 N stays ≲1 cm at 120 Hz) OR parallelogram
+  **branch-flip** detection (|elbow − (rod_L+rod_R)| > 0.3 rad; the flipped branch
+  satisfies the closure with gap ≈ 0 but decouples the forearm). Verified: sustained
+  480 N now parks the elbow at the ~70° stop with the closure intact (<1 mm).
+- ✅ ~~**Sim-fidelity fixes found during verification**~~ **(2026-07-09):**
+  physical variants now run **120 Hz physics** (decimation 4; closure drifts cm at 60 Hz),
+  `enable_external_forces_every_iteration`, **PhysX sleep disabled** (body-force-driven arm
+  freezes when asleep — tensor-API forces don't wake it), **50 ms tension lag** (motor/spool
+  dynamics; kills constraint-impulse spikes), `joint_vel_diverged` 100→500 rad/s (1-gram
+  wrist dummy link spiked past 100 on reset transients → silent truncation reset-loops),
+  hierarchical elbow gravity comp recalibrated to the measured 5-DOF static balance
+  (6.35 → ≈2.8 N·m).
+- ✅ ~~**Lower-arm rotation measured at the right points**~~\
+  **DONE (2026-07-09):** `mdp.lower_arm_angle` / `lower_arm_ang_vel` measure the forearm
+  body twist about the upper-arm X axis (`compute_lower_arm_angle_and_rate`) — the elbow
+  angle is the *sum* of two linkage joints, not any single joint. Raw linkage joint
+  angles removed from the policy observation (base + wrist joints kept).
+- ✅ ~~**Per-cable length/velocity in the policy observation**~~ (eval report §9 #1)\
+  **DONE (2026-07-09):** `mdp.tendon_cable_lengths` / `tendon_cable_length_rates` read the
+  cable state from the action term.
+- ✅ ~~**Hierarchical controller variant**~~ (thesis §6 recommendation)\
+  **DONE (2026-07-09):** `HierarchicalPhysicalTendonAction` — joint-space set-points
+  tracked by the validated inner PID→tension loop (gains from the step-response study:
+  elbow 75/6/3, wrist 10/1.5/0.6, gravity comp, block-wise tension distribution with
+  null-space smoothing). Registered as `Template-Reach-Tensegrity-Physical-Hierarchical-v0`
+  (+ `-Play-v0`).
+- 🔴 **Retrain both physical reach variants on the CLUSTER** (5 seeds each, direct +
+  hierarchical) + eval matrix incl. the new IK+PID heuristic baseline; compare against the
+  31.4 % baseline and the 98 % sim-tendon reference. Everything is prepared:
+  [run_physical_reach_pipeline.sh](../src/tensegrity_pick/scripts/training/run_physical_reach_pipeline.sh)
+  (resumable train → eval → plots; heuristic included), local seeds discarded after the
+  2026-07-10 controller/RL fixes (see tracking iteration 16b). Also fixed on the way:
+  `evaluate_reach.py` checkpoint sort (lexicographic → numeric; the 2026-05 study actually
+  scored agent_9600/agent_90000) and the eval inference-tensor crash.
+- 🔴 **PhysX quasi-static breakaway on the four-bar** (~10–20 N·m; measured 2026-07-10,
+  survives sleep-threshold zeroing, zero-g, closure removal — GPU-solver-level). Candidates:
+  CPU-pipeline comparison, PhysX version sweep, NVIDIA report. `solver_dither` cfg knob is
+  experimental. See the [fix report addendum](reports/physical_variant_fix_report.md).
+- 🟡 Re-run the physical step-response validation with the 80 N wrist saturation
+  (was 600 N in the validated study) — expect slower wrist rise times.
+- 🟡 Sensitivity sweep: cable-stop stiffness/damping (5 kN/m / 100 N·s/m defaults) and
+  `cable_slack_ramp` vs. training stability.
+
+---
+
 ## Master-Thesis Goal Tasks — Cloth-Sorting Pipeline  🔴
 
 Implementation of the three-task condition-sorting pipeline
@@ -323,10 +387,11 @@ is a flat-laid, welded **ClothesNet** shirt built from `TNSC_Tshirt_Ts1_0`.
 - ✅ ~~**Refine wrist `effort_limit`**~~ — set to **3.5 N·m**\
   Derivation: 80 N (continuous) × 0.020 m (max lever, Klein §3.2.2 p.42) × 2 (cable contributions) = 3.2 N·m,\
   rounded up with PSU headroom margin.
-- 🟡 **Split `max_tension` per tendon group** — currently a single 500 N for all 5 tendons.\
-  Elbow needs ~480 N (after 3:1 MA), wrist needs ~80 N (no MA). A per-group\
-  max_tension would improve wrist action-space resolution. Requires refactoring\
-  `TendonEffortAction` and `PhysicalTendonEffortAction`.
+- ✅ ~~**Split `max_tension` per tendon group**~~\
+  **DONE (2026-07-09):** `TendonEffortAction` and `PhysicalTendonEffortAction` both accept
+  scalar or per-tendon `max_tension`; `HW_TENDON_MAX_TENSIONS = [480, 480, 80, 80, 80]` N
+  is the default for the physical action. The sim-tendon task cfgs keep the scalar 500 N
+  until their retrain (see Methodology M2 below) so existing checkpoints stay valid.
 
 ---
 
@@ -336,8 +401,16 @@ is a flat-laid, welded **ClothesNet** shirt built from `TNSC_Tshirt_Ts1_0`.
   Context: `reaching`/`transport` work but `place_success_rate` near zero ([cube_sort/README.md](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/README.md))
 - ✅ ~~**Shirt place proxy validated**~~\
   **DONE (2026-04-04):** Both PD variant (obs=38, act=6) and physical tendon variant (obs=44, act=8) pass random agent verification (50 steps, 4 envs). Training verification with 32 envs/48-step rollout also passes. See [shirt_place tracking](reports/shirt_place_optimization_tracking.md).
-- 🟡 **Shirt place**: run full baseline training with proxy cube to validate reward pipeline produces learning signal
-- 🟡 **Physical tendon**: no training runs yet; validate sim fidelity (step response) before long runs
+- ✅ ~~**Shirt place**: run full baseline training~~\
+  **DONE:** trained past the proxy stage to full PBD cloth with 100 % deterministic
+  place success — see [shirt_place tracking](reports/shirt_place_optimization_tracking.md).
+- ✅ ~~**Physical tendon**: validate sim fidelity (step response) before long runs~~\
+  **DONE:** step-response validation ran via
+  `scripts/model_validation/run_step_response_tendon.py --variant physical`
+  (data: `src/tensegrity_pick/outputs/model_validation/tendon_physical/`, thesis appendix A.3);
+  reach training ran 2026-05-22 (5 seeds, 31.4 % success —
+  [reach_evaluation_findings.md](reports/reach_evaluation_findings.md)). Follow-ups live in
+  the *Physical Tendon Variant — Reach Rework* section at the top.
 - 🟢 **Hyperparameter sweep**: rollouts, learning rate, network depth for cloth task (higher observation complexity than cube tasks)
 - 🟢 **Domain randomisation**: add cloth parameter randomisation (stiffness ±20%) and mass randomisation once cloth is working
 
@@ -356,7 +429,10 @@ is a flat-laid, welded **ClothesNet** shirt built from `TNSC_Tshirt_Ts1_0`.
 
 ## Tests
 
-- 🟡 **Add test for `ClothObject` stub interface** — verify `NotImplementedError` is raised correctly and `ClothObjectCfg` fields are valid
+- ✅ ~~**Add test for `ClothObject` stub interface**~~\
+  **OBSOLETE:** `ClothObject` is fully implemented (no `NotImplementedError` paths remain);
+  the runtime behaviour is covered by the shirt regression suite
+  ([test_shirt_fixes.py](../src/tensegrity_pick/scripts/model_validation/test_shirt_fixes.py), 5/5 PASS).
 - ✅ ~~**Integration test for `TensegrityShirtPlaceEnv` construction**~~\
   **DONE (2026-04-04):** Manually verified via headless random agent (4 envs, 50 steps) and training rollout verification (32 envs, 48 steps). Both PD and physical tendon variants pass. Obs space shape confirmed (38 PD, 44 tendon), no MISSING fields at init.
 - 🟢 **Add test for cloth scripts** (`check_cloth_readiness.py`) — exercise `validate_cloth_mesh()` on a trivial synthetic USD mesh without Isaac Sim
@@ -379,10 +455,16 @@ Action items raised by the systematic methodology review of the Project Thesis (
 
 ### Per-tendon cable saturation (M2)
 
-- 🔴 **Switch `TendonActuatorCfg` to per-tendon `max_tension`** ([src/tensegrity_pick/.../tendon_actuator.py](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shared/tendon_actuator.py))\
-  Replace the scalar `max_tension: float = 500.0` with a per-tendon list (`[480, 480, 80, 80, 80]` N) so the elbow and wrist tendons saturate at their Klein-derived hardware limits (160 N motor-side $\times$ 3:1 elbow pulley, 80 N for the wrist cables).
-- 🔴 **Update `tensegrity_robot_cfg.py` actuator definition** ([src/tensegrity_pick/.../tensegrity_robot_cfg.py](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shared/tensegrity_robot_cfg.py))\
-  Wire the new per-tendon saturation list into the `IdealPDActuator`-based tendon actuator group. Verify Klein-style scaling in `step_response_test.py` (cable saturation column should drop from `600 N` to `80 N` for wrist tests).
+- ✅ ~~**Switch tendon actions to per-tendon `max_tension`**~~\
+  **DONE (2026-07-09):** `TendonEffortActionCfg` / `PhysicalTendonEffortActionCfg` accept
+  `float | list[float]`; hardware list `HW_TENDON_MAX_TENSIONS = [480, 480, 80, 80, 80]` N
+  exported from [robots/tendon_actuator.py](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/robots/tendon_actuator.py)
+  and default for the *physical* action.
+- 🔴 **Wire `HW_TENDON_MAX_TENSIONS` into the sim-tendon task cfgs** (reach/cube/shirt
+  `TendonEffortActionCfg` instances still use the scalar 500 N default) and verify
+  Klein-style scaling in the step-response run (wrist saturation column should drop
+  from `600 N` to `80 N`). Do this together with the retrain below — it invalidates
+  existing sim-tendon checkpoints.
 - 🟡 **Retrain tendon variants after the saturation update**\
   - `Template-Tensegrity-Reach-Tendon-v0` (PPO, 2 048 envs, headless)\
   - `Template-Tensegrity-Cube-Place-Tendon-v0` (PPO, 2 048 envs, headless)\
