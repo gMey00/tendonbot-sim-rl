@@ -1,0 +1,44 @@
+# Research Question E — optimisation-lever ablations. Each lever is swept at a
+# FIXED env count so its effect on throughput (and on the physics-sanity flag,
+# which catches speed-for-fidelity trades) is isolated.
+#
+# Paths below are VERIFIED against Template-Tensegrity-Shirt-Place-v0's config
+# (shirt_place_env_cfg.ShirtPlaceEnvCfg.__post_init__ + shirt_place_scene_cfg):
+#   * decimation                          — env_cfg top-level (physics steps / control step)
+#   * cloth.pbd_params.solver_position_iterations
+#                                         — the PBD cloth solver iteration count
+#                                           (the real cloth-fidelity/speed knob; default 24).
+#     This lives on the shared SHIRT_CLOTH_CFG singleton, reached via cloth_cfg_ref,
+#     NOT the env_cfg tree — bench_core mutates it before parse_env_cfg.
+#
+# Other verified env_cfg levers you can add as axes (all under sim.physx.*):
+#   sim.physx.gpu_collision_stack_size    — PBD needs a large stack; too small →
+#                                           "collisionStackSize buffer overflow" (sanity=False).
+#   sim.physx.gpu_max_particle_contacts   — particle contact buffer sizing.
+#   sim.physx.solver_type                 — 0=PGS, 1=TGS.
+#   sim.dt                                — physics timestep (e.g. 1/60 vs 1/120).
+#
+# TODO(research): finalise the lever list/ranges against the optimisation section of
+# doc/reports/RESEARCH_PROMPT_benchmarking_suite.md. fp32-vs-tf32 and PBD-vs-XPBD are
+# NOT scalar cfg fields → separate specs/mechanisms.
+name: optimization_levers
+description: Ablate control decimation × PBD solver iterations at fixed env count.
+research_questions: [E11]
+
+base:
+  task: Template-Tensegrity-Shirt-Place-v0
+  num_envs: 64
+  warmup_steps: 30
+  bench_steps: 240
+  seed: 0
+  cloth_cfg_ref: "tensegrity_pick.tasks.manager_based.shirt_place.shirt_place_scene_cfg:SHIRT_CLOTH_CFG"
+
+# Coarse product scan. Trim to one-factor-at-a-time for the final thesis figures.
+axes:
+  decimation: [1, 2]
+  cloth.pbd_params.solver_position_iterations: [8, 16, 24]
+
+repeats: 2
+
+filters:
+  exclude: []   # e.g. drop known-unstable combos once identified

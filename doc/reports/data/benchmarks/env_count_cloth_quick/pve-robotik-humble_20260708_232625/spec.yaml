@@ -1,0 +1,20 @@
+name: env_count_cloth_quick
+description: Reduced PBD-cloth throughput/memory/overflow vs. env count (knee + decline).
+research_questions:
+- A1
+- A2
+- B
+base:
+  task: Template-Tensegrity-Shirt-Place-v0
+  warmup_steps: 20
+  bench_steps: 120
+  seed: 0
+axes:
+  num_envs:
+  - 16
+  - 32
+  - 64
+  - 128
+  - 256
+  - 512
+repeats: 3

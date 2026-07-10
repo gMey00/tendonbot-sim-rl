@@ -179,8 +179,15 @@ def _launch_terminal(args: argparse.Namespace) -> None:
             f"[dim]  Use --pick to choose from {len(runs)} active run(s), or --run NAME to specify one.[/]"
         )
 
-    # Launch dashboard
-    run_terminal_dashboard(run_info, interval=args.interval)
+    # Launch dashboard — pass the full run list + roots so the user can switch
+    # between running jobs inside the TUI and newly started runs appear live.
+    run_terminal_dashboard(
+        run_info,
+        interval=args.interval,
+        runs=runs,
+        log_roots=log_roots,
+        include_all=args.all,
+    )
 
 
 if __name__ == "__main__":

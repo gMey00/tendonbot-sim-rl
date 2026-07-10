@@ -1,0 +1,33 @@
+# Research Questions C8 & C9 — robot morphology, DOF count, and the tensegrity
+# wrist / tendon-actuation overhead, at a fixed action space and task (reach).
+#
+# Comparison structure (all joint-space so the controller is held constant):
+#   * plain arm vs. its "Frankenstein" twin (= same arm + added tendon-driven
+#     tensegrity wrist) → isolates the wrist overhead per arm family.
+#   * UR (6-DOF) vs. Kinova (7-DOF) → DOF/observation-action-dim effect.
+#   * pure tensegrity (3/5-DOF, tendon-actuated) vs. rigid arms → custom actuator
+#     (Jacobian-transpose tendon mapping) + closed-loop-cable cost.
+# Runnable as-is. TODO(research): decide whether to repeat this under IK/OSC too,
+# and whether to add a matched training-time variant (this spec is sim-step cost).
+name: robot_dof_matrix
+description: Reach step-cost across arms, DOF counts, and tensegrity-wrist/tendon variants.
+research_questions: [C8, C9]
+
+base:
+  warmup_steps: 30
+  bench_steps: 300
+  seed: 0
+
+axes:
+  task:
+    - Template-Reach-UR5e-F140-v0            # UR5e 6-DOF, rigid
+    - Template-Reach-UR5e-Frankenstein-v0    # UR5e + tensegrity wrist
+    - Template-Reach-UR10-F140-v0            # UR10 6-DOF, rigid
+    - Template-Reach-UR10-Frankenstein-v0    # UR10 + tensegrity wrist
+    - Template-Reach-Kinova-F140-v0          # Kinova 7-DOF, rigid
+    - Template-Reach-Kinova-Frankenstein-v0  # Kinova + tensegrity wrist
+    - Template-Reach-Tensegrity-v0           # pure tensegrity, position-actuated
+    - Template-Reach-Tensegrity-Tendon-v0    # pure tensegrity, tendon-actuated
+  num_envs: [256, 1024, 4096]
+
+repeats: 2

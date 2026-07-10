@@ -17,7 +17,12 @@ models:
     # deterministic mean absorbs the behaviour (deployment plays the mean).
     min_log_std: -3.0
     max_log_std: 0.5
-    initial_log_std: -0.5
+    # -0.7 (iteration 7): -1.0 discovered only ~2 of 3 goal bins before sigma
+    # annealed (per-seed 2-of-3 specialization, the §2 failure mode); more
+    # initial exploration to find all three modes.  The old noise-controller
+    # risk of higher sigma is now guarded by action_l2 (keeps the MEAN clean
+    # regardless of sigma), so exploration and a sharp mean coexist.
+    initial_log_std: -0.7
     network:
       - name: net
         input: OBSERVATIONS
@@ -65,10 +70,13 @@ agent:
   ratio_clip: 0.2
   value_clip: 0.2
   clip_predicted_values: True
-  # 0.0 (was 0.005): the entropy bonus rewarded keeping the action std high,
-  # which is what froze it at ~0.96 and produced the deterministic-play gap.
-  # Exploration comes from the initial std; exploitation must sharpen the mean.
-  entropy_loss_scale: 0.0
+  # 0.003 (iteration 7, was 0.0): a small entropy bonus SUSTAINS exploration
+  # across all three goal bins so PPO doesn't greedily collapse onto the two
+  # it finds first.  The old determinism-gap risk (entropy froze sigma high →
+  # stochastic-only success) is now decoupled: action_l2 keeps the MEAN sharp
+  # even at moderate sigma, so multi-goal coverage and deterministic quality
+  # coexist.  Revert to 0.0 if the deterministic gap reopens.
+  entropy_loss_scale: 0.003
   value_loss_scale: 2.0
   kl_threshold: 0.0
   rewards_shaper_scale: 0.5
@@ -89,5 +97,5 @@ agent:
 # extend if the policy is still improving at the cap.
 trainer:
   class: SequentialTrainer
-  timesteps: 20000
+  timesteps: 48000
   environment_info: log

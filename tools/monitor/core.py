@@ -122,6 +122,41 @@ def discover_runs(
     return runs
 
 
+def latest_event_mtime(run_dir: str | Path) -> float:
+    """Return the newest mtime among a run's TensorBoard event files.
+
+    Used as a cheap liveness signal for the run list without paying the cost of
+    a full tbparse load: a "running" run whose event file has not been touched
+    for a while is very likely a job that died without writing its final status.
+    Returns 0.0 if no event file is present.
+    """
+    newest = 0.0
+    try:
+        for ev in Path(run_dir).glob("events.out.tfevents*"):
+            try:
+                newest = max(newest, ev.stat().st_mtime)
+            except OSError:
+                continue
+    except OSError:
+        pass
+    return newest
+
+
+def run_is_stale(run_info: "RunInfo", max_age_secs: float = 180.0) -> bool:
+    """Heuristic: a run marked 'running' whose events stopped updating.
+
+    Only ever reports True for runs whose status is still 'running' — a real
+    completed/failed run is never "stale". A fresh event file (updated within
+    *max_age_secs*) is considered live.
+    """
+    if run_info.status != "running":
+        return False
+    mtime = latest_event_mtime(run_info.run_dir)
+    if mtime == 0.0:
+        return False  # no events yet — treat as just-started, not stale
+    return (time.time() - mtime) > max_age_secs
+
+
 def find_log_roots(workspace: str | Path | None = None) -> list[Path]:
     """Return **all** existing log root directories.
 
@@ -155,15 +190,36 @@ def find_log_roots(workspace: str | Path | None = None) -> list[Path]:
 # TensorBoard parsing
 # ---------------------------------------------------------------------------
 
+# Each category maps to a tuple of acceptable tag prefixes. Multiple prefixes
+# per category make the categorizer robust to logging-format changes across
+# skrl / Isaac Lab versions: the reward and metric tags used to be written with
+# an "Info / " prefix (skrl <= 2.0, e.g. "Info / Episode_Reward/reaching") but
+# newer runs drop it ("Episode_Reward/reaching"). We accept both so historical
+# and current runs both categorize — the previous single-prefix match silently
+# dropped every reward/metric term for new runs.
 _TAG_CATEGORIES = {
-    "rewards": "Info / Episode_Reward/",
-    "custom_metrics": "Info / Metrics/",
-    "total_reward": "Reward / ",
-    "policy": "Policy / ",
-    "loss": "Loss / ",
-    "learning": "Learning / ",
-    "episode": "Episode / ",
+    "rewards": ("Info / Episode_Reward/", "Episode_Reward/"),
+    "custom_metrics": ("Info / Metrics/", "Metrics/"),
+    "total_reward": ("Reward / ",),
+    "policy": ("Policy / ",),
+    "loss": ("Loss / ",),
+    "learning": ("Learning / ",),
+    "episode": ("Episode / ",),
+    "stats": ("Stats / ",),
 }
+
+# Flat list of every known prefix, longest first, so tag_display_name strips the
+# most specific match (e.g. "Info / Episode_Reward/" before "Episode_Reward/").
+_ALL_PREFIXES = sorted(
+    {p for prefixes in _TAG_CATEGORIES.values() for p in prefixes},
+    key=len,
+    reverse=True,
+)
+
+
+def _tag_matches(tag: str, prefixes: tuple[str, ...]) -> bool:
+    """True if *tag* starts with any of the category's accepted prefixes."""
+    return any(tag.startswith(p) for p in prefixes)
 
 
 def load_scalars(run_dir: str | Path) -> pd.DataFrame:
@@ -181,8 +237,8 @@ def categorize_tags(df: pd.DataFrame) -> dict[str, MetricGroup]:
     all_tags = sorted(df["tag"].unique())
     groups: dict[str, MetricGroup] = {}
 
-    for category_key, prefix in _TAG_CATEGORIES.items():
-        matching = [t for t in all_tags if t.startswith(prefix)]
+    for category_key, prefixes in _TAG_CATEGORIES.items():
+        matching = [t for t in all_tags if _tag_matches(t, prefixes)]
         if matching:
             groups[category_key] = MetricGroup(name=category_key, tags=matching)
 
@@ -199,7 +255,7 @@ def categorize_tags(df: pd.DataFrame) -> dict[str, MetricGroup]:
 
 def tag_display_name(tag: str) -> str:
     """Extract a human-readable short name from a full TensorBoard tag."""
-    for prefix in _TAG_CATEGORIES.values():
+    for prefix in _ALL_PREFIXES:  # longest-first so the most specific one wins
         if tag.startswith(prefix):
             return tag[len(prefix):]
     return tag

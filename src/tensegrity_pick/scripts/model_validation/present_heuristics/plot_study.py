@@ -39,6 +39,11 @@ from regions import (  # noqa: E402
     REGION_LANDMARKS, REGION_NAMES, assign_regions, load_metrics, mirror_region,
 )
 
+try:
+    import markers as mk  # noqa: E402  (built by build_markers.py)
+except (FileNotFoundError, ImportError):
+    mk = None
+
 REPO = "/home/robot/studentische-arbeiten"
 DATA = os.path.join(REPO, "doc", "reports", "data")
 FIGS = os.path.join(REPO, "doc", "reports", "figures", "present_heuristics")
@@ -205,7 +210,7 @@ def fig_method_comparison(entries, oracle_ref=None):
 
 # ── Figures 3+4: pair map ──────────────────────────────────────────────────
 
-def fig_pair_heatmap(h3, min_n=15):
+def fig_pair_heatmap(h3, min_n=15, out_name="pair_heatmap.png", title=None):
     k = len(SYM_CLASSES)
     top = sym_class(h3.rest_x_top, h3.rest_y_top)
     mov = sym_class(h3.rest_x_move, h3.rest_y_move)
@@ -236,11 +241,191 @@ def fig_pair_heatmap(h3, min_n=15):
     ax.set_xlabel("second grasp (stretched)"), ax.set_ylabel("first grasp (hang anchor)")
     ax.grid(False)
     fig.colorbar(im, ax=ax, shrink=0.8, label="median coverage (camera plane)")
-    ax.set_title("Grasp-pair quality map (mirror-folded regions;\n"
-                 f"cells with n<{min_n} masked)", fontsize=9.5)
-    fig.savefig(os.path.join(FIGS, "pair_heatmap.png"))
+    ax.set_title(title or ("Grasp-pair quality map (mirror-folded regions;\n"
+                           f"cells with n<{min_n} masked)"), fontsize=9.5)
+    fig.savefig(os.path.join(FIGS, out_name))
     plt.close(fig)
     return med, cnt
+
+
+# ── ClothesNet markers: border + keypoints ─────────────────────────────────
+
+def _region_backdrop(ax, fr):
+    """Faint Voronoi region colouring as a backdrop for keypoint panels."""
+    reg = assign_regions(fr[:, 0], fr[:, 1])
+    sym = np.array([SYM_CLASSES.index(_SYM_OF[n]) for n in REGION_NAMES])[reg]
+    for i in range(len(SYM_CLASSES)):
+        m = sym == i
+        ax.scatter(fr[m, 0], fr[m, 1], s=2, color=CAT[i], alpha=0.28,
+                   rasterized=True)
+    ax.set_aspect("equal"), ax.grid(False)
+    ax.set_xticks([]), ax.set_yticks([])
+
+
+def fig_marker_map(fr):
+    """The garment markers on the flat-rest shape, three panels:
+    (1) the complete, symmetric borderpoints (definition A = open edges: neck,
+    cuffs, hem) + the per-particle border-nearness field; (2) the study's
+    symmetric keypoints (one per Voronoi region) they coincide with; (3) the
+    ClothesNet shirt's raw keypoints on the same cells — the reference the
+    symmetric set replaces (asymmetric, off-cell)."""
+    if mk is None:
+        return
+    fig, axes = plt.subplots(1, 3, figsize=(14.4, 5.4))
+    # (1) borderpoints + field.
+    ax = axes[0]
+    sc = ax.scatter(fr[:, 0], fr[:, 1], s=2.4, c=mk.BORDER_DIST, cmap=BLUES,
+                    rasterized=True)
+    ax.scatter(mk.BORDER_XY[:, 0], mk.BORDER_XY[:, 1], s=5, color=CAT[5],
+               label=f"borderpoints (n={len(mk.BORDER_XY)})")
+    ax.set_aspect("equal"), ax.grid(False)
+    ax.set_xticks([]), ax.set_yticks([])
+    ax.legend(fontsize=7.5, frameon=False, loc="lower center")
+    fig.colorbar(sc, ax=ax, shrink=0.72, label="distance to nearest border (m)")
+    ax.set_title("Borderpoints (symmetric open edges)\n+ border-nearness field",
+                 fontsize=9.5)
+    # (2) the study's symmetric region keypoints.
+    ax = axes[1]
+    _region_backdrop(ax, fr)
+    for k in range(mk.N_KEYPOINTS):
+        i = mk.KEYPOINT_IDX[k]
+        ax.scatter(fr[i, 0], fr[i, 1], s=150, marker="*", color=CAT[5],
+                   zorder=5, edgecolors=INK, linewidths=0.5)
+        ax.annotate(mk.KEYPOINT_NAMES[k], (fr[i, 0], fr[i, 1]), fontsize=6.6,
+                    weight="bold", xytext=(3, 3), textcoords="offset points")
+    ax.set_title("Study keypoints: symmetric, one per region\n"
+                 "(coincide with the Voronoi cells)", fontsize=9.5)
+    # (3) ClothesNet raw keypoints for comparison.
+    ax = axes[2]
+    _region_backdrop(ax, fr)
+    ck = mk.CLOTHESNET_KP_XY
+    for k in range(len(ck)):
+        ax.scatter(ck[k, 0], ck[k, 1], s=150, marker="*", color=CAT[3],
+                   zorder=5, edgecolors=INK, linewidths=0.5)
+        ax.annotate(str(k), (ck[k, 0], ck[k, 1]), fontsize=6.6, weight="bold",
+                    xytext=(3, 3), textcoords="offset points")
+    ax.set_title(f"ClothesNet raw keypoints ({mk.SOURCE_SHIRT})\n"
+                 "— asymmetric, off-cell (replaced)", fontsize=9.5)
+    fig.suptitle("Garment markers: borderpoints + region-aligned keypoints",
+                 fontsize=10.5)
+    fig.savefig(os.path.join(FIGS, "marker_map.png"))
+    plt.close(fig)
+
+
+def fig_border_nearness(df, label="pooled random + stratified pairs"):
+    """Does grasping nearer the garment border improve presentation quality?
+    Coverage vs the SECOND grasp's border distance (the moved/chooseable grasp),
+    with the first-grasp trend for contrast."""
+    if mk is None or "idx_move" not in df.columns:
+        return None
+    d = df.dropna(subset=["idx_move", "idx_top"]).copy()
+    bd_move = mk.border_dist_of(d.idx_move.astype(int).values)
+    bd_top = mk.border_dist_of(d.idx_top.astype(int).values)
+    cov = d.cov_plane.values
+    fig, axes = plt.subplots(1, 2, figsize=(9.0, 3.5))
+    for ax, bd, name, col in ((axes[0], bd_move, "second grasp (stretched)", CAT[0]),
+                              (axes[1], bd_top, "first grasp (hang anchor)", CAT[3])):
+        ax.scatter(bd, cov, s=3, color=col, alpha=0.15, edgecolors="none",
+                   rasterized=True)
+        bins = np.linspace(0, max(0.12, np.quantile(bd, 0.98)), 9)
+        midv, medv = [], []
+        for i in range(len(bins) - 1):
+            m = (bd >= bins[i]) & (bd < bins[i + 1])
+            if m.sum() > 25:
+                midv.append(0.5 * (bins[i] + bins[i + 1]))
+                medv.append(np.median(cov[m]))
+        ax.plot(midv, medv, color=INK, lw=1.8, marker="o", ms=4,
+                label="binned median")
+        r = np.corrcoef(bd, cov)[0, 1]
+        ax.set_xlabel(f"{name}: distance to border (m)")
+        ax.set_ylabel("coverage (camera plane)")
+        ax.set_title(f"r = {r:.2f}", fontsize=9)
+        ax.legend(fontsize=7.5, frameon=False)
+    fig.suptitle(f"Border nearness vs presentation quality ({label}, "
+                 f"n={len(d)})", fontsize=10)
+    fig.savefig(os.path.join(FIGS, "border_nearness.png"))
+    plt.close(fig)
+    return (np.corrcoef(bd_move, cov)[0, 1], np.corrcoef(bd_top, cov)[0, 1])
+
+
+def fig_keypoint_analysis(hks, hkp, fr):
+    """Are the region-landmark keypoints good grasp targets?
+    (a) per-region-keypoint coverage as the SECOND grasp (vs a random bank
+    first grasp); (b) the keypoint-pair map (first ≈ keypoint A, second =
+    keypoint B), both grouped by the keypoint's garment region (the keypoints
+    are the region landmarks, so a keypoint IS identified by its region; the
+    mirror partner of a left keypoint is the right keypoint of the same
+    region)."""
+    if mk is None:
+        return
+    fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.8),
+                             gridspec_kw={"width_ratios": [1.15, 1]})
+    K = len(SYM_CLASSES)
+    # mean border distance of the landmark(s) in each region.
+    reg_bd = np.array([np.mean(mk.KEYPOINT_BORDER_DIST[mk.KEYPOINT_REGION == r])
+                       if (mk.KEYPOINT_REGION == r).any() else np.nan
+                       for r in range(K)])
+    # (a) per-region-keypoint as second grasp.
+    ax = axes[0]
+    if hks is not None:
+        rmove = mk.PARTICLE_REGION[hks.idx_move.astype(int).values]
+        cov = hks.cov_plane.values
+        stats = sorted((np.median(cov[rmove == r]), r, cov[rmove == r])
+                       for r in range(K) if (rmove == r).sum() >= 8)
+        for i, (med, r, c) in enumerate(stats):
+            col = CAT[6] if SYM_CLASSES[r].startswith("hem") else CAT[0]
+            ax.boxplot([c], positions=[i], widths=0.6, vert=False,
+                       patch_artist=True, showfliers=False,
+                       medianprops=dict(color=INK, lw=1.3),
+                       whiskerprops=dict(color=INK2, lw=0.9),
+                       capprops=dict(color=INK2, lw=0.9),
+                       boxprops=dict(facecolor=col, edgecolor=INK2, lw=0.7,
+                                     alpha=0.85))
+            ax.text(np.median(c), i + 0.34, f"{np.median(c):.2f}", ha="center",
+                    fontsize=6.5, color=INK2)
+        ax.set_yticks(range(len(stats)),
+                      [f"{SYM_CLASSES[r]}\n(border {reg_bd[r]:.02f}m)"
+                       for _, r, _ in stats], fontsize=6.5)
+        ax.axvline(0.679, color=MUTED, ls="--", lw=1.0)
+        ax.text(0.679, len(stats) - 0.3, "H1 lowest-point\nmedian",
+                fontsize=6.5, color=INK2, ha="center", va="top")
+        ax.set_xlabel("coverage (camera plane)")
+        ax.grid(axis="y", visible=False)
+        ax.set_title("Region keypoint as 2nd grasp (random bank 1st grasp)",
+                     fontsize=9)
+    # (b) keypoint-pair map by region.
+    ax = axes[1]
+    if hkp is not None:
+        anc_xy = fr[hkp.idx_top.astype(int).values][:, :2]
+        kA = ((anc_xy[:, None, :] - mk.KEYPOINT_XY[None, :, :]) ** 2).sum(-1).argmin(1)
+        rA = mk.KEYPOINT_REGION[kA]
+        rB = mk.PARTICLE_REGION[hkp.idx_move.astype(int).values]
+        cov = hkp.cov_plane.values
+        med = np.full((K, K), np.nan)
+        for a in range(K):
+            for b in range(K):
+                m = (rA == a) & (rB == b)
+                if m.sum() >= 5:
+                    med[a, b] = np.median(cov[m])
+        im = ax.imshow(med, cmap=BLUES)
+        for a in range(K):
+            for b in range(K):
+                if not np.isnan(med[a, b]):
+                    fr_ = (med[a, b] - np.nanmin(med)) / max(
+                        np.nanmax(med) - np.nanmin(med), 1e-9)
+                    ax.text(b, a, f"{med[a, b]:.2f}", ha="center", va="center",
+                            fontsize=6, color="white" if fr_ > 0.6 else INK)
+        ax.set_xticks(range(K), SYM_CLASSES, rotation=45, ha="right", fontsize=6.5)
+        ax.set_yticks(range(K), SYM_CLASSES, fontsize=6.5)
+        ax.set_xlabel("2nd grasp keypoint region")
+        ax.set_ylabel("1st grasp keypoint region")
+        ax.grid(False)
+        fig.colorbar(im, ax=ax, shrink=0.8, label="median coverage")
+        ax.set_title("Keypoint↔keypoint pair map", fontsize=9)
+    fig.suptitle("Keypoint-guided presentation grasps (region landmarks)",
+                 fontsize=10)
+    fig.savefig(os.path.join(FIGS, "keypoint_analysis.png"))
+    plt.close(fig)
 
 
 def fig_best_partner(h3, fr, min_n=15):
@@ -269,6 +454,9 @@ def fig_best_partner(h3, fr, min_n=15):
                 ax.scatter(fr[m, 0], fr[m, 1], s=0.8,
                            color=BLUES((v - vmin) / max(vmax - vmin, 1e-9)),
                            rasterized=True)
+        if np.all(np.isnan(med_all[i])):
+            ax.set_title(f"1st: {SYM_CLASSES[i]}\n(no cell ≥ n)", fontsize=8)
+            continue
         best = int(np.nanargmax(med_all[i]))
         ax.set_title(f"1st: {SYM_CLASSES[i]}\nbest 2nd: {SYM_CLASSES[best]} "
                      f"({med_all[i][best]:.2f})", fontsize=8)
@@ -355,19 +543,54 @@ def main() -> None:
                                       d.cov_yaw_max.values))
                 entries.append((label, d.cov_plane.values))
 
+    fig_marker_map(fr)
+
     oracle_ref = None
     h3 = load_csv("present_h3_pair_map.csv")
-    if h3 is not None:
+    h3s = load_csv("present_h3s_stratified.csv")
+    # Balanced stratified map is the headline pair map when available; the
+    # random run (area-weighted, more raw samples) backs the driver/border
+    # correlations.  Pool both for the correlation analyses.
+    pair_frames = [f for f in (h3, h3s) if f is not None]
+    pooled = pd.concat(pair_frames, ignore_index=True) if pair_frames else None
+    if h3s is not None:
+        fig_pair_heatmap(h3s, min_n=25, out_name="pair_heatmap.png",
+                         title="Grasp-pair quality map (stratified: ≥100 "
+                               "trials\nper region→region cell; mirror-folded)")
+        fig_best_partner(h3s, fr, min_n=25)
+    elif h3 is not None:
         fig_pair_heatmap(h3)
         fig_best_partner(h3, fr)
-        fig_pair_drivers(h3)
-        cov = h3.cov_plane.values
-        rows.append(summarize("H3 random pair @1.05", cov,
-                              h3.cov_yaw_max.values))
-        entries.append(("H3 random pair", cov))
+    if h3 is not None:
+        fig_pair_heatmap(h3, out_name="pair_heatmap_random.png",
+                         title="Grasp-pair quality map (random pairs;\n"
+                               "area-weighted, cells with n<15 masked)")
+    if pooled is not None:
+        fig_pair_drivers(pooled)
+        cov = pooled.cov_plane.values
+        rows.append(summarize("H3 pair (random+stratified) @1.05", cov,
+                              pooled.cov_yaw_max.values))
+        entries.append(("H3 grasp pair", cov))
         oracle_ref = float(np.median(cov[cov >= np.quantile(cov, 0.9)]))
         rows.append(f"| H3 oracle top decile | {int(0.1 * len(cov))} "
                     f"| {oracle_ref:.3f} | — | — | — |")
+        bn = fig_border_nearness(pooled)
+        if bn is not None:
+            print(f"[border-nearness] r(cov, 2nd-grasp border dist) = {bn[0]:.3f}, "
+                  f"r(cov, 1st-grasp border dist) = {bn[1]:.3f}")
+
+    hks = load_csv("present_hk_second.csv")
+    hkp = load_csv("present_hk_pairs.csv")
+    if hks is not None or hkp is not None:
+        fig_keypoint_analysis(hks, hkp, fr)
+    if hks is not None:
+        rows.append(summarize("keypoint as 2nd grasp (any kp)",
+                              hks.cov_plane.values, hks.cov_yaw_max.values))
+        entries.append(("keypoint 2nd grasp", hks.cov_plane.values))
+    if hkp is not None:
+        rows.append(summarize("keypoint↔keypoint pair (any kp pair)",
+                              hkp.cov_plane.values, hkp.cov_yaw_max.values))
+        entries.append(("keypoint↔keypoint", hkp.cov_plane.values))
 
     hs = load_csv("present_h6_shake.csv")
     if hs is not None:

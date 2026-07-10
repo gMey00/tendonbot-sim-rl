@@ -46,6 +46,10 @@ parser.add_argument("--no_align_yaw", action="store_true",
                     help="skip rotating each state to its best-coverage yaw "
                          "(states are saved at an arbitrary swing phase; the "
                          "aligned pose is what cov_yaw_max scores)")
+parser.add_argument("--color", type=str, default=None,
+                    help="override the garment diffuse colour as 'R,G,B' in "
+                         "0..1 (default: the current shared cloth config "
+                         "colour authored by apply_cloth_startup_event)")
 AppLauncher.add_app_launcher_args(parser)
 args_cli, _ = parser.parse_known_args()
 args_cli.enable_cameras = True
@@ -141,6 +145,21 @@ def main() -> None:
     scene = InteractiveScene(_RenderSceneCfg(num_envs=1, env_spacing=5.0))
     mock_env = SimpleNamespace(sim=sim, scene=scene)
     cloth_mod.apply_cloth_startup_event(mock_env, None, SHIRT_CLOTH_CFG)
+    if args_cli.color is not None:
+        # Override the garment diffuse (+ a dimmed matching emissive) on the
+        # shared visual material authored by apply_cloth_startup_event — no
+        # edit to the shared cloth config needed.
+        import omni.usd  # noqa: E402
+        from pxr import Gf, Sdf, UsdShade  # noqa: E402
+        rgb = [float(c) for c in args_cli.color.split(",")]
+        stage = omni.usd.get_context().get_stage()
+        shader = UsdShade.Shader(stage.GetPrimAtPath(
+            "/World/clothVisualMaterial/PreviewSurface"))
+        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(
+            Gf.Vec3f(*rgb))
+        shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(
+            Gf.Vec3f(*[0.2 * c for c in rgb]))
+        print(f"[render] garment colour overridden to {rgb}", flush=True)
     cam = scene["camera"]
     sim.reset()
     cloth = ClothObject(SHIRT_CLOTH_CFG, num_envs=1, device=sim.device)

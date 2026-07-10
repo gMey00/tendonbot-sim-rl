@@ -1,0 +1,25 @@
+name: robot_dof_matrix
+description: Reach step-cost across arms, DOF counts, and tensegrity-wrist/tendon
+  variants.
+research_questions:
+- C8
+- C9
+base:
+  warmup_steps: 30
+  bench_steps: 300
+  seed: 0
+axes:
+  task:
+  - Template-Reach-UR5e-F140-v0
+  - Template-Reach-UR5e-Frankenstein-v0
+  - Template-Reach-UR10-F140-v0
+  - Template-Reach-UR10-Frankenstein-v0
+  - Template-Reach-Kinova-F140-v0
+  - Template-Reach-Kinova-Frankenstein-v0
+  - Template-Reach-Tensegrity-v0
+  - Template-Reach-Tensegrity-Tendon-v0
+  num_envs:
+  - 256
+  - 1024
+  - 4096
+repeats: 2

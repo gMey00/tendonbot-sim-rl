@@ -1,0 +1,19 @@
+name: action_space_cost
+description: Reach step-cost across joint / IK-Rel / IK-Abs / OSC, robot & task fixed.
+research_questions:
+- C7
+base:
+  warmup_steps: 30
+  bench_steps: 300
+  seed: 0
+axes:
+  task:
+  - Template-Reach-UR5e-F140-v0
+  - Template-Reach-UR5e-F140-IK-Rel-v0
+  - Template-Reach-UR5e-F140-IK-Abs-v0
+  - Template-Reach-UR5e-F140-OSC-v0
+  num_envs:
+  - 256
+  - 1024
+  - 4096
+repeats: 2

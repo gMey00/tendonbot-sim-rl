@@ -195,9 +195,11 @@ cd "${PROJECT_PATH}/src/tensegrity_pick"
 python -m pip install -e source/tensegrity_pick
 
 # Notebook / monitoring tooling used by the helper scripts.
-python -m pip install plotly ipywidgets anywidget tbparse rich plotext 2>/dev/null || {
+# psutil powers the monitor's Performance tab (CPU/RAM/process metrics); the GPU
+# panel shells out to nvidia-smi, which is already present on the compute nodes.
+python -m pip install plotly ipywidgets anywidget tbparse rich plotext psutil 2>/dev/null || {
     echo "[WARN] some extra packages failed to install; install manually if needed:"
-    echo "       pip install plotly ipywidgets anywidget tbparse rich plotext"
+    echo "       pip install plotly ipywidgets anywidget tbparse rich plotext psutil"
 }
 # btop is a system monitor (not a pip package); install via conda-forge.
 conda install -n "${ISAACLAB_ENV_NAME}" -c conda-forge btop -y 2>/dev/null || \

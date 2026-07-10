@@ -1,0 +1,36 @@
+# Research Questions B4-B6 — cloth vertex/particle count × env count (2-D grid).
+#
+# The cloth USD path is on the shared SHIRT_CLOTH_CFG singleton (the env reads it
+# directly; the env_cfg only holds a deep copy), so it is swept via cloth_cfg_ref +
+# a `cloth.usd_path` axis — bench_core mutates the singleton before parse_env_cfg,
+# keeping the spawned mesh and the ClothObject view consistent. Path VERIFIED
+# against shirt_place_scene_cfg.SHIRT_CLOTH_CFG (default ~11k-particle
+# tshirt_clothesnet.usd).
+#
+# STATUS: EXPERIMENTAL — still needs one prerequisite:
+#   Multi-resolution garment USDs authored to hold physical behaviour ~constant
+#   while varying particle count (e.g. tshirt_clothesnet_{lo,hi}.usd). Only the
+#   middle (current) asset exists today → author the others in
+#   scripts/asset_generation/ before a full run. Use an ABSOLUTE path or the
+#   project's asset-root convention; {PROJ_ASSETS_PATH} expands in the scene cfg,
+#   not here, so give resolved paths in the axis.
+name: vertex_x_envcount
+description: Cloth throughput/memory over (particle count) × (env count).
+research_questions: [B4, B5, B6]
+
+base:
+  task: Template-Tensegrity-Shirt-Place-v0
+  warmup_steps: 30
+  bench_steps: 240
+  seed: 0
+  cloth_cfg_ref: "tensegrity_pick.tasks.manager_based.shirt_place.shirt_place_scene_cfg:SHIRT_CLOTH_CFG"
+
+axes:
+  num_envs: [16, 32, 64, 128, 256]
+  cloth.usd_path:
+    # TODO(assets): author the lo/hi variants; give absolute or asset-root paths.
+    - "/home/robot/studentische-arbeiten/res/Props/Cloth/tshirt_clothesnet_lo.usd"  # ~3k  (author)
+    - "/home/robot/studentische-arbeiten/res/Props/Cloth/tshirt_clothesnet.usd"     # ~11k (current)
+    - "/home/robot/studentische-arbeiten/res/Props/Cloth/tshirt_clothesnet_hi.usd"  # ~20k (author)
+
+repeats: 2

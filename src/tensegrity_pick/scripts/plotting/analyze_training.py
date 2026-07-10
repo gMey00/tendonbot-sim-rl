@@ -37,7 +37,22 @@ def main():
         print("No scalar tags found yet.")
         return
 
-    # Key metrics to focus on
+    tagset = set(tags)
+
+    def resolve(tag):
+        """Return the actual tag name present, tolerating the optional
+        'Info / ' prefix that skrl <= 2.0 put on Episode_Reward/ and Metrics/
+        tags but newer versions (skrl 2.1+) drop. Returns None if absent."""
+        if tag in tagset:
+            return tag
+        if tag.startswith("Info / "):
+            alt = tag[len("Info / "):]
+        else:
+            alt = "Info / " + tag
+        return alt if alt in tagset else None
+
+    # Key metrics to focus on (written with the historical 'Info / ' prefix;
+    # resolve() also matches the newer prefix-less form).
     key_metrics = [
         "Reward / Total reward (mean)",
         "Reward / Total reward (max)",
@@ -59,14 +74,17 @@ def main():
     print("-" * 85)
 
     for tag in key_metrics:
-        if tag not in tags:
+        actual = resolve(tag)
+        if actual is None:
             continue
-        vals = ea.Scalars(tag)
+        vals = ea.Scalars(actual)
         if not vals:
             continue
         latest = vals[-1]
         max_val = max(v.value for v in vals)
-        print(f"{tag:<45} {latest.value:>10.4f} {max_val:>10.4f} {latest.step:>8d} {len(vals):>6d}")
+        # Strip the historical 'Info / ' prefix so old/new runs read identically.
+        label = actual[len("Info / "):] if actual.startswith("Info / ") else actual
+        print(f"{label:<45} {latest.value:>10.4f} {max_val:>10.4f} {latest.step:>8d} {len(vals):>6d}")
 
     # Print all reward terms
     print(f"\n{'Reward Terms (Episode Rewards)':<45}")
