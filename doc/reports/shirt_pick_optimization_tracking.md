@@ -381,3 +381,112 @@ Phase-3 summary vs the user review: both issues closed —
 validated on-belt), (2) presentation at the workspace-analysis pose
 (0.15, 0.9, 1.6), probe-verified with **no effort-limit or action-clip
 changes needed** (joints bind nowhere; peak torque fraction 0.78 wrist_x).
+
+---
+
+## Stage-2 S0: Task-1→2 Terminal Bank (T1)
+
+**Date:** 2026-07-12 · agent: T1 (pick grasp head) ·
+plan: [pipeline_stage2_execution_plan.md](../pipeline_stage2_execution_plan.md) S0
+
+### Generator
+
+`scripts/asset_generation/generate_pick_terminal_bank.py` — deterministic
+(mean-action) rollout of the selected checkpoint
+(`2026-07-03_19-33-17_ppo_torch_seed3/agent_12000`) over the crumpled bank,
+snapshot at the step the present latch fires
+(`ShirtPickEnv.snapshot_terminal_states`), then the episode runs on so the
+post-latch outcome is recorded.  Slips are **included** (report §3 Stage 0).
+Never-latched episodes are snapshotted on their last step with
+`presented=False` (consumer filters).  Per-state metadata: presented / slip /
+pre-latch-drop / regrasp / end-attached flags, latch step, representative
+grasp particle (welded slot-0 particle nearest the finger tip), region labels
+(12 fine + 8 symmetrized) from the study's `regions.assign_regions` on the
+flat-rest coords (verified to reproduce `present_markers.pt::particle_region`
+exactly after l/r folding).
+
+### Measured results
+
+| Run | envs | episodes | presented | drops (env metric) | pre-latch drops | post-latch slips | end-attached |
+|---|---|---|---|---|---|---|---|
+| bank 64-env probe (not retained) | 64 | 576 | 571 | 0 | 0 | 0 | 576/576 |
+| regression eval (agent_12000, seed 7, 96 eps) | 32 | 96 | 1.000 present / 1.000 grasp | **0.062** | — | — | — |
+| **bank (canonical)** | 32 | 576 | **566** | **0.0521** (= 30 eps) | **30** | **0** | **576/576** |
+
+**Finding — the "5–7 % post-latch slips" were mischaracterized.** The
+canonical 32-env run reproduces the historical drop_rate exactly (0.0521 vs
+0.073/0.052), and the bank's per-episode flags decompose it: **all 30 drop
+episodes are PRE-latch transients** — the grasp is lost during pick/lift,
+re-grasped, and the episode still latches present; **every episode
+(576/576, including the 10 never-latched) ends attached**.  There are NO
+post-latch slips and no mid-fall terminal states — the Phase-3 note "loses
+the grasp after the present latch" was an interpretation the env metric
+could not distinguish; the seam distribution Task 2 inherits is
+all-attached, all-presented (plus 10 presented=False last-step states,
+consumer-filterable).  Secondary finding: drop frequency is
+env-count-dependent (0/576 at 64 envs vs 30/576 at 32 envs, same
+checkpoint/seed — PhysX particle batch effect), which is why the canonical
+bank uses the 32-env regime of every historical eval.  The regression eval
+also confirms the S2 env-side edits (latch event, grasp-point override
+hook) are behaviour-neutral for stage-1: 1.000/1.000/0.062 matches the
+Phase-3 selection row.
+
+**First-grasp-region distribution** (canonical bank, 566 presented; the
+thesis gap figure, `scripts/model_validation/plot_pick_terminal_bank.py`):
+high-value share (side + hem_corner) **0.237**, expected best-partner
+coverage **0.730** (vs 0.713 arbitrary-first oracle, 0.820 hem-corner-first
+bound).  chest+sleeve+shoulder soak up 62 % of holds; hem_corner is 3.5 %.
+Figure:
+`doc/reports/figures/shirt_pick/first_grasp_region_distribution.png`.
+
+Generation command (also in the bank's `meta` dict):
+`generate_pick_terminal_bank.py --headless --num_envs 32 --seed 7
+--target_presented 560` →
+`res/Props/Cloth/banks/tshirt_pick_terminal_bank.pt` (151.8 MB, git-lfs,
+576 × 11048 particles).  **Handoff:** bank path to Georg for the G1 seam
+gate (T2 consumes it).
+
+---
+
+## Stage-2 S2: Learned Grasp-Point Head — implementation (T1)
+
+**Date:** 2026-07-12 · training pending (smoke → Alex sweep)
+
+### Offline region→coverage LUT
+
+`scripts/model_validation/build_pick_region_coverage_lut.py` (pure pandas,
+no sim): best-partner median `cov_plane` per first-grasp sym class from
+`present_h3s_stratified.csv` (8192 valid trials, min 25/cell — the
+`plot_study.fig_best_partner` method).  Reproduces the study's headline
+cells (hem_corner↔hem_corner 0.822, side→hem_c 0.823):
+
+| first | collar | shoulder | sleeve | chest | side | belly | hem_corner | hem_c |
+|---|---|---|---|---|---|---|---|---|
+| coverage | 0.710 | 0.692 | 0.725 | 0.684 | **0.823** | 0.695 | **0.822** | 0.687 |
+
+Constant embedded in `shirt_pick/mdp/grasp_head.py::REGION_COVERAGE_LUT`;
+the script drift-checks the constant against the CSV (MATCH).
+
+### Head design (task ids `Template-Shirt-Pick-Head-Tensegrity[-Play]-v0`)
+
+* **Action (+2 dims):** continuous xy offset around the highest point,
+  clamped to 0.15 m and snapped to the local cloth top (top-20 particles
+  within 0.05 m) — always on the visible upper surface (depth-camera
+  contract).  Zero action ≡ stage-1 target; target falls back to the plain
+  highest point once the grasp latches (post-grasp semantics untouched).
+  Design (a) over discrete-K candidates (b): native fit for the Gaussian
+  PPO profile; (b) is the documented comparison config for the Alex sweep.
+* **Obs (+37 dims):** 12 region-landmark keypoints rel. finger tip
+  (privileged read of exactly those particles; to be rebased onto INF M2's
+  `keypoints_with_visibility` once Georg merges it) + border distance of the
+  current grasp target.
+* **Reward:** `coverage_terminal_bonus` weight 1800 — one-shot on the new
+  `present_latch_event`, min-max-normalised LUT value of the achieved hold
+  region (dt-scaled ≈ 30 × norm; hem_corner/side ≈ +30, chest ≈ 0 — worth
+  rerouting the approach, not worth skipping the latch).  Sequential stage-1
+  structure untouched.
+* **Metrics:** `Metrics/high_value_hold_rate`, `Metrics/pred_coverage`
+  (logged at reset; printed by `evaluate_shirt_pick.py`).
+
+Gate (unchanged): realized Task-2 coverage from Task-1 holds > 0.713, else
+revert to plain highest point; ≤ 3 seeds × 2 configs on Alex before review.

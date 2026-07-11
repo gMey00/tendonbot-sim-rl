@@ -361,10 +361,16 @@ choice + a cooperative Task 2, not more robot-2 training.
 
 ### S0 — Chaining seams & re-threshold (thesis-critical)  → 🤖 T1 + T2
 
-- 🔴 **Task-1→2 terminal bank** [T1]: rollout script over the trained pick policy
-  (`agent_12000`), snapshot at the present latch via the existing
-  `ShirtPickEnv.snapshot_terminal_states` hook, **including the 5–7 % post-latch slip
-  episodes** (they are the real distribution Task 2 must survive — report §3 Stage 0).
+- ✅ **Task-1→2 terminal bank** [T1] (2026-07-12): 
+  `res/Props/Cloth/banks/tshirt_pick_terminal_bank.pt` — 576 states / 566 presented,
+  agent_12000 deterministic @ 32 envs seed 7 via
+  `scripts/asset_generation/generate_pick_terminal_bank.py`.  Slip audit: the 5–7 %
+  drops are ALL **pre-latch transients** (30/576, re-grasped, every episode ends
+  attached) — no post-latch slips exist at the seam; drop frequency is
+  env-count-dependent (0 at 64 envs).  First-grasp regions: high-value share 0.237,
+  expected best-partner coverage 0.730 (figure in `doc/reports/figures/shirt_pick/`).
+  → hand to Georg for the G1 seam gate (details:
+  [shirt_pick_optimization_tracking.md](reports/shirt_pick_optimization_tracking.md)).
 - 🔴 **Task-2 success gate 0.50 → 0.65 + tautness-pulse legitimacy** [T2]: raise the coverage
   gate to the study's threshold; don't penalize overshoot-then-relax trajectories (study §5.6:
   pulse halves settle time at no coverage cost). Retrain folds into S1 (one retrain, not two).
@@ -383,13 +389,16 @@ choice + a cooperative Task 2, not more robot-2 training.
 
 ### S2 — Task-1 learned grasp head (thesis-critical)  → 🤖 T1
 
-- 🔴 **Grasp-choice MDP**: 12 region-landmark keypoint observations (privileged reads of ONLY
-  the 12 landmark particles — camera-contract-compatible) + border-distance feature; make the
-  pick target policy-selectable (candidate set around the depth-trivial highest point);
-  terminal bonus ∝ predicted downstream coverage of the achieved hold region (lookup table
-  derived offline from the study's stratified pair map). *Gate:* realized Task-2 coverage from
-  Task-1 holds > **0.713** (arbitrary-first-grasp oracle) within ~100 k steps × 3 seeds, else
-  revert to highest-point + oracle-target Task 2 (report §2-Q1 decision gate).
+- 🟡 **Grasp-choice MDP** — implementation ✅ (2026-07-12, T1), training pending: task ids
+  `Template-Shirt-Pick-Head-Tensegrity[-Play]-v0` (`shirt_pick/mdp/grasp_head.py`) — 2-dim
+  surface-snapped xy-offset action around the highest point (zero ≡ stage-1, frozen
+  post-latch), 12 keypoint + border-dist obs (privileged; rebase onto INF M2
+  `keypoints_with_visibility` after merge), coverage terminal bonus (weight 1800 on the new
+  `present_latch_event`; LUT from `build_pick_region_coverage_lut.py`, drift-checked).
+  Stage-1 regression clean (1.000/1.000/0.062).  NEXT: local smoke train → ≤ 3 seeds ×
+  2 configs on Alex.  *Gate unchanged:* realized Task-2 coverage from Task-1 holds >
+  **0.713** within ~100 k steps × 3 seeds, else revert to highest-point + oracle-target
+  Task 2 (report §2-Q1 decision gate).
 
 ### S3 — Cooperative Task 2 (thesis-critical → stretch)  → 🤖 T2, after G1 gate
 
