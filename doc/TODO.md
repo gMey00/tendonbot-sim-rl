@@ -318,9 +318,12 @@ Progress log: [shirt_pick_optimization_tracking.md](reports/shirt_pick_optimizat
 
 ### Cross-cutting
 
-- 🔴 **Asymmetric actor–critic:** verify installed skrl 2.1.0 actually separates policy vs critic
-  observation groups (`"critic"` obs group → `num_states`); if aliased, switch to RSL-RL for the
-  pipeline tasks (report §6). Privileged critic obs: full particle field, true attachment state.
+- ✅ **Asymmetric actor–critic** (2026-07-12, INF) — skrl 2.1.0 **separates** policy vs critic
+  observation groups: runtime probe
+  [check_skrl_asymmetric_ac.py](../src/tensegrity_pick/scripts/model_validation/check_skrl_asymmetric_ac.py)
+  proved the value net consumes the `"critic"` group (dim + content instrumented); config
+  pattern + the `state_preprocessor` remap gotcha in
+  [pipeline_infra_tracking.md](reports/pipeline_infra_tracking.md) §M1. No RSL-RL fallback needed.
 - 🟡 **Camera-realistic observation library** in
   [shared/cloth_sorting_mdp.py](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shared/cloth_sorting_mdp.py):
   N-point surface sampling, keypoints + per-keypoint visibility flags, projected coverage.
@@ -403,9 +406,11 @@ choice + a cooperative Task 2, not more robot-2 training.
 
 ### S4 — Observation contract + asymmetric actor–critic (thesis-critical)  → 🤖 INF
 
-- 🔴 **Verify skrl 2.1.0 asymmetric AC** actually separates `"critic"` obs group →
-  `num_states` (subsumes the Cross-cutting item above); if aliased: RSL-RL runner (new
-  train script — none exists in `scripts/skrl/` today, budget it).
+- ✅ **Verify skrl 2.1.0 asymmetric AC** (2026-07-12, INF): **SEPARATED** — instrumented
+  runtime probe on the reach task (injected `critic` group, constant-content check inside the
+  value net's inputs) passed on every call; evidence + copyable env-cfg/agent-yaml pattern in
+  [pipeline_infra_tracking.md](reports/pipeline_infra_tracking.md) §M1. RSL-RL fallback NOT
+  needed (rsl_rl is not installed in `env_isaaclab`; revisit only if the pattern breaks).
 - 🔴 **Camera-realistic observation library** (`shared/cloth_sorting_mdp.py`): 12 keypoints +
   per-keypoint visibility flags (noise model: ~1–2 cm Gaussian + dropout at 1−recall, Lips
   2024), coverage-from-mask (≡ silhouette coverage), noisy/delayed grasp-active flag
