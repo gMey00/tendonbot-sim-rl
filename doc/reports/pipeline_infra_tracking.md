@@ -206,10 +206,77 @@ class PolicyCfg(ObsGroup):   # camera-realistic actor
 
 (in progress)
 
-## M3 — grasp-fidelity gates ⏳
+## M3 — grasp-fidelity gates ✅ (2026-07-12)
 
-(pending)
+Opt-in evaluation-mode gates on the deterministic attachment grasp in
+[shared/cloth_sorting_env.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shared/cloth_sorting_env.py)
+(`GraspFidelityCfg` + `_update_grasp` extensions). **Both flags default OFF**;
+with flags off the grasp path is bit-identical (no RNG consumed, no extra
+cloth reads — stochastic draws use a dedicated seeded generator, so even
+enabling them never perturbs env determinism).
+
+- **Pre-condition gate** (deterministic, per attach-eligible step):
+  (a) approach axis within `max_approach_angle_deg` (60°) of the local cloth
+  surface normal (PCA over the weld-ball particles); (b) finger tip
+  ≥ `min_tip_clearance_m` above the belt (no rigid pinch-jam); (c) ≤
+  `max_layers` (2) separated depth layers in the weld ball along the approach
+  axis (`cloth_metrics.depth_layer_count_in_ball`).
+- **Stochastic misgrasp/slip gate** (one draw per grasp *attempt*; a failed
+  attempt latches until the gripper reopens, so holding "close" doesn't
+  re-roll every step): attach failure keyed to grasp location via the study's
+  `BORDER_DIST` (border ≤ 3 cm → `p_misgrasp_border` 0.16, else mid-panel
+  0.22; > `max_layers` → ≥ 0.50) — calibrated to DRAPER / DeepCloth-ROB
+  (arXiv 2409.15159: real Franka parallel-jaw misgrasp 16–22 %, edges/corners
+  the easy case). During hold, slip when the hang-weight load proxy
+  (garment mass × fraction below the grasp × (g + upward tip acceleration))
+  exceeds a per-attempt capacity draw N(4.0, 1.5) N clamped ≥ 0.5 N.
+- Every number is a cfg field; opt-in from an eval script is two lines:
+
+  ```python
+  env.unwrapped.grasp_fidelity.precondition_gate = True
+  env.unwrapped.grasp_fidelity.stochastic_gate = True   # seeds itself (cfg.seed)
+  ```
+
+**Robot-free rig validation**
+([check_grasp_gates.py](../../src/tensegrity_pick/scripts/model_validation/check_grasp_gates.py),
+study-harness reuse: hanging-bank restores + scripted pinches through the real
+`_apply_grasp_gates`/`_apply_slip_gate` code; 96 attempts per region per
+sweep) — ALL PASS:
+
+- *Flags-off inertness:* zero gate events while stepping; `test_shirt_fixes.py`
+  stays 5/5 (below).
+- *Stochastic gate only* (top-down pinch, per-region misgrasp rate vs the
+  border/mid mixture expected from the region's measured border fraction —
+  max deviation 0.082 ≈ 2σ at n = 96):
+
+  | region | border frac | misgrasp | | region | border frac | misgrasp |
+  |---|---|---|---|---|---|---|
+  | collar | 0.95 | 0.14 | | side | 0.01 | 0.28 |
+  | shoulder | 0.09 | 0.14 | | belly | 0.00 | 0.30 |
+  | sleeve | 0.36 | 0.18 | | hem_corner | 0.53 | 0.16 |
+  | chest | 0.00 | 0.24 | | hem_c | 0.67 | 0.18 |
+
+- *Pre-condition gate:* a straight-DOWN pinch on a hanging garment is blocked
+  0.89 on average (panels hang vertically — the alignment gate correctly
+  rejects a physically hopeless approach), while a surface-ALIGNED pinch at
+  the same points passes 1.00 (block 0.00). Multi-layer detections are ≈ 0 on
+  this relaxed single-hang bank (layers in contact merge — the documented
+  lower-bound caveat; crumpled/folded states are where (c) bites).
+- *Slip gate:* static hang slip rate 0.208 vs the analytic Φ((mg − μ)/σ) =
+  0.241 (0.30 kg shirt → 2.94 N static load); an accelerating upward pull
+  produced 118 additional slips (dynamic-load path works). A two-stage
+  validity buffer avoids a spurious acceleration spike on the first steps
+  after reset.
+
+**Caveats for task agents**
+- `ShirtDistributeEnv` overrides `_update_grasp` wholesale (reset-anchor
+  fix) and therefore BYPASSES the gates — T3's episodes start already
+  grasped, so attach gating is moot there; if T3 wants slip-under-load, call
+  `self._apply_slip_gate(tip)` from its override (one line).
+- The layer estimate shares `per_particle_visibility`'s contact-merge
+  limitation: it is a lower bound; expect it to matter on crumpled piles
+  (shirt_pick bank) rather than relaxed hangs.
 
 ## M4 — ranking-preservation harness ⏳
 
-(pending)
+(runs in progress)
