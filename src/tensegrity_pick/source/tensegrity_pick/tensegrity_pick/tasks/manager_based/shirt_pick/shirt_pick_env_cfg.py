@@ -67,6 +67,10 @@ class ActionsCfg:
         close_command_expr={"finger_joint": 0.7854},
     )
 
+    # S2 grasp-point head (None = stage-1 behaviour; the head task variant
+    # fills it via ``mdp.grasp_head.apply_grasp_head`` — see grasp_head.py).
+    grasp_offset: ActionTerm | None = None
+
 
 @configclass
 class ObservationsCfg:

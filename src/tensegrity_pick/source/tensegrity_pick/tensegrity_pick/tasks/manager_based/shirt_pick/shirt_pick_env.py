@@ -62,6 +62,14 @@ class ShirtPickEnv(ClothSortingEnvBase):
         self._present_target = self.scene.env_origins + torch.tensor(
             PRESENTATION_POS, device=dev, dtype=torch.float32
         ).unsqueeze(0)
+        # ── S2 grasp-point head state (inert while the head is not configured:
+        # zero offset ⇒ shirt_grasp_point_w falls through to the base highest
+        # point, so stage-1 tasks/checkpoints behave identically) ────────────
+        self._grasp_offset_xy = torch.zeros(n, 2, device=dev)
+        self._present_latch_event = torch.zeros(n, device=dev)
+        self._hold_region = torch.full((n,), -1, dtype=torch.long, device=dev)
+        self._pred_coverage = torch.zeros(n, device=dev)
+        self._head_enabled = getattr(self.cfg.actions, "grasp_offset", None) is not None
 
     # ------------------------------------------------------------------
     # Reward accessors
@@ -80,6 +88,53 @@ class ShirtPickEnv(ClothSortingEnvBase):
     @property
     def was_presented(self) -> torch.Tensor:
         return self._was_presented
+
+    @property
+    def present_latch_event(self) -> torch.Tensor:
+        """One-shot ``[N]``: 1.0 the step the stable-present latch fires.
+
+        Like ``drop_event`` it is consumed by the reward manager on the NEXT
+        step (dt-scaled one-shot weight applies) — used by the S2 head's
+        ``coverage_terminal_bonus``.
+        """
+        return self._present_latch_event
+
+    # ------------------------------------------------------------------
+    # S2 grasp-point head: surface-snapped, policy-offset grasp target
+    # ------------------------------------------------------------------
+
+    @property
+    def shirt_grasp_point_w(self) -> torch.Tensor:
+        """Grasp target ``[N, 3]`` — the stage-1 highest point, optionally
+        shifted by the S2 head's xy offset and snapped to the local cloth top.
+
+        The snap (mean of the top-``SNAP_TOPK`` particles within
+        ``SNAP_RADIUS`` of the shifted xy; radius grows to the nearest
+        particle when the offset points off the pile) keeps the target on the
+        VISIBLE UPPER SURFACE — the depth-camera contract.  Once the grasp is
+        latched (or while the offset is zero) this falls through to the base
+        highest point, so the deterministic attach trigger mechanics and all
+        post-grasp reward semantics are untouched.
+        """
+        base = self._cloth.highest_point_w
+        use_head = (~self.grasp_active) & (self._grasp_offset_xy.abs().sum(dim=-1) > 1e-9)
+        if not use_head.any():
+            return base
+        from .mdp.grasp_head import SNAP_RADIUS, SNAP_TOPK
+
+        pts = self._cloth.nodal_pos_w                                  # [N, P, 3]
+        tgt_xy = base[:, :2] + self._grasp_offset_xy                   # [N, 2]
+        d_xy = (pts[:, :, :2] - tgt_xy.unsqueeze(1)).norm(dim=-1)      # [N, P]
+        radius = torch.clamp(
+            d_xy.min(dim=1, keepdim=True).values + 0.01, min=SNAP_RADIUS
+        )
+        z = pts[:, :, 2].masked_fill(d_xy > radius, float("-inf"))
+        top_z, top_i = z.topk(min(SNAP_TOPK, z.shape[1]), dim=1)       # [N, k]
+        valid = torch.isfinite(top_z)                                  # [N, k]
+        sel = torch.gather(pts, 1, top_i.unsqueeze(-1).expand(-1, -1, 3))
+        cnt = valid.sum(dim=1, keepdim=True).clamp(min=1)
+        snapped = (sel * valid.unsqueeze(-1)).sum(dim=1) / cnt
+        return torch.where(use_head.unsqueeze(-1), snapped, base)
 
     # ------------------------------------------------------------------
     # Step / reset
@@ -107,9 +162,26 @@ class ShirtPickEnv(ClothSortingEnvBase):
         self._present_ring[:, self._ring_idx] = p_now
         self._ring_idx = (self._ring_idx + 1) % PRESENT_WINDOW
         window_frac = self._present_ring.float().mean(dim=1)
-        self._was_presented |= (
-            (window_frac >= PRESENT_WINDOW_FRAC) & still_running
+        newly_latched = (
+            (window_frac >= PRESENT_WINDOW_FRAC) & still_running & ~self._was_presented
         )
+        self._present_latch_event = newly_latched.float()
+        self._was_presented |= newly_latched
+
+        # S2 head bookkeeping: freeze the hold region + predicted coverage at
+        # the latch (consumed by coverage_terminal_bonus / Metrics logging).
+        if self._head_enabled and newly_latched.any():
+            from .mdp.grasp_head import _Markers, hold_region_sym8
+
+            mk = _Markers.get(self.device)
+            region = hold_region_sym8(self)
+            ids = newly_latched
+            self._hold_region[ids] = region[ids]
+            self._pred_coverage[ids] = torch.where(
+                region[ids] >= 0,
+                mk.cov_by_region[region[ids].clamp(min=0)],
+                torch.zeros_like(self._pred_coverage[ids]),
+            )
         return obs, reward, terminated, time_outs, extras
 
     def _reset_idx(self, env_ids: Sequence[int]):
@@ -129,8 +201,29 @@ class ShirtPickEnv(ClothSortingEnvBase):
         self._drop_event[env_ids_t] = 0.0
         self._was_dropped[env_ids_t] = False
         self._prev_attached[env_ids_t] = False
+        self._present_latch_event[env_ids_t] = 0.0
         self.extras["log"]["Metrics/present_rate"] = present_rate
         self.extras["log"]["Metrics/drop_rate"] = drop_rate
+        if self._head_enabled:
+            from .mdp.grasp_head import _Markers
+
+            mk = _Markers.get(self.device)
+            region = self._hold_region[env_ids_t]
+            latched = region >= 0
+            high_value = torch.zeros((), device=self.device)
+            pred_cov = torch.zeros((), device=self.device)
+            if len(env_ids_t) > 0:
+                high_value = (
+                    mk.high_value_mask[region.clamp(min=0)] & latched
+                ).float().mean()
+                pred_cov = torch.where(
+                    latched, self._pred_coverage[env_ids_t], torch.zeros_like(region, dtype=torch.float)
+                ).sum() / latched.sum().clamp(min=1)
+            self.extras["log"]["Metrics/high_value_hold_rate"] = high_value
+            self.extras["log"]["Metrics/pred_coverage"] = pred_cov
+            self._hold_region[env_ids_t] = -1
+            self._pred_coverage[env_ids_t] = 0.0
+            self._grasp_offset_xy[env_ids_t] = 0.0
         return result
 
     # ------------------------------------------------------------------

@@ -75,6 +75,8 @@ is chained through cached state banks, not live policy hand-off.
 |---|---|---|
 | `Template-Shirt-Pick-Tensegrity-v0` | 5-DOF tensegrity + Robotiq 2F-140 | PD joint-position control (first target robot) |
 | `Template-Shirt-Pick-Tensegrity-Play-v0` | 〃 | 50-env play/eval configuration |
+| `Template-Shirt-Pick-Head-Tensegrity-v0` | 〃 | **Stage-2 S2**: + learned grasp-point refinement head ([mdp/grasp_head.py](mdp/grasp_head.py)) — 2-dim xy offset around the highest point (surface-snapped), 12 region-keypoint + border-dist observations, coverage terminal bonus |
+| `Template-Shirt-Pick-Head-Tensegrity-Play-v0` | 〃 | 50-env play/eval for the head variant |
 
 Planned retriever variants (same `_set_robot_params` pattern, mounts from
 [proj_base_scene_cfg.py](../shared/proj_base_scene_cfg.py)): UR5e, UR10,
@@ -149,6 +151,12 @@ Tensegrity variant — 6 dims:
 | `arm_action` | 3 | JointPositionAction (delta from default) | scale 1.0; elbow ±1.5, wrists ±0.8 |
 | `gripper_action` | 1 | BinaryJointPositionAction | open 0.0 / close 0.7854 |
 
+**Head variant only** (+2 dims, 8 total):
+
+| Term | Dims | Type | Scale / Clip |
+|---|---|---|---|
+| `grasp_offset` | 2 | `GraspOffsetAction` — xy offset of the grasp target around the highest point | clamp [−1, 1] × 0.15 m; snapped to the local cloth top (top-20 particles within 0.05 m); frozen (falls back to the plain highest point) once the grasp latches; zero action ≡ stage-1 target |
+
 ## Observations (policy group)
 
 35 dims (tensegrity variant), no noise corruption:
@@ -165,6 +173,13 @@ Tensegrity variant — 6 dims:
 | `gripper_closure` | 1 | Normalized closure [0 = open, 1 = closed] |
 | `grasp_active` | 1 | 1.0 while the attachment grasp holds |
 | `actions` | 6 | Previous action |
+
+**Head variant only** (+39 dims → 76 total; `actions` grows to 8):
+
+| Term | Dims | Description |
+|---|---|---|
+| `region_keypoints` | 36 | The study's 12 region-landmark keypoint particle positions relative to the finger tip (privileged stand-in for INF's estimated keypoints + visibility flags — rebase when merged) |
+| `grasp_border_dist` | 1 | Flat-rest border distance of the particle nearest the current grasp target (border-near holds present better, study §5) |
 
 Planned camera-realistic additions (report §6): highest-point position
 (`cloth.highest_point_w` already exists), N down-sampled surface points, cloth
@@ -189,6 +204,12 @@ release-into-drum to present-and-HOLD:
 | `belt_contact` | −10.0 | Finger tips pressing below the belt surface |
 | `action_rate` | −1e-4 → −3e-3 | L2, curriculum-ramped @ 2000 trainer steps |
 | `joint_vel` | −1e-4 → −2e-3 | L2, curriculum-ramped @ 2000 trainer steps |
+
+**Head variant only:**
+
+| Term | Weight | Description |
+|---|---|---|
+| `coverage_bonus` | 1800.0 | **One-shot** at the present latch: min-max-normalised `REGION_COVERAGE_LUT[hold region]` — predicted downstream Task-2 coverage of the achieved first grasp (dt-scaled ≈ 30 × norm-coverage; hem_corner/side ≈ +30, chest ≈ 0). LUT derived offline from the stratified pair map: `scripts/model_validation/build_pick_region_coverage_lut.py` |
 
 > **dt-scaling (from shirt_place):** Isaac Lab multiplies rewards by dt
 > (1/60 s) — a per-step weight w earns ≈ w × episode-seconds per episode; a
@@ -307,6 +328,11 @@ python scripts/random_agent.py --task=Template-Shirt-Pick-Tensegrity-v0 --num_en
 
 # (Re)generate the crumpled-state bank (64 envs x 4 rounds = 256 states, ~5 min)
 python scripts/generate_crumpled_bank.py --headless --num_envs 64 --rounds 4
+
+# (Re)generate the Task-1→2 TERMINAL bank (Stage-2 S0: deterministic rollout of
+# the selected checkpoint, snapshot at the present latch, slips included, ~12 min)
+python scripts/asset_generation/generate_pick_terminal_bank.py --headless \
+    --num_envs 64 --seed 7 --target_presented 560
 
 # Scripted heuristic baseline + reachability check
 python scripts/model_validation/baseline_shirt_pick.py --headless --num_envs 8

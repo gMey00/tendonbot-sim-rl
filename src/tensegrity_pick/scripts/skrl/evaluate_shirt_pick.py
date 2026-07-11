@@ -84,6 +84,9 @@ def main() -> None:
     obs, _ = env.reset()
     episodes = 0
     acc = {"present": 0.0, "grasp": 0.0, "drop": 0.0}
+    # S2 head metrics (logged only by the -Head- task variants; stay 0 otherwise)
+    acc_head = {"high_value": 0.0, "pred_cov": 0.0}
+    head_seen = False
     act_abs_sum, steps = 0.0, 0
     stochastic = bool(os.environ.get("PLAY_STOCH"))
 
@@ -100,18 +103,28 @@ def main() -> None:
             acc["present"] += float(log.get("Metrics/present_rate", 0.0)) * done
             acc["grasp"] += float(log.get("Metrics/grasp_rate", 0.0)) * done
             acc["drop"] += float(log.get("Metrics/drop_rate", 0.0)) * done
+            if "Metrics/high_value_hold_rate" in log:
+                head_seen = True
+                acc_head["high_value"] += float(log["Metrics/high_value_hold_rate"]) * done
+                acc_head["pred_cov"] += float(log.get("Metrics/pred_coverage", 0.0)) * done
             episodes += done
+            head_str = (f" high_value {acc_head['high_value']/episodes:.3f} "
+                        f"pred_cov {acc_head['pred_cov']/episodes:.3f}") if head_seen else ""
             print(f"[eval] episodes {episodes}/{args_cli.num_episodes}: "
                   f"present {acc['present']/episodes:.3f} "
                   f"grasp {acc['grasp']/episodes:.3f} "
-                  f"drop {acc['drop']/episodes:.3f}", flush=True)
+                  f"drop {acc['drop']/episodes:.3f}{head_str}", flush=True)
 
     mode = "stochastic" if stochastic else "deterministic"
+    head_str = ""
+    if head_seen:
+        head_str = (f" high_value_hold_rate={acc_head['high_value']/max(episodes,1):.3f}"
+                    f" pred_coverage={acc_head['pred_cov']/max(episodes,1):.3f}")
     print(f"\nRESULT ({mode}, seed {args_cli.seed}, {episodes} episodes): "
           f"present_rate={acc['present']/max(episodes,1):.3f} "
           f"grasp_rate={acc['grasp']/max(episodes,1):.3f} "
           f"drop_rate={acc['drop']/max(episodes,1):.3f} "
-          f"mean|act|={act_abs_sum/max(steps,1):.3f}")
+          f"mean|act|={act_abs_sum/max(steps,1):.3f}{head_str}")
 
     env.close()
 

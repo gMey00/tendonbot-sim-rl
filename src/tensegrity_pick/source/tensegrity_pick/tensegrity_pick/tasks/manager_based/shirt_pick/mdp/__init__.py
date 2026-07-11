@@ -16,6 +16,10 @@ from isaaclab.envs.mdp import *  # noqa: F401, F403
 # pattern).
 from .rewards import *  # noqa: F401, F403, E402
 
+# S2 grasp-point head (action term + obs + coverage bonus) — module import,
+# no star export (its names are referenced as ``grasp_head.<name>``).
+from . import grasp_head  # noqa: F401, E402
+
 from tensegrity_pick.tasks.manager_based.shared.cloth_sorting_mdp import *  # noqa: F401, F403
 from tensegrity_pick.tasks.manager_based.shared.gripper_cfg import (  # noqa: F401
     ee_lin_vel_w,

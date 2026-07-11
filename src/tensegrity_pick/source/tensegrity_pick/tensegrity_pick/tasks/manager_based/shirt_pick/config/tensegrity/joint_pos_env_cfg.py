@@ -93,3 +93,30 @@ class TensegrityShirtPickEnvCfg_PLAY(TensegrityShirtPickEnvCfg):
         super().__post_init__()
         self.scene.num_envs = 50
         self.scene.env_spacing = 5.0
+
+
+@configclass
+class TensegrityShirtPickHeadEnvCfg(TensegrityShirtPickEnvCfg):
+    """Stage-2 S2 variant: learned grasp-point refinement head.
+
+    Adds the 2-dim grasp-offset action, the 12 region-keypoint + border-dist
+    observations and the coverage terminal bonus (see mdp/grasp_head.py).
+    Everything else — attach mechanics, sequential rewards, present latch —
+    is the validated stage-1 task.
+    """
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        from tensegrity_pick.tasks.manager_based.shirt_pick.mdp.grasp_head import (
+            apply_grasp_head,
+        )
+
+        apply_grasp_head(self)
+
+
+@configclass
+class TensegrityShirtPickHeadEnvCfg_PLAY(TensegrityShirtPickHeadEnvCfg):
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.scene.num_envs = 50
+        self.scene.env_spacing = 5.0
