@@ -19,6 +19,8 @@
 
 from __future__ import annotations
 
+import pathlib
+
 import torch
 
 # Rasterization cell for silhouette areas.  The shirt's particle spacing is
@@ -94,30 +96,24 @@ def silhouette_coverage(
     return silhouette_area(points, view_axis, cell_size) / max(ref_area, 1e-9)
 
 
-def two_sided_visible_fraction(
+def per_particle_visibility(
     points: torch.Tensor,
     view_axis: int = 1,
     cell_size: float = DEFAULT_CELL_SIZE,
     layer_gap: float = 0.015,
 ) -> torch.Tensor:
-    """Fraction ``[N]`` of particles visible from the front OR back camera.
+    """Per-particle front-OR-back camera visibility mask ``[N, P]`` (bool).
 
-    Complements ``silhouette_coverage``: the silhouette counts overlapping
-    layers ONCE, so a sleeve draped in front of the torso does not reduce
-    coverage even though the torso patch behind it is not inspectable from
-    either side.  This metric rasterizes the same image plane and, per cell,
-    clusters the particles along the view axis into depth layers (split where
-    consecutive depth gaps exceed ``layer_gap`` ≈ 3× the mesh spacing): the
-    NEAREST layer is what the front camera (+view_axis, looking along
-    −view_axis) sees, the FARTHEST what the back camera sees; middle layers
-    are hidden from both.  Returns visible particles ÷ all particles.
-
-    A flat two-panel presentation scores ≈ 1.0 (front camera sees the front
-    panel, back camera the back panel); every extra fabric layer folded across
-    the silhouette lowers it.  Limitation: layers in CONTACT (< ``layer_gap``
-    apart) merge into one cluster and count as visible, so the metric is a
-    LOWER bound on occlusion — only clearly separated occluded layers are
-    caught.
+    The internals of ``two_sided_visible_fraction``, exposed per particle so
+    the same depth-layer logic serves keypoint-visibility observations and
+    grasp-gate layer estimates.  Rasterizes the image plane perpendicular to
+    ``view_axis`` and, per cell, clusters the particles along the view axis
+    into depth layers (split where consecutive depth gaps exceed ``layer_gap``
+    ≈ 3× the mesh spacing): the NEAREST layer is what the front camera sees,
+    the FARTHEST what the back camera sees; middle layers are hidden from
+    both.  Limitation: layers in CONTACT (< ``layer_gap`` apart) merge into
+    one cluster and count as visible, so occlusion is a LOWER bound — only
+    clearly separated occluded layers are caught.
     """
     pts = _as_batch(points)
     axes = [a for a in range(3) if a != view_axis]
@@ -127,7 +123,7 @@ def two_sided_visible_fraction(
     grid_dim = int(ij.max().item()) + 1 if ij.numel() else 1
     if grid_dim > _MAX_GRID:
         raise ValueError(
-            f"two_sided_visible_fraction: extent {grid_dim * cell_size:.1f} m "
+            f"per_particle_visibility: extent {grid_dim * cell_size:.1f} m "
             f"exceeds the {_MAX_GRID}-cell grid cap — wrong units or exploded "
             "cloth?"
         )
@@ -155,7 +151,137 @@ def two_sided_visible_fraction(
     vis_sorted = (clus == first) | (clus == last)
     visible = torch.zeros_like(vis_sorted)
     visible.scatter_(1, order, vis_sorted)
-    return visible.float().mean(dim=1)
+    return visible
+
+
+def two_sided_visible_fraction(
+    points: torch.Tensor,
+    view_axis: int = 1,
+    cell_size: float = DEFAULT_CELL_SIZE,
+    layer_gap: float = 0.015,
+) -> torch.Tensor:
+    """Fraction ``[N]`` of particles visible from the front OR back camera.
+
+    Complements ``silhouette_coverage``: the silhouette counts overlapping
+    layers ONCE, so a sleeve draped in front of the torso does not reduce
+    coverage even though the torso patch behind it is not inspectable from
+    either side.  Mean of ``per_particle_visibility`` (see there for the
+    depth-layer logic and the contact-layer limitation).
+
+    A flat two-panel presentation scores ≈ 1.0 (front camera sees the front
+    panel, back camera the back panel); every extra fabric layer folded across
+    the silhouette lowers it.
+    """
+    return per_particle_visibility(points, view_axis, cell_size, layer_gap).float().mean(dim=1)
+
+
+def depth_layer_count_in_ball(
+    points: torch.Tensor,
+    centers: torch.Tensor,
+    radius: float,
+    axis: torch.Tensor | None = None,
+    layer_gap: float = 0.015,
+) -> torch.Tensor:
+    """Number of separated cloth layers inside a ball around a grasp point ``[N]``.
+
+    Selects the particles within ``radius`` (3-D) of each env's ``centers``
+    ``[N, 3]``, projects them onto ``axis`` (``[3]`` or ``[N, 3]`` unit
+    vector, e.g. the finger approach direction; default world Z) and counts
+    depth clusters split at gaps > ``layer_gap`` — the same clustering rule
+    as ``per_particle_visibility``.  Returns 0 where the ball is empty.
+
+    > 2 layers at a pinch point = multi-layer grasp (the failure mode
+    UniFolding and DRAPER document for parallel-jaw grippers on garments).
+    Same contact-layer caveat: layers closer than ``layer_gap`` merge, so the
+    count is a lower bound.
+    """
+    pts = _as_batch(points)
+    n = pts.shape[0]
+    if axis is None:
+        axis = torch.tensor([0.0, 0.0, 1.0], device=pts.device, dtype=pts.dtype)
+    ax = axis.expand(n, 3) if axis.dim() == 1 else axis
+    ax = ax / ax.norm(dim=-1, keepdim=True).clamp(min=1e-9)
+    rel = pts - centers.unsqueeze(1)                           # [N, P, 3]
+    inside = rel.norm(dim=-1) <= radius                        # [N, P]
+    depth = (rel * ax.unsqueeze(1)).sum(dim=-1)                # [N, P]
+    # Push outside particles to +inf so they sort to the end of each row.
+    depth = torch.where(inside, depth, torch.full_like(depth, float("inf")))
+    d_s = depth.sort(dim=1).values
+    valid = d_s.isfinite()
+    gap = torch.zeros_like(d_s)
+    gap[:, 1:] = d_s[:, 1:] - d_s[:, :-1]
+    # A new layer starts at every valid particle whose gap to the previous
+    # valid one exceeds layer_gap; the first valid particle starts layer 1.
+    starts = valid & torch.nan_to_num(gap, nan=0.0, posinf=0.0).gt(layer_gap)
+    starts[:, 0] = valid[:, 0]
+    if starts.shape[1] > 1:
+        starts[:, 1:] |= valid[:, 1:] & ~valid[:, :-1]
+    return starts.long().sum(dim=1)
+
+
+def keypoint_detector_noise(
+    kp_pos: torch.Tensor,
+    visible: torch.Tensor,
+    noise_std: float = 0.015,
+    recall: float = 0.74,
+    generator: torch.Generator | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Keypoint-detector noise model: position Gaussian + visibility-gated dropout.
+
+    Models a real cloth-keypoint detector per Lips et al. 2024 ("Learning
+    Keypoints for Robotic Cloth Manipulation using Synthetic Data": 74 % mAP,
+    ~9 px ≈ 1–2 cm position error after fine-tuning): each VISIBLE keypoint is
+    detected with probability ``recall`` and reported with isotropic Gaussian
+    position noise ``noise_std`` (σ, metres); occluded or dropped keypoints
+    are not detected — their position is zeroed and their flag cleared, which
+    is what a detector's miss looks like downstream.
+
+    Args:
+        kp_pos:  ``[N, K, 3]`` true keypoint positions.
+        visible: ``[N, K]`` bool geometric visibility (occlusion) mask.
+        generator: optional RNG for reproducible draws (defaults to the global
+            torch RNG, i.e. deterministic under a fixed ``torch.manual_seed``).
+
+    Returns:
+        ``(noisy_pos [N, K, 3], detected [N, K] float)`` — detected ∈ {0, 1}.
+    """
+    draw = torch.rand(visible.shape, device=kp_pos.device, generator=generator)
+    detected = visible & (draw < recall)
+    noise = noise_std * torch.randn(
+        kp_pos.shape, device=kp_pos.device, generator=generator
+    )
+    noisy = torch.where(detected.unsqueeze(-1), kp_pos + noise,
+                        torch.zeros_like(kp_pos))
+    return noisy, detected.float()
+
+
+def downsample_masked_points(
+    points: torch.Tensor,
+    mask: torch.Tensor,
+    num_points: int,
+    perm: torch.Tensor,
+) -> torch.Tensor:
+    """Fixed-size down-sample ``[N, num_points, 3]`` of the masked particles.
+
+    Deterministic given ``perm`` (a fixed permutation of all P particle
+    indices, drawn ONCE by the caller from a seeded generator): per env, the
+    first ``num_points`` mask-true particles in permutation order are taken;
+    envs with fewer visible particles wrap around (repeat) rather than pad
+    with zeros, so the cloud never contains fake origin points.  An all-false
+    mask row falls back to particle ``perm[0]`` repeated.
+    """
+    pts = _as_batch(points)
+    n, p = pts.shape[0], pts.shape[1]
+    mp = mask[:, perm]                                          # [N, P]
+    rank = mp.long().cumsum(dim=1) - 1                          # [N, P]
+    take = mp & (rank < num_points)
+    out_idx = torch.zeros(n, num_points, dtype=torch.long, device=pts.device)
+    n_i, p_i = take.nonzero(as_tuple=True)
+    out_idx[n_i, rank[n_i, p_i]] = perm[p_i]
+    count = mp.sum(dim=1).clamp(min=1, max=num_points)          # [N]
+    slots = torch.arange(num_points, device=pts.device).unsqueeze(0) % count.unsqueeze(1)
+    out_idx = out_idx.gather(1, slots)
+    return pts.gather(1, out_idx.unsqueeze(-1).expand(-1, -1, 3))
 
 
 def plane_extent(points: torch.Tensor, view_axis: int = 1) -> torch.Tensor:
@@ -190,3 +316,42 @@ def stretch_ratio(
 def rest_distance(flat_rest_pos: torch.Tensor, idx_a, idx_b) -> torch.Tensor:
     """Rest-shape distance(s) between particle indices (tensors broadcast)."""
     return torch.norm(flat_rest_pos[idx_a] - flat_rest_pos[idx_b], dim=-1)
+
+
+# ---------------------------------------------------------------------------
+# ClothesNet marker access (study keypoints / border distances)
+# ---------------------------------------------------------------------------
+
+# Repo-root-relative location of the presentation-study marker file (built
+# once by scripts/model_validation/present_heuristics/build_markers.py; the
+# study data under doc/reports/data/ is a read-only input for all agents).
+_REPO_ROOT = pathlib.Path(__file__).resolve().parents[8]
+PRESENT_MARKERS_PATH = str(
+    _REPO_ROOT / "doc" / "reports" / "data" / "present_markers.pt"
+)
+
+_markers_cache: dict[str, dict] = {}
+
+
+def load_present_markers(path: str | None = None) -> dict:
+    """Load (once, cached) the study's garment markers as torch tensors.
+
+    Returns a dict with at least:
+      * ``keypoint_idx``   — ``[12]`` long, particle index of each of the 12
+        symmetric region-landmark keypoints (the study's perception-friendly
+        landmark set; see present_heuristics/markers.py for the full format).
+      * ``keypoint_names`` — ``[12]`` region-name strings.
+      * ``border_dist``    — ``[P]`` float, per-particle distance (m) to the
+        nearest garment border (neck / cuffs / hem open edges).
+      * ``particle_region``— ``[P]`` long, folded-region id 0..7.
+    """
+    key = path or PRESENT_MARKERS_PATH
+    if key not in _markers_cache:
+        raw = torch.load(key, map_location="cpu", weights_only=False)
+        _markers_cache[key] = {
+            "keypoint_idx": raw["keypoint_idx"].long(),
+            "keypoint_names": list(raw["keypoint_names"]),
+            "border_dist": raw["border_dist"].float(),
+            "particle_region": raw["particle_region"].long(),
+        }
+    return _markers_cache[key]

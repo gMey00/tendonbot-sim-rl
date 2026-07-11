@@ -324,9 +324,11 @@ Progress log: [shirt_pick_optimization_tracking.md](reports/shirt_pick_optimizat
   proved the value net consumes the `"critic"` group (dim + content instrumented); config
   pattern + the `state_preprocessor` remap gotcha in
   [pipeline_infra_tracking.md](reports/pipeline_infra_tracking.md) §M1. No RSL-RL fallback needed.
-- 🟡 **Camera-realistic observation library** in
+- ✅ **Camera-realistic observation library** (2026-07-12, INF) in
   [shared/cloth_sorting_mdp.py](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shared/cloth_sorting_mdp.py):
-  N-point surface sampling, keypoints + per-keypoint visibility flags, projected coverage.
+  12 keypoints + visibility flags (Lips-2024 noise model), N-point visible-surface cloud,
+  coverage-from-mask, noisy/delayed grasp flag — terms + tests + usage snippet in
+  [pipeline_infra_tracking.md](reports/pipeline_infra_tracking.md) §M2.
 - 🟡 **Task-space action variants** (IK-Rel/IK-Abs/OSC) for the cloth tasks — reuse
   [ik_reach_common.py](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/config/ik_reach_common.py) /
   [osc_reach_common.py](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/config/osc_reach_common.py)
@@ -411,11 +413,12 @@ choice + a cooperative Task 2, not more robot-2 training.
   value net's inputs) passed on every call; evidence + copyable env-cfg/agent-yaml pattern in
   [pipeline_infra_tracking.md](reports/pipeline_infra_tracking.md) §M1. RSL-RL fallback NOT
   needed (rsl_rl is not installed in `env_isaaclab`; revisit only if the pattern breaks).
-- 🔴 **Camera-realistic observation library** (`shared/cloth_sorting_mdp.py`): 12 keypoints +
-  per-keypoint visibility flags (noise model: ~1–2 cm Gaussian + dropout at 1−recall, Lips
-  2024), coverage-from-mask (≡ silhouette coverage), noisy/delayed grasp-active flag
-  (gripper-current proxy), N-point down-sampled surface cloud. **Tautness leaves the actor**
-  (not directly observable in reality) → privileged critic only.
+- ✅ **Camera-realistic observation library** (2026-07-12, INF): all four term families
+  shipped in `shared/cloth_sorting_mdp.py` (keypoints+visibility with the Lips-2024 noise
+  model, coverage-from-mask ≡ silhouette coverage — asserted offline AND live, noisy/delayed
+  grasp flag, N-point visible-surface cloud); tautness documented actor-forbidden. Tests:
+  `test_camera_obs.py` (offline) + `check_camera_obs_terms.py` (live 4-env smoke), both green;
+  usage snippet in [pipeline_infra_tracking.md](reports/pipeline_infra_tracking.md) §M2.
 - 🟡 Per-task integration of the contract (T1/T2 own their cfg edits; INF delivers terms).
 
 ### S5 — Grasp-fidelity evaluation gates (thesis-critical, low cost)  → 🤖 INF

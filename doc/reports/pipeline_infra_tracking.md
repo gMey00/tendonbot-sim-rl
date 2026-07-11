@@ -135,7 +135,74 @@ agent:
 
 ---
 
-## M2 — camera-realistic observation library ⏳
+## M2 — camera-realistic observation library ✅ (2026-07-12)
+
+New observation terms in
+[shared/cloth_sorting_mdp.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shared/cloth_sorting_mdp.py)
+(pure functions on env attrs, zeros-fallback shape-probe guard — the
+established pattern), backed by new pure-torch helpers in
+[shared/cloth_metrics.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shared/cloth_metrics.py)
+so everything statistical is offline-testable:
+
+| Term | Shape | Real-perception source it models |
+|---|---|---|
+| `keypoints_with_visibility(noise_std, recall)` | `[N, 48]` (12 × xyz + 12 flags) | keypoint detector on the 12 study region landmarks (`present_markers.pt`); visibility = the study's two-sided depth-layer logic; occluded/undetected → zeroed pos + flag 0 |
+| `surface_point_cloud(num_points, visible_only)` | `[N, num_points × 3]` | segmented down-sampled point cloud (UniFolding/VCD input); deterministic given seed, no fake zero-pad points (wrap-around) |
+| `coverage_from_mask()` | `[N, 1]` | segmentation-mask area ÷ flat area — literally `silhouette_coverage`, equivalence asserted in tests + live smoke |
+| `grasp_active_noisy(flip_prob, latency_steps)` | `[N, 1]` | gripper-current grasp estimator (2F-140 exposes motor current): delayed + occasionally flipped binary |
+
+- **Noise models default OFF** (identical to clean terms until a config opts
+  in). Keypoint noise calibrated to Lips et al. 2024 (74 % mAP → recall ≈
+  0.74 dropout; ~9 px ≈ 1–2 cm → `noise_std` 0.01–0.02), cited in the
+  docstring. Draws use the run seed (deterministic).
+- **Isaac Lab noise hooks:** the standard `ObsTerm(noise=...)` corruption
+  hook works ON TOP of these terms for plain Gaussian obs noise, but the
+  keypoint dropout must zero position AND flag *together* (a detector miss),
+  and the grasp-flag latency needs cross-step state — both structurally
+  beyond the per-term additive-noise hook, hence term-level parameters.
+- **Privileged terms stay privileged:** tautness/stretch ratio is NOT
+  camera-observable — module docstring forbids it in actor groups; keep it
+  in `critic` groups and rewards (report §2-Q3).
+- New pure helpers: `per_particle_visibility` (factored out of
+  `two_sided_visible_fraction` — behavior regression-tested),
+  `depth_layer_count_in_ball` (also serves the M3 gates),
+  `keypoint_detector_noise`, `downsample_masked_points`,
+  `load_present_markers` (repo-root-relative, cached).
+
+**Validation**
+- Offline: new
+  [test_camera_obs.py](../../src/tensegrity_pick/scripts/model_validation/test_camera_obs.py)
+  — 26/26 PASS (visibility ground truth incl. 3-layer occlusion, layer
+  counting, dropout rate 0.741 vs 0.74 target, seed determinism, wrap-around
+  sampling, marker contract, coverage == independent mask-area
+  reimplementation). Existing `test_cloth_metrics.py` still ALL PASS.
+- Live (4 envs, shirt_pick):
+  [check_camera_obs_terms.py](../../src/tensegrity_pick/scripts/model_validation/check_camera_obs_terms.py)
+  — 12/12 PASS, including the ObservationManager shape-probe path (terms
+  injected into a runtime cfg copy) and `coverage_from_mask ==
+  silhouette_coverage` on live cloth (0.1166 == 0.1166).
+- Regression: `test_shirt_fixes.py` 5/5 after the refactor.
+
+**Usage snippet for T1/T2/T3** (your task's `ObservationsCfg`; INF does not
+edit task cfgs):
+
+```python
+from ...shared import cloth_sorting_mdp as shared_mdp
+
+@configclass
+class PolicyCfg(ObsGroup):   # camera-realistic actor
+    keypoints = ObsTerm(func=shared_mdp.keypoints_with_visibility)
+    # opt-in detector noise for DR runs:
+    # keypoints = ObsTerm(func=shared_mdp.keypoints_with_visibility,
+    #                     params={"noise_std": 0.015, "recall": 0.74})
+    cloud = ObsTerm(func=shared_mdp.surface_point_cloud,
+                    params={"num_points": 64})
+    coverage = ObsTerm(func=shared_mdp.coverage_from_mask)
+    grasp = ObsTerm(func=shared_mdp.grasp_active_noisy)
+    # NO tautness here — critic group only.
+```
+
+## M3 — grasp-fidelity gates ⏳
 
 (in progress)
 
