@@ -10,7 +10,10 @@ NVIDIA RTX A6000 (48 GB), FAPS server.
 **Date:** 2026-07-04, extended 2026-07-07 (balanced/opposite-side oracle map +
 borderpoint & keypoint analysis), corrected 2026-07-08 (source garment fixed to
 **`TNSC_Tshirt_Ts1_0`**; symmetric garment regions; **symmetric region-aligned
-keypoints**; complete symmetric borderpoints). Renders are in the current garment
+keypoints**; complete symmetric borderpoints), extended 2026-07-10
+(occlusion-aware **two-sided visibility check** §1.5; **tautness pulse** §5.6;
+**oracle-guided regrasp** §5.7; keypoint-pair map rerun with initial-drape
+diversity §6.2; statistical notes). Renders are in the current garment
 colour (FAPS-Grün).
 
 Every number is reproducible: each script logs one CSV row per trial (bank state index,
@@ -28,12 +31,15 @@ Scripts live in
 | Tautness has a real, monotone (but modest) effect (ratio = held chord ÷ flat-rest grasp distance; >1.0 is partly PBD overstretch, §1.1) | 0.657 → 0.690 median for ratio 0.95 → 1.10 |
 | The geometry is **self-aligning** — no yaw control needed | `cov_yaw_max − cov_plane` ≈ 0.003 |
 | **Regrasping HURTS** (extremity↔extremity chords span wide but fill poorly) | paired Δ −0.031, only 37 % improve |
+| … and NOT because of the regrasp target: regrasping to the ORACLE hem corner is no better (§5.7) | paired Δ −0.051, 37 % improve |
+| A tautness PULSE (1.10 → 1.05) adds no coverage but **halves the settle time** (§5.6) | 0.687 vs 0.679 (n.s.); settle 61 vs 132 steps |
 | Pair quality is driven by chord LENGTH, NOT orientation | r = +0.29 (distance) vs −0.04 (orientation) |
 | **Balanced oracle** (100+/cell, opposite-side partner): hem targets dominate; the hem↔hem CELL reproduces the scripted winner | side→hem_c **0.82**, hem↔hem **0.82** |
 | **Grasping nearer the garment BORDER helps** (2nd grasp, monotone; the 1st/anchor grasp does not) | ≤1 cm from edge 0.65 → >10 cm interior 0.57 |
-| **Keypoint sampling works — via the border-near keypoints:** best keypoint pairs reach the oracle; interior keypoints fail | hem↔hem 0.92, side→hem_c 0.91; chest keypoint 0.46 |
-| **Best scripted method: grasp both hem corners** (garment upside-down) | **0.820** median @1.05, 0.832 @1.10, p90 0.95 |
+| **Keypoint sampling works — via the border-near keypoints:** best keypoint pairs reach the realizable oracle (0.82); interior keypoints fail | side→hem_corner 0.87, shoulder→sleeve 0.83, hem↔hem 0.80; chest keypoint 0.46 |
+| **Best scripted method: grasp both hem corners** (garment upside-down) | **0.820** median @1.05 (95 % CI 0.796–0.847), p90 0.95; @1.10 0.832 — n.s. (§5.4) |
 | The classic human shoulder↔shoulder grip FAILS here | 0.493 median, 57 % of trials < 0.55 |
+| The ranking survives an **occlusion-aware two-sided visibility check** (§1.5) | visible fraction: hem↔hem **0.99**, H1 0.97, regrasp 0.96, free hang 0.92 |
 | Recommended `shirt_present` success threshold (camera-plane coverage) | **0.65** to start, 0.75 stretch goal |
 
 Full method comparison (camera-plane coverage — the number the RL task sees; all
@@ -44,21 +50,25 @@ methods at ratio 1.05 unless noted):
 | shoulder↔shoulder (scripted) | 240 | 0.493 | 0.436–0.707 | 0.758 |
 | free 1-point hang (bank, best yaw) | 356 | 0.567 | 0.523–0.606 | 0.633 |
 | H3 grasp pair (random + stratified) | 11 072 | 0.603 | 0.511–0.701 | 0.787 |
-| keypoint↔keypoint pair (any kp pair) | 2 560 | 0.620 | 0.508–0.712 | 0.805 |
+| keypoint↔keypoint pair (any kp pair) | 2 560 | 0.623 | 0.522–0.728 | 0.824 |
 | keypoint as 2nd grasp (any kp) | 896 | 0.635 | 0.519–0.732 | 0.826 |
+| H2 oracle-guided regrasp (§5.7) | 288 | 0.639 | 0.486–0.685 | 0.735 |
 | H2 regrasp (3-grasp) | 288 | 0.653 | 0.618–0.686 | 0.710 |
 | iterated regrasp ×2 / ×3 | 288 each | 0.656 / 0.656 | — | 0.721 / 0.730 |
 | H1 + shake | 240 | 0.671 | 0.603–0.728 | 0.786 |
 | **H1 naive 2-grasp (the task heuristic)** | 240 | **0.679** | 0.621–0.722 | 0.778 |
+| H1 + tautness pulse 1.10→1.05 (§5.6) | 240 | 0.687 | 0.629–0.736 | 0.791 |
 | oracle-guided 2nd grasp | 240 | 0.713 | 0.628–0.756 | 0.811 |
 | **hem_corner↔hem_corner (scripted)** | 240 | **0.820** | 0.701–0.896 | 0.948 |
 | hem_corner↔hem_corner @1.10 | 240 | 0.832 | 0.680–0.922 | 0.965 |
-| H3 oracle top decile (upper bound) | 1 107 | 0.837 | — | — |
+| H3 top decile of TRIALS (incl. initial-state luck, §4) | 1 107 | 0.837 | — | — |
 
 The keypoint rows' medians undersell them: their VALUE is the upper tail — the best
-keypoint pairs (hem↔hem 0.92, side→hem_c 0.91) reach the oracle (§6.2). The pooled median
-is dragged down by the garment's interior keypoints (chest 0.46, hem_c 0.52), which are
-poor grasps because they sit far from a garment edge or give a short central chord (§6.1).
+keypoint-pair cells (side→hem_corner 0.87, shoulder→sleeve 0.83, side→hem_c 0.83) reach
+and slightly exceed the realizable oracle bound (best stratified cell 0.82, §6.2). The
+pooled median is dragged down by the garment's interior keypoints (chest 0.46, hem_c
+0.52), which are poor grasps because they sit far from a garment edge or give a short
+central chord (§6.1).
 
 ![Method comparison](figures/present_heuristics/method_comparison.png)
 
@@ -92,6 +102,22 @@ of the plane it is aligned to, so it is NOT a meaningful score here.)
 |---|---|
 | Flat shirt, face-on (computed from `flat_rest_pos`) | **1.000** |
 | Free one-point hang, unstretched (356 bank states, best yaw) | 0.563 median, IQR 0.520–0.602 |
+
+**Cross-boot rest-shape drift.** Each Isaac boot re-adopts the settled rest
+shape (`recompute_flat_rest_from_current`), so the reference frame is not
+bit-identical across runs: relative to the study's fixed offline dump
+(`present_heuristics_flat_rest.pt`, written once by the first H1 run and never
+overwritten) the per-particle flat-rest positions drift by **1.6 mm median,
+~6–11 mm at p95, 14.7 mm max** per run, and the flat reference area by ±0.7 %
+(0.292–0.294 m²). Consequences: (a) coverage carries ±0.7 % cross-run
+normalization noise — all reported effects are ≥ 3 %; (b) offline region
+assignment (from the logged rest coordinates) disagrees with the sampling-time
+assignment (marker file, built in the dump's frame) for ~1.6 % of the
+stratified second grasps — a slight blur of the §4 cell borders, not a shift
+of any cell median; (c) `rest_dist` and hence the tautness ratio of SHORT
+chords is noisy ACROSS runs (a few mm is a large fraction of a 0.1 m chord) —
+within a run everything is self-consistent because each run uses its own
+boot's rest shape.
 
 **On the tautness ratio and coverage > 1.0.** The stretch's *tautness* (aka target
 stretch ratio) is defined as the held chord length ÷ the two grasp particles' distance in
@@ -167,6 +193,47 @@ the left, so uniform-*particle* sampling is only approximately uniform over area
 aggregates are medians *conditional on the region*, so density only affects per-cell n
 (reported in every map), not the (symmetric) cells or the values.
 
+### 1.5 Occlusion check — does the silhouette hide fabric? (two-sided visible fraction)
+
+The silhouette counts overlapping layers ONCE: a sleeve draped in front of the
+torso does not reduce coverage, although the torso patch behind it is not
+inspectable from either camera. To verify the ranking is not distorted by such
+hidden layers, every saved final state was re-scored with an occlusion-aware
+companion metric, **`two_sided_visible_fraction`**
+([shared/cloth_metrics.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shared/cloth_metrics.py),
+offline script `analyze_visibility.py`): per raster cell of the same image
+plane, the particles are clustered into depth layers (split at gaps > 1.5 cm ≈
+3× mesh spacing); the front camera sees the nearest layer, the back camera the
+farthest, middle layers are hidden. It uses ONLY the front + back inspection
+views the task already has — no extra cameras.
+
+| method | n | visible fraction (median) | IQR | coverage median |
+|---|---|---|---|---|
+| free 1-point hang | 356 | 0.922 | 0.895–0.948 | 0.502 |
+| shoulder↔shoulder | 240 | 0.957 | 0.935–0.981 | 0.493 |
+| H2 regrasp (stage 2) | 288 | 0.957 | 0.942–0.965 | 0.652 |
+| H2 oracle regrasp (stage 2, §5.7) | 288 | 0.959 | 0.924–0.976 | 0.639 |
+| H1 naive 2-grasp | 960 | 0.973 | 0.960–0.983 | 0.674 |
+| H1 + shake | 240 | 0.973 | 0.959–0.983 | 0.673 |
+| H1 + tautness pulse (§5.6) | 240 | 0.974 | 0.959–0.983 | 0.683 |
+| oracle-guided 2nd grasp | 240 | 0.971 | 0.953–0.983 | 0.714 |
+| **hem↔hem @1.05** | 240 | **0.990** | 0.971–0.996 | 0.825 |
+| hem↔hem @1.10 | 240 | 0.987 | 0.972–0.995 | 0.831 |
+
+**The study's conclusions are robust to occlusion**: separated hidden layers
+are rare in ALL two-point presentations (≥ 95 % of the fabric visible), the
+method order is preserved where it matters — hem↔hem is also the visibility
+winner (0.990), the regrasp *also* loses under visibility (0.957 vs H1's
+0.973), and the crumpled free hang is worst (0.922). So coverage (which also
+sees folds and bunching that visibility does not penalize) remains the primary
+metric; `vis_frac` is now logged with every new trial (CSV column) as the
+standing check. Caveat: layers in CONTACT (< 1.5 cm apart) merge into one
+depth cluster and count as visible, so the metric is a *lower bound* on
+occlusion — it catches clearly separated draped-in-front layers, not fabric
+pressed onto fabric.
+
+![Visibility check](figures/present_heuristics/visibility_check.png)
+
 ---
 
 ## 2. Heuristic 1 — naive 2-grasp (the `shirt_present` heuristic)
@@ -230,8 +297,8 @@ Script: `run_three_grasp.py`; data: `present_h2_three_grasp.csv`.
 **Findings.**
 
 1. **The regrasp HURTS in the horizontal-presentation geometry** (paired −0.031 median;
-   only 37 % of trials improve), and further iterations plateau at the lower level
-   instead of recovering.
+   only 37 % of trials improve — sign test p ≈ 1.5 × 10⁻⁵, so the loss is systematic,
+   not noise), and further iterations plateau at the lower level instead of recovering.
 2. **Why:** after the regrasp, BOTH grasps sit on garment extremities — the former
    lowest point (sleeve end / hem corner) plus the new lowest point (hem corner 78 % of
    stage-2 regrasps). A horizontal chord between two extremal points spans a WIDER
@@ -242,7 +309,9 @@ Script: `run_three_grasp.py`; data: `present_h2_three_grasp.csv`.
 3. Contrast with intuition: regrasping is the textbook move (Maitin-Shepard) for
    *unfolding into a known pose*; for THIS objective (projected coverage of a
    two-point-held presentation) it trades fill for span at a net loss. The productive
-   use of a third grasp is grasp-point CHOICE, not repetition — see §4/§5.
+   use of a third grasp is grasp-point CHOICE, not repetition — see §4/§5. (And it is
+   not the lowest-point TARGET that is at fault: regrasping to the oracle-chosen hem
+   corner is just as bad, §5.7.)
 
 | worst (0.40) | median (0.65) | best (0.78) |
 |---|---|---|
@@ -278,7 +347,11 @@ lowest-point heuristic (0.679), because a uniform region→region draw includes 
 mid-panel second grasps; the lowest-point rule is a decent chooser precisely because it
 reliably picks a LONG edge chord. But the map's structure is sharp and its upper tail is
 far above both: pooled **top-decile median 0.837**, best cell 0.82, best single pair
-1.04.
+1.04. One framing caveat on the top decile: it selects the best 10 % of *trials*, which
+also selects FAVORABLE INITIAL STATES (lucky bank hangs/yaws) that no grasp-choosing
+policy controls — the **realizable upper bound for a pair-choosing policy is the best
+CELL median, 0.82**, and the scripted hem↔hem presentation (§5.4, 0.820) *matches* it,
+not merely "comes within 0.02 of" the luck-inflated 0.837.
 
 ![Pair heatmap (stratified, opposite-side partner)](figures/present_heuristics/pair_heatmap.png)
 
@@ -286,7 +359,7 @@ The stratified map (first grasp = hang anchor, rows × second grasp = stretched,
 mirror-folded regions, ≥128 trials/cell):
 
 * **Best cells — hem/edge targets dominate:** side→hem_c **0.82**,
-  hem_corner→hem_corner **0.82**, side→hem_corner **0.77**, hem_corner→hem_c **0.76**,
+  hem_corner→hem_corner **0.82**, side→hem_corner **0.77**, hem_corner→hem_c **0.77**,
   hem_corner→sleeve **0.74**, sleeve→sleeve **0.73**. Holding the garment by its
   bottom edge (or side seam + opposite bottom corner) puts the taut chord along a long
   garment edge, and the whole body + sleeves drape below it as one wide curtain.
@@ -299,8 +372,8 @@ mirror-folded regions, ≥128 trials/cell):
   0.68–0.82): whatever you are already holding, bring the free grasp to a bottom corner /
   bottom centre. The one exception is sleeve-first, which peaks at sleeve→sleeve (0.73 —
   two opposite sleeve ends also make a long chord).
-* **Worst cells:** central-region self-pairs — collar→collar **0.44**, chest→chest
-  **0.45**, collar→chest 0.47 — short chords that gather fabric mid-panel.
+* **Worst cells:** central-region self-pairs — collar→collar **0.43**, collar→chest
+  **0.45**, chest→chest **0.46** — short chords that gather fabric mid-panel.
 
 ![Best partner per first grasp](figures/present_heuristics/best_partner_map.png)
 
@@ -327,7 +400,8 @@ colour — see the render note in the iteration log):
 
 ## 5. Further methods
 
-Five follow-ups were tried and measured; two win, three are recorded negatives.
+Seven follow-ups were tried and measured; two win on coverage, one wins on settle
+time, four are recorded negatives.
 
 ### 5.1 Iterated lowest-point regrasp — no gain (see §3, stages 3–4)
 
@@ -357,8 +431,8 @@ quartile).
 
 ### 5.3 Scripted shoulder↔shoulder — the human-intuition grip FAILS (negative)
 
-Both grasps at the shoulder landmarks (first grasp restricted to shoulder-anchored bank
-states, second at the opposite shoulder), 240 trials, seed 77
+First grasp = a bank hang pinned anywhere in a shoulder cell (72 of the 356 bank
+states qualify), second grasp AT the opposite shoulder landmark, 240 trials, seed 77
 (`run_oracle_pick.py --fixed_target shoulder --first_regions shoulder`).
 **Median 0.493; 57 % of trials below 0.55** — the WORST method tested, despite being how
 a person shows a shirt. The distribution is strongly bimodal (p75 0.707, p90 0.758):
@@ -373,16 +447,19 @@ implicitly fixes this with micro-adjustments; a static two-point hold does not.
 
 ### 5.4 Scripted hem_corner↔hem_corner — the WINNER
 
-Same protocol with both grasps at the hem-corner landmarks (garment held upside-down by
-its bottom edge), 240 trials each at ratio 1.05 (seed 88) and 1.10 (seed 99).
-Data: `present_h8_hem_pair.csv`, `present_h8_hem_pair_110.csv`.
+Same protocol: first grasp = a bank hang pinned in a hem-corner cell (22 of the 356
+bank states qualify), second grasp AT the opposite hem-corner landmark (garment held
+upside-down by its bottom edge), 240 trials each at ratio 1.05 (seed 88) and 1.10
+(seed 99). Data: `present_h8_hem_pair.csv`, `present_h8_hem_pair_110.csv`.
 
-**Median 0.820 @1.05 / 0.832 @1.10, p90 0.95–0.97** — within 0.02 of the ORACLE TOP
-DECILE (0.837) using one fixed, perception-friendly rule (hem corners are rigid,
-seam-marked, easy-to-detect features). Why it wins: the taut chord IS the garment's
-longest continuous fabric edge, so the entire body panel hangs below it as one wide
-curtain, with the sleeves falling outside the torso silhouette instead of over it.
-Tautness beyond 1.05 adds little (+0.012 median) — the edge is already straight.
+**Median 0.820 @1.05 (bootstrap 95 % CI 0.796–0.847) / 0.832 @1.10, p90 0.95–0.97** —
+this MATCHES the realizable oracle bound (best stratified cell, 0.82; §4) with one
+fixed, perception-friendly rule (hem corners are rigid, seam-marked, easy-to-detect
+features). Why it wins: the taut chord IS the garment's longest continuous fabric
+edge, so the entire body panel hangs below it as one wide curtain, with the sleeves
+falling outside the torso silhouette instead of over it. Tautness beyond 1.05 adds
+nothing statistically resolvable (+0.012 median, Mann-Whitney p = 0.39 across the
+two 240-trial samples) — the edge is already straight at 1.05.
 
 | worst (0.50) | median (0.82) | best (1.09) |
 |---|---|---|
@@ -395,6 +472,52 @@ and final settle, 240 trials, seed 66 (`run_two_grasp.py --shake_amp 0.04`):
 median 0.671 vs 0.679 without — no improvement (if anything, slight residual sway at
 measurement). Kept for the record; the folds that cost coverage in this geometry are
 held by gravity + the grasp choice, not by stiction that agitation could release.
+(Scope note: this is ONE point of the agitation family — one amplitude, one frequency,
+one axis. The tautness pulse of §5.6 probes an adjacent point; a broader sweep was not
+run.)
+
+### 5.6 Tautness pulse 1.10 → 1.05 — no coverage gain, but HALF the settle time
+
+The human "snap": overstretch the chord to 1.10 (no settle, 30-step hold), then relax
+to the 1.05 operating point and settle normally. 240 trials, seed 67
+(`run_two_grasp.py --pulse_ratio 1.10`; data `present_h6_pulse.csv`).
+
+**Coverage: median 0.687 vs H1's 0.679 — not significant** (Mann-Whitney p = 0.24);
+the pulse does not pop open folds the plain stretch leaves. The real effect is in the
+DYNAMICS: **the post-relax settle takes a median 61 steps vs 132 for the plain 1.05
+stretch** (and 340 for holding 1.10) — pulling past the target and backing off leaves
+the chord pre-tensioned and dead, instead of ringing. The extra pulse trajectory costs
+~55 stretch steps, so net episode time is roughly a wash in this scripted setting —
+but for the RL task, where a settle-latch gates the reward, a policy that overshoots
+and relaxes reaches a measurable presentation FASTER than one that creeps up on the
+target tautness. Worth knowing when reading learned behaviour: overshoot-then-relax is
+not a policy error.
+
+### 5.7 Oracle-guided REGRASP — regrasping hurts even with the right target (negative)
+
+The §3 regrasp always targeted the new LOWEST point; §5.2 showed the pair-map policy
+beats the lowest-point rule from a fresh hang. The missing cell of the matrix: does the
+regrasp recover if the regrasp TARGET is oracle-chosen? Protocol = §3 (H1 stage 1,
+release the anchor, re-settle, regrasp, horizontal stretch — direction by the canonical
+side-of-the-grasped-point rule) with the regrasp at the
+pair-map partner landmark of the holding grasp's region instead of the lowest point
+(`run_three_grasp.py --regrasp_target oracle`, 288 trials, seed 23; all 288 stage-2
+targets resolved to a hem corner — the policy's answer for the sleeve/hem extremities
+the stage-1 stretch leaves as holders). Data: `present_h2o_oracle_regrasp.csv`.
+
+| stage | median | IQR | paired Δ to stage 1 | trials improved |
+|---|---|---|---|---|
+| 1 (naive 2-grasp, paired sample) | 0.673 | 0.607–0.724 | — | — |
+| 2 (ORACLE regrasp) | **0.639** | 0.486–0.685 | **−0.051** | 37 % (sign test p ≈ 1.5 × 10⁻⁵) |
+
+**The regrasp still hurts — the target was never the problem.** The oracle regrasp is
+no better than the lowest-point regrasp (0.639 vs 0.653; both below keep-holding
+0.68), and its lower quartile is markedly worse (0.486): with the anchor released, the
+holder is a garment EXTREMITY (the former lowest point), and an extremity↔hem-corner
+chord has the same fill-versus-span problem as §3 — plus a heavier left tail when the
+re-hung drape swings the target to an awkward side. This closes the question §3 left
+open: the productive use of a third grasp is choosing the SECOND grasp well *while
+robot 1 keeps holding* (§5.2, +0.034), not releasing and regrasping — with any target.
 
 ## 6. Garment markers — borderpoints & keypoints
 
@@ -437,7 +560,7 @@ near an OPENING the moved (second) grasp sits.**
 | 6–10 cm | 0.601 |
 | 10–25 cm (deep interior) | **0.570** |
 
-**A clean monotone +0.08** from interior to edge (r = −0.21 over all 11 072 trials). The
+**A monotone +0.08** from interior to edge (r = −0.21 over all 11 072 trials). The
 mechanism: a grasp ON an opening lets that edge become the taut horizontal chord and the
 panel hang cleanly below it; a grasp in the interior gathers fabric around the pinch and
 folds the garment across the silhouette. The effect is **specific to the second (moved)
@@ -448,8 +571,15 @@ defines the presented top edge.
 ![Border nearness vs coverage](figures/present_heuristics/border_nearness.png)
 
 Border nearness is only weakly entangled with chord length (corr(border_dist, rest_dist)
-= −0.20), so it is a genuinely distinct lever, not a proxy for §4's chord-length driver:
-openings tend to be both long-chord AND clean.
+= −0.20): controlling for the chord, the partial correlation is **r = −0.16** — a
+genuinely distinct lever, not a proxy for §4's chord-length driver. Its proper SCOPE,
+from binning the pooled trials by rest distance: the border advantage holds for short and
+mid chords (rest 0–0.2 m: near-border 0.560 vs interior 0.533; 0.2–0.35 m: **0.661 vs
+0.568**; 0.35–0.5 m: **0.690 vs 0.627**) but **REVERSES for the longest chords**
+(0.5–0.8 m: 0.656 vs 0.693, n = 711/261) — once the pair spans the whole garment
+(sleeve-tip↔sleeve-tip class), the chord is a garment edge in all but name and the
+border bonus has nothing left to add. So: *given a typical chord, prefer the border*;
+given a maximal chord, the border no longer matters.
 
 ### 6.2 Keypoint-guided grasps — keypoint sampling works via the border-near keypoints
 
@@ -470,24 +600,32 @@ scores only 0.52** — a bottom-CENTRE grasp gives a short, central chord, so bo
 nearness helps only when the edge grasp also yields a long chord (as at the hem CORNERS).
 Border nearness and chord length are complementary, not redundant.
 
-**(b) Keypoint↔keypoint pairs** (first grasp ≈ the bank hang nearest keypoint A, second
-grasp = keypoint B on the opposite side; `--mode pairs`, 2 560 trials). This is pure
+**(b) Keypoint↔keypoint pairs** (first grasp = a bank hang pinned near keypoint A —
+sampled among the 8 nearest bank anchors — second grasp = keypoint B on the opposite
+side; `--mode pairs --bank_k 8`, 2 560 trials, 96 distinct initial drapes). This is pure
 "keypoint sampling" — a chooser restricted to the 12 region landmarks. Pooled median
-0.620, but the **upper tail reaches the oracle**: p90 0.805, p95 0.857, best pair 1.01.
-The best cells are exactly the edge pairs — **hem_corner→hem_corner 0.92, side→hem_c
-0.91, side→hem_corner 0.85, sleeve→sleeve 0.84** — i.e. a keypoint chooser that prefers
-the hem/edge keypoints recovers the §4 oracle's best region pairs and the §5.4 scripted
-winner.
+0.623, and the **upper tail reaches the realizable oracle bound (0.82)**: p90 0.824,
+p95 0.874. The best cells are the edge pairs — **side→hem_corner 0.87,
+shoulder→sleeve 0.83, side→hem_c 0.83, sleeve→sleeve 0.81, hem_corner→hem_corner
+0.80** (the last consistent with the scripted hem↔hem 0.82, §5.4) — i.e. a keypoint
+chooser that prefers the hem/edge keypoints recovers the §4 oracle's best region pairs
+and the §5.4 scripted winner. (Methodology note: the FIRST pass of this experiment
+pinned every keypoint-A row to THE single nearest bank state, so each cell's median
+rode on one settled drape — its headline cells, hem↔hem 0.92 / side→hem_c 0.91, were
+single-drape flukes. The rerun with 8 drapes per keypoint replaces them; per-keypoint
+ranking and the verdict below were unaffected.)
 
 ![Keypoint-guided grasps](figures/present_heuristics/keypoint_analysis.png)
 
 **Verdict.** Keypoint sampling CAN produce oracle-quality presentations — but only
-through the **border-near keypoints that also give a long chord** (hem corners above all,
-then sleeves / side seams). Interior keypoints (chest centre) are poor for the §6.1
-reason, and even an on-edge but central keypoint (hem centre) underperforms. So the two
-marker families tell one story: **the good grasp targets are the ones on a garment
-opening AND far apart, and the symmetric, perception-friendly hem-corner keypoints are a
-practical, detectable realization of the pair-map oracle.**
+through the **border-near keypoints that also give a long chord** (hem corners and side
+seams above all, then sleeves; over the 12 keypoints as second grasp,
+corr(border-distance, median coverage) = −0.55 in the pair run). Interior keypoints
+(chest centre) are poor for the §6.1 reason, and even an on-edge but central keypoint
+(hem centre) underperforms. So the two marker families tell one story: **the good grasp
+targets are the ones on a garment opening AND far apart, and the symmetric,
+perception-friendly hem-corner / side-seam keypoints are a practical, detectable
+realization of the pair-map oracle.**
 
 | best keypoint pair (1.01) | best keypoint-as-2nd (1.02) |
 |---|---|
@@ -515,14 +653,21 @@ correction is needed):
 2. **Reward tautness up to ≈ 1.05–1.10, gently.** The gradient is real (+0.033 median
    over the sweep) but modest; keep the ≤ 1.15 guard. Note 1.10 roughly doubles the
    settle time (pendulum ringing) — if the episode has a stability latch, 1.05 is the
-   better operating point.
-3. **Do NOT add a regrasp phase for visibility** (−0.031 paired, §3) — this also answers
-   TODO Task-2 open question #2: robot 1 should KEEP HOLDING through the whole stretch;
-   releasing and regrasping lowers coverage.
+   better operating point. Related dynamics note: an overshoot-then-relax trajectory
+   (pull to 1.10, back off to 1.05) reaches a settled presentation in HALF the settle
+   steps of a direct stretch at no coverage cost (§5.6) — do not penalize it if the
+   policy discovers it.
+3. **Do NOT add a regrasp phase for visibility** (−0.031 paired, §3; still −0.051 with
+   an ORACLE-chosen regrasp target, §5.7 — the loss is inherent to releasing the
+   anchor, not to the target choice) — this also answers TODO Task-2 open question #2:
+   robot 1 should KEEP HOLDING through the whole stretch; releasing and regrasping
+   lowers coverage.
 4. **The big lever is grasp-point choice** (+0.14 median over the naive rule): target
    the HEM CORNERS. If the upstream pick (Task 1 / shirt_pick) can be biased toward hem
    corners — or the presentation policy can select the second grasp by region — the
-   scripted hem↔hem presentation already sits within 0.02 of the oracle top decile.
+   scripted hem↔hem presentation already MATCHES the realizable oracle bound (best
+   stratified cell, 0.82; the trial-level top decile 0.837 additionally contains
+   initial-state luck no policy controls, §4).
    The balanced, opposite-side stratified map (§4) confirms this at 100+/cell and shows
    the best 2nd grasp is a bottom corner/centre for EVERY first region. Second-best
    general rule from an ARBITRARY first grasp: pair-map policy (+0.034, §5.2).
@@ -531,7 +676,8 @@ correction is needed):
    (+0.08, §6.1); the region keypoints that sit on openings AND give a long chord — the
    hem CORNERS above all — are the perception-friendliest realization of this (keypoint
    quality vs border-distance r = −0.52, §6.2), and a keypoint chooser that prefers them
-   reaches the oracle (best keypoint pairs: hem↔hem 0.92, side→hem_c 0.91). Concretely:
+   reaches the realizable oracle bound (best keypoint-pair cells: side→hem_corner 0.87,
+   shoulder→sleeve 0.83, hem↔hem 0.80 vs oracle cell 0.82). Concretely:
    bias grasp selection toward detected hem-corner keypoints; treat the second grasp's
    border distance as a useful observation/shaping feature, and AVOID interior grasps
    (chest/belly centre) and the bottom-CENTRE grasp (on-edge but short chord).
@@ -638,3 +784,26 @@ correction is needed):
   `doc/reports/data/` CSV, so `--stratified --resume` silently reused the stale map for one
   cycle (caught via a "0 s elapsed" throughput + the file mtime); the stratified run was
   redone from scratch.
+* **2026-07-10/11 — sanity review (agent) + extensions (Georg-requested).** Statistical
+  corrections after re-deriving every reported number from the CSVs (all headline stats
+  reproduced): (1) the "oracle top decile" (0.837) selects lucky INITIAL STATES along
+  with good pairs — reframed; the realizable pair-choice bound is the best cell median
+  0.82, which the scripted hem↔hem MATCHES. (2) hem↔hem @1.10 vs @1.05 is not
+  significant (MWU p = 0.39); CI added. (3) The §3 regrasp loss carries a sign-test
+  p ≈ 1.5 × 10⁻⁵. (4) Border nearness: partial r controlling for chord length −0.16;
+  the effect REVERSES for the longest chords (0.5–0.8 m) — §6.1 scoped accordingly.
+  (5) Cross-boot flat-rest drift quantified (median 1.6 mm, max 14.7 mm per particle;
+  ~1.6 % of stratified second grasps change offline region) — §1.2 note;
+  `run_two_grasp.py` no longer overwrites the reference dump. (6) Stale §4 worst-cell
+  values re-transcribed from the current CSV (0.43/0.45/0.46). (7) §5.3/5.4 first-grasp
+  wording fixed (region-anchored bank states — 72 shoulder / 22 hem-corner — not
+  landmark-exact). (8) FLAW FOUND + FIXED in the keypoint-PAIR experiment: it used the
+  single nearest bank state per keypoint A — 12 distinct drapes for 2 560 trials — so
+  the per-cell medians rode on one drape each (hem↔hem 0.92 / side→hem_c 0.91 were
+  single-drape flukes). Rerun with `--bank_k 8` (96 drapes, kp_a/kp_b now logged):
+  honest best cells 0.80–0.87 (§6.2), verdict unchanged. New methods measured:
+  **two-sided visible fraction** (occlusion check, §1.5 — ranking robust, hem↔hem also
+  the visibility winner; metric unit-tested, `vis_frac` logged in every new trial),
+  **oracle-guided regrasp** (§5.7 — regrasping hurts even with the right target,
+  −0.051), **tautness pulse** (§5.6 — coverage n.s., settle time halved). The shake
+  negative (§5.5) explicitly scoped to its single tested amplitude/axis.

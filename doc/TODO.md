@@ -341,6 +341,105 @@ Progress log: [shirt_pick_optimization_tracking.md](reports/shirt_pick_optimizat
 
 ---
 
+## Pipeline Stage 2 — Cooperative, Camera-Realistic Rework  🔴 (research report 2026-07-12)
+
+Roadmap from [RESEARCH_REPORT_shirt_sorting_stage2.md](reports/RESEARCH_REPORT_shirt_sorting_stage2.md)
+(design + citations) — execution plan, agent split, GPU schedule and gates in
+[pipeline_stage2_execution_plan.md](pipeline_stage2_execution_plan.md).
+Four parallel agents: **T1** = [pick grasp head](agent_prompt_pick_grasp_head.md),
+**T2** = [present coop](agent_prompt_present_coop.md),
+**T3** = [distribute polish](agent_prompt_distribute_polish.md),
+**INF** = [pipeline infra](agent_prompt_pipeline_infra.md) (sole owner of `shared/**`).
+Headline finding: the presentation ceiling is set by the GRASP PAIR — the first grasp is chosen
+in Task 1 and robot 1's holding pose is the binding constraint, so the leverage is Task-1 grasp
+choice + a cooperative Task 2, not more robot-2 training.
+
+### S0 — Chaining seams & re-threshold (thesis-critical)  → 🤖 T1 + T2
+
+- 🔴 **Task-1→2 terminal bank** [T1]: rollout script over the trained pick policy
+  (`agent_12000`), snapshot at the present latch via the existing
+  `ShirtPickEnv.snapshot_terminal_states` hook, **including the 5–7 % post-latch slip
+  episodes** (they are the real distribution Task 2 must survive — report §3 Stage 0).
+- 🔴 **Task-2 success gate 0.50 → 0.65 + tautness-pulse legitimacy** [T2]: raise the coverage
+  gate to the study's threshold; don't penalize overshoot-then-relax trajectories (study §5.6:
+  pulse halves settle time at no coverage cost). Retrain folds into S1 (one retrain, not two).
+- 🟡 **Seam gate:** Task 2 retrained on the REAL terminal bank vs the synthetic hanging bank —
+  fallback if the real bank destabilizes training: keep synthetic + inject the slip distribution.
+
+### S1 — Task-2 hem↔hem curriculum (thesis-critical)  → 🤖 T2
+
+- 🔴 **Hem-biased hanging-bank regeneration**: the current 356-state bank has only **19
+  hem-corner-anchored states** (measured) — regenerate with region-biased anchor sampling
+  (`generate_hanging_bank.py` + anchor-region option) so the curriculum has data.
+- 🔴 **Target-conditioned grasp curriculum**: start with the accessible/low hem corner
+  (bank-filtered starts), raise the target corner as grasp rate improves; reach-assist resets.
+  *Success:* hem↔hem grasp rate > 0.6 (from < 0.1). *Abort < 0.3:* fall back to
+  oracle/accessible-corner target and bank 0.679–0.713.
+
+### S2 — Task-1 learned grasp head (thesis-critical)  → 🤖 T1
+
+- 🔴 **Grasp-choice MDP**: 12 region-landmark keypoint observations (privileged reads of ONLY
+  the 12 landmark particles — camera-contract-compatible) + border-distance feature; make the
+  pick target policy-selectable (candidate set around the depth-trivial highest point);
+  terminal bonus ∝ predicted downstream coverage of the achieved hold region (lookup table
+  derived offline from the study's stratified pair map). *Gate:* realized Task-2 coverage from
+  Task-1 holds > **0.713** (arbitrary-first-grasp oracle) within ~100 k steps × 3 seeds, else
+  revert to highest-point + oracle-target Task 2 (report §2-Q1 decision gate).
+
+### S3 — Cooperative Task 2 (thesis-critical → stretch)  → 🤖 T2, after G1 gate
+
+- 🔴 **Movable scripted holder first**: robot 1 repositions its holding pose (base y/z +
+  wrist; NO x translation — hardware constraint) toward study-informed poses; keep holding
+  throughout (regrasp hurts with any target: −0.031/−0.051, study §5.7).
+- 🔴 **Single joint policy over both arms** (FlingBot/SpeedFolding precedent): concatenated
+  action space in the SAME manager-based env — no DirectMARLEnv rewrite. Robot-1 action =
+  low-dim holding-pose adjustment. Shared presentation reward + light per-arm shaping;
+  tautness capped at the validated 1.15. *Trigger:* grasp rate > 0.6 but coverage ceiling
+  < 0.75 with fixed holder. *Success:* coverage ≥ 0.65 → 0.75 @ grasp ≥ 0.9.
+  *Abort:* ship the single-agent oracle-target policy.
+- 🟢 **MAPPO/IPPO ablation (S6, stretch)**: only on a measured coordination failure of the
+  joint policy; known risk: skrl MARL breaks on gymnasium ≥ 1.0.0 (`env.state()`) — pin
+  0.29.1; maturity unverified in-repo.
+
+### S4 — Observation contract + asymmetric actor–critic (thesis-critical)  → 🤖 INF
+
+- 🔴 **Verify skrl 2.1.0 asymmetric AC** actually separates `"critic"` obs group →
+  `num_states` (subsumes the Cross-cutting item above); if aliased: RSL-RL runner (new
+  train script — none exists in `scripts/skrl/` today, budget it).
+- 🔴 **Camera-realistic observation library** (`shared/cloth_sorting_mdp.py`): 12 keypoints +
+  per-keypoint visibility flags (noise model: ~1–2 cm Gaussian + dropout at 1−recall, Lips
+  2024), coverage-from-mask (≡ silhouette coverage), noisy/delayed grasp-active flag
+  (gripper-current proxy), N-point down-sampled surface cloud. **Tautness leaves the actor**
+  (not directly observable in reality) → privileged critic only.
+- 🟡 Per-task integration of the contract (T1/T2 own their cfg edits; INF delivers terms).
+
+### S5 — Grasp-fidelity evaluation gates (thesis-critical, low cost)  → 🤖 INF
+
+- 🔴 **Pre-condition gate** (approach alignment, finger clearance, single- vs multi-layer
+  detection at the grasp point) + **stochastic misgrasp/slip gate** calibrated to published
+  parallel-jaw cloth stats (DRAPER: 16–22 % misgrasp) — **evaluation-only, opt-in flags,
+  default off** (training keeps the deterministic attachment; SoftGym-lineage precedent).
+- 🔴 **Ranking-preservation study**: best checkpoints under idealized vs gated grasp; promote
+  gates into training ONLY if success drops > 0.15 absolute AND checkpoint ranking reorders.
+
+### Task 3 polish (independent)  → 🤖 T3
+
+- 🔴 Lift **bin 2 ≥ 0.85** (release-velocity conditioning / bin-2 approach shaping / wider
+  holding-pose coverage — existing item, now assigned).
+- 🔴 **Bin-layout randomization** (nearest ≠ correct; target > 85 % across labels + layouts).
+- 🟡 **Hold-presented-until-commanded gate** (preserve the inspected state until the drop
+  decision — report §2-Q1).
+- 🟡 Consume the REAL Task-2 terminal bank once S1/S3 produce it (seam gate as in S0).
+
+### Stretch (post-gates)
+
+- 🟢 **S7 teacher–student vision distillation** (DAgger point-cloud student; in-loop tiled
+  rendering only if distillation loses > 0.1 coverage — throughput knee forbids it otherwise).
+- 🟢 **S8 contact-physics pinch validation** (one-off PhysX adhesion+friction study,
+  robot-free rig like the heuristics study; NOT a training change).
+
+---
+
 ## Cloth Integration  ⬛ Requires Isaac Sim / Lab
 
 These items cannot be done without a running Isaac Sim 5.1 instance.

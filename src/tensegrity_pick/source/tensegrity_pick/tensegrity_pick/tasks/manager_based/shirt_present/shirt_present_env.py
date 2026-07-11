@@ -52,23 +52,15 @@ from .mdp.present_geometry import hem_corner_particle_ids, holder_region_mask
 # the validated ATTACH_WELD_RADIUS).
 HOLDER_ANCHOR_RADIUS = 0.07
 
-# ── Local presentation anchor (see the module header for the justification) ──
-# x=0.50: clears the reusable drum (right edge 0.42) AND the robot pedestal
-#   (left edge 0.60) while HALVING the cross-body reach vs the shared 0.15
-#   (base at x=0.75) — the measured driver of finding #4's self-fold (the UR5e
-#   has self-collision disabled, so that fold is cosmetic, not physical; the
-#   literal x=0.8 request is rejected because it drapes the shirt straight
-#   through the robot's own pedestal, x in [0.6,0.9] y in [0.85,1.15] — that
-#   would REGRESS finding #2's cloth-robot clipping).
-# y=0.85: off the belt collider (y<=0.45) — the shirt hangs in free space.
-# z=1.10: the horizontal chord height, lowered so the accessible hem corner of
-#   the hem-anchored hang descends to ~z 0.78 (the arm's comfortable grasp
-#   height ≈ Phase-1's easy low grasp) while the chord stays UR5e-reachable.
-#   Measured ladder: anchor 1.35 -> corner 0.93 (reach 6-7/16); 1.20 -> 0.93
-#   but grasp unlearnable for RL; 1.10 -> ~0.78.  Drape (<=0.95) clears the
-#   floor (1.10-0.95=0.15).  Coverage is translation-invariant, so lowering z
-#   keeps the hem-anchored spread (0.64).
-PRESENT_ANCHOR_LOCAL = (0.50, 0.85, 1.10)
+# ── Local presentation anchor (first grasp / holder anchor point) ──
+# Restored to the FIRST visual-inspection pose (shared ``PRESENTATION_POS``).
+# The passive holder tensegrity grips it with its CLOSED gripper FINGERTIP (not
+# the wrist flange): from the mount (0.15, 0.0, 2.30) the ~14 cm fingertip reach
+# makes z=1.60 comfortably IK-reachable with a relaxed pose (no joint at a limit).
+# The holder grip pose (holder_robot.init_state.joint_pos in the scene cfg) is
+# IK-solved for THIS anchor and the closed-gripper fingertip — regenerate both
+# together if it moves (scripts/skrl/solve_holder_ik.py).
+PRESENT_ANCHOR_LOCAL = (0.15, 0.90, 1.60)
 
 # ── Success predicate ────────────────────────────────────────────────
 # Tautness band on the RAW ratio = patch separation / FLAT rest distance
@@ -219,6 +211,16 @@ class ShirtPresentEnv(ClothSortingEnvBase):
         # controller/policy cannot track (measured: scripted reach 2/16 with the
         # per-step target).  Default to hem corner 0 until the first reset.
         self._target_hem_idx = self._hem_ids[0].repeat(n)
+
+        # Pose the passive HOLDER at its IK-solved grip: its PD drives hold the
+        # gripper at the presentation anchor so the retriever visually grips the
+        # shirt's first-grasp point.  reset_scene_to_default writes joint STATE to
+        # the (IK) defaults each reset but does NOT touch joint TARGETS, so setting
+        # the targets once here to the defaults makes the drives hold the grip pose
+        # for the whole run.  (Joint values baked in the scene cfg init_state; the
+        # grip pose is anchor-specific — see solve_holder_ik.py.)
+        holder = self.scene["holder_robot"]
+        holder.set_joint_position_target(holder.data.default_joint_pos)
 
     # ------------------------------------------------------------------
     # Grasp target: the OPPOSITE hem corner (accessible hem-to-hem grasp)

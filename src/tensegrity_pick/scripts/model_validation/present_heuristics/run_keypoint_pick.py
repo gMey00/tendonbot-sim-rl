@@ -1,9 +1,10 @@
-"""Keypoint-guided presentation grasps — can the ClothesNet keypoints be good
+"""Keypoint-guided presentation grasps — can the garment keypoints be good
 grasp targets?
 
-The garment ships 10 semantic keypoints (``markers.py``: collar / shoulders /
-sleeve ends / armpits / hem corners / centre).  This script measures whether
-grasping AT those keypoints yields good presentations, in two modes:
+The study defines 12 SYMMETRIC region-landmark keypoints on the sim garment
+(``markers.py``: one per Voronoi region — collar / shoulders / sleeves /
+chest / sides / belly / hem corners / hem centre).  This script measures
+whether grasping AT those keypoints yields good presentations, in two modes:
 
 * ``--mode second`` — the actionable case: FIRST grasp a random bank hang
   (as H1/H3), SECOND grasp a keypoint (cycled uniformly), horizontal stretch.
@@ -11,15 +12,19 @@ grasping AT those keypoints yields good presentations, in two modes:
   comparable to H1's lowest-point rule and the oracle-guided pick.
 
 * ``--mode pairs`` — pure "keypoint sampling": grasp TWO keypoints.  The first
-  grasp is the bank hang whose pinned anchor is nearest keypoint A
-  (``KEYPOINT_NEAREST_BANK``); the second is keypoint B.  Sampling A, B
-  uniformly over the 10 keypoints (A != B) builds a keypoint-pair map — does a
-  chooser restricted to the 10 keypoints reach the hem↔hem / oracle quality?
+  grasp is a bank hang whose pinned anchor lies near keypoint A — sampled
+  uniformly among the ``--bank_k`` nearest bank anchors (k > 1 keeps the
+  initial-drape diversity; the first pass used only THE single nearest state
+  per keypoint, so every per-cell median rode on one settled drape geometry).
+  The second grasp is keypoint B.  Sampling A, B uniformly over the 12
+  keypoints (A != B) builds a keypoint-pair map — does a chooser restricted
+  to the 12 keypoints reach the hem↔hem / oracle quality?
 
 Grasping the second point BY PARTICLE INDEX is invariant to the bank's yaw +
 mirror augmentation (the same material point is captured wherever it moved),
 so both modes keep full augmentation.  Regions/keypoint ids are recovered
-offline from the logged rest coordinates + ``markers.py``.
+offline from the logged rest coordinates + ``markers.py`` (the sampled
+keypoint ids are ALSO logged directly: ``kp_a``/``kp_b`` CSV columns).
 
 Usage (from src/tensegrity_pick, env_isaaclab active)::
 
@@ -47,6 +52,9 @@ parser.add_argument("--num_envs", type=int, default=64)
 parser.add_argument("--mode", choices=["second", "pairs"], default="second")
 parser.add_argument("--rounds", type=int, default=12)
 parser.add_argument("--ratio", type=float, default=1.05)
+parser.add_argument("--bank_k", type=int, default=8,
+                    help="pairs mode: sample the first grasp among the k "
+                         "nearest bank anchors to keypoint A (drape diversity)")
 parser.add_argument("--seed", type=int, default=44)
 parser.add_argument("--settle_after_restore", type=int, default=45)
 parser.add_argument("--csv", type=str, default=None)
@@ -78,10 +86,16 @@ def main() -> None:
     n, dev = rig.n, rig.dev
     ratios = torch.full((n,), args_cli.ratio, device=dev)
     fx = rig.flat_rest[:, 0]                                     # flat-rest x
-    kp_idx = torch.tensor(mk.KEYPOINT_IDX, device=dev)          # [10] shipped
-    kp_mir = torch.tensor(mk.KEYPOINT_MIRROR_IDX, device=dev)   # [10] mirror
-    kp_bank = torch.tensor(mk.KEYPOINT_NEAREST_BANK, device=dev)  # [10] bank ids
-    # Left/right variant of each keypoint (shipped or its mirror partner), so
+    kp_idx = torch.tensor(mk.KEYPOINT_IDX, device=dev)          # [12] landmarks
+    kp_mir = torch.tensor(mk.KEYPOINT_MIRROR_IDX, device=dev)   # [12] mirror
+    # Pairs mode: the k nearest bank anchors per keypoint (in flat-rest xy) —
+    # sampling among them keeps initial-drape diversity instead of pinning
+    # every keypoint-A row to one settled hang.
+    kp_xy = rig.flat_rest[kp_idx][:, :2]                         # [12, 2]
+    anc_xy = rig.flat_rest[rig.bank_anchor_idx][:, :2]           # [B, 2]
+    k = min(args_cli.bank_k, rig.bank_size)
+    kp_bank_k = torch.cdist(kp_xy, anc_xy).argsort(dim=1)[:, :k]  # [12, k]
+    # Left/right variant of each keypoint (landmark or its mirror partner), so
     # the second grasp is taken from the side OPPOSITE the first grasp — same
     # convention as the stratified pair map, and a fair keypoint-sampling test.
     kp_left = torch.where(fx[kp_idx] < X_CENTER, kp_idx, kp_mir)   # [12]
@@ -96,11 +110,13 @@ def main() -> None:
         mirror = torch.rand(n, device=dev) < 0.5
         if args_cli.mode == "second":
             bank_idx = torch.randint(0, rig.bank_size, (n,), device=dev)
+            ka = torch.full((n,), -1, device=dev)                # no keypoint A
             kb = torch.randint(0, nkp, (n,), device=dev)         # second keypoint
         else:
             ka = torch.randint(0, nkp, (n,), device=dev)         # first keypoint
             kb = (ka + torch.randint(1, nkp, (n,), device=dev)) % nkp  # != ka
-            bank_idx = kp_bank[ka]
+            pick = torch.randint(0, k, (n,), device=dev)         # which neighbour
+            bank_idx = kp_bank_k[ka, pick]
         # second grasp = keypoint kb on the side opposite the first grasp.
         s1 = fx[rig.bank_anchor_idx[bank_idx]]                    # [n] first side
         idx_move = torch.where(s1 >= X_CENTER, kp_left[kb], kp_right[kb])
@@ -116,6 +132,7 @@ def main() -> None:
             method, args_cli.seed, 1, trial,
             {"bank_idx": bank_idx, "yaw": yaw, "mirror": mirror,
              "idx_top": idx_top, "idx_move": idx_move, "target_ratio": ratios,
+             "kp_a": ka, "kp_b": kb,
              "settle_steps": info["settle_steps"],
              "stretch_steps": info["stretch_steps"], "x_sign": info["x_sign"],
              "attached_ok": attached, "valid": valid},

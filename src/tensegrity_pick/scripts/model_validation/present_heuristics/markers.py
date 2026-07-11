@@ -7,13 +7,16 @@ analysis (``plot_study.py``).
 
 The two marker families and what they give the study:
 
-* **borderpoints** — the garment's boundary particles (neck, cuffs, hem, side
-  edges), recovered from the sim mesh topology.  ``BORDER_DIST[i]`` is particle
-  ``i``'s distance (m) to the nearest boundary particle: the "border nearness"
-  whose effect on presentation quality the study measures.
-* **keypoints** — the 10 semantic ClothesNet landmarks of the source garment
-  (``SOURCE_SHIRT``), registered into the flat-rest frame and snapped to sim
-  particles (``KEYPOINT_IDX``): candidate perception-friendly grasp targets.
+* **borderpoints** — the garment's OPEN mesh edges (neck opening, the two
+  sleeve cuffs, hem), recovered from the sim mesh topology and reconstructed
+  complete + symmetric.  ``BORDER_DIST[i]`` is particle ``i``'s distance (m)
+  to the nearest borderpoint: the "border nearness" whose effect on
+  presentation quality the study measures.
+* **keypoints** — the study's 12 SYMMETRIC region-landmark keypoints (one per
+  Voronoi region, landmark snapped to the nearest particle,
+  ``KEYPOINT_IDX``): candidate perception-friendly grasp targets.  The raw
+  ClothesNet keypoints of the source garment (``SOURCE_SHIRT``) are kept only
+  as a comparison overlay (``CLOTHESNET_KP_*``).
 
 Helpers: ``region_particles(r)`` (particle ids in a folded region, for
 stratified second-grasp sampling), ``bank_states_in_region(r, bank_anchor_idx)``

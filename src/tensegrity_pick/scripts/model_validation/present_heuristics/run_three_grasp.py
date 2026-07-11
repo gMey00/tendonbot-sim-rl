@@ -16,6 +16,14 @@ Protocol per trial (batched over envs):
 ``--regrasps 1`` is the task-prompt heuristic 2; ``--regrasps 3`` iterates
 the cycle, alternating stretch directions (extra method).
 
+``--regrasp_target oracle`` replaces the lowest-point regrasp with the
+pair-map policy: classify the HOLDING grasp's garment region → regrasp at the
+best-partner region's landmark particle (l/r variant farther from the holder
+in rest coords, as run_oracle_pick.py).  This separates "regrasping hurts"
+from "the lowest-point regrasp TARGET hurts": the lowest-point variant puts
+both grasps on extremities, the oracle variant regrasps to the region the
+§4 pair map recommends for the current holder.
+
 Usage (from src/tensegrity_pick, env_isaaclab active)::
 
     PYTHONUNBUFFERED=1 python scripts/model_validation/present_heuristics/run_three_grasp.py \
@@ -24,6 +32,11 @@ Usage (from src/tensegrity_pick, env_isaaclab active)::
     # iterated-regrasp extra (measures every stage):
     ... run_three_grasp.py --headless --num_envs 48 --rounds 3 --regrasps 3 \
         --csv .../present_h4_iterated.csv --method h4_iter --seed 44
+
+    # oracle-guided regrasp (regrasp to the pair-map partner region):
+    ... run_three_grasp.py --headless --num_envs 48 --rounds 6 --regrasps 1 \
+        --regrasp_target oracle --method h2o \
+        --csv .../present_h2o_oracle_regrasp.csv --seed 23
 
 Output: doc/reports/data/present_h2_three_grasp.csv (stage column: 1 = the
 paired naive result, 2 = after the regrasp, 3+ = further iterations) + final
@@ -45,6 +58,15 @@ parser.add_argument("--rounds", type=int, default=5)
 parser.add_argument("--ratio", type=float, default=1.05)
 parser.add_argument("--regrasps", type=int, default=1,
                     help="number of drop→re-hang→lowest-point regrasp cycles")
+parser.add_argument("--regrasp_target", choices=["lowest", "oracle"],
+                    default="lowest",
+                    help="regrasp point: the new lowest particle (the task "
+                         "heuristic) or the pair-map policy's best-partner "
+                         "region landmark for the holding grasp's region")
+parser.add_argument("--pair_json", type=str, default=os.path.join(
+    "/home/robot/studentische-arbeiten", "doc", "reports", "data",
+    "present_oracle_policy.json"),
+    help="pair-map policy for --regrasp_target oracle")
 parser.add_argument("--seed", type=int, default=22)
 parser.add_argument("--settle_after_restore", type=int, default=45)
 parser.add_argument("--method", type=str, default="h2")
@@ -55,12 +77,53 @@ args_cli, _ = parser.parse_known_args()
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
+import json  # noqa: E402
+
+import numpy as np  # noqa: E402
 import torch  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import study_common as sc  # noqa: E402
+from regions import REGION_LANDMARKS, REGION_NAMES, assign_regions  # noqa: E402
 
 REPO = "/home/robot/studentische-arbeiten"
+
+_SYM_OF = {"collar": "collar", "shoulder_l": "shoulder", "shoulder_r": "shoulder",
+           "sleeve_l": "sleeve", "sleeve_r": "sleeve", "chest": "chest",
+           "side_l": "side", "side_r": "side", "belly": "belly",
+           "hem_l": "hem_corner", "hem_r": "hem_corner", "hem_c": "hem_c"}
+
+
+def make_oracle_picker(rig):
+    """Per-env oracle regrasp target: holder region → policy partner region →
+    that region's landmark particle (l/r variant farther from the holder in
+    rest coords) — the run_oracle_pick.py convention."""
+    with open(args_cli.pair_json) as fh:
+        policy = json.load(fh)                       # mirror-class -> class
+    fr = rig.flat_rest.cpu().numpy()
+    reg = assign_regions(fr[:, 0], fr[:, 1])
+    lm_particle: dict[str, int] = {}
+    for i, name in enumerate(REGION_NAMES):
+        d = ((fr[:, :2] - np.array(REGION_LANDMARKS[name])) ** 2).sum(axis=1)
+        d[reg != i] = np.inf
+        lm_particle[name] = int(d.argmin())
+    class_candidates: dict[str, list[int]] = {}
+    for name, cls in _SYM_OF.items():
+        class_candidates.setdefault(cls, []).append(lm_particle[name])
+    flat = rig.flat_rest
+
+    def pick(idx_hold: torch.Tensor) -> torch.Tensor:
+        hold_xy = rig.rest_xy(idx_hold).cpu().numpy()
+        cls = [_SYM_OF[REGION_NAMES[r]]
+               for r in assign_regions(hold_xy[:, 0], hold_xy[:, 1])]
+        idx = torch.empty(rig.n, dtype=torch.long, device=rig.dev)
+        for e in range(rig.n):
+            cands = class_candidates[policy[cls[e]]]
+            dists = [float((flat[idx_hold[e]] - flat[c]).norm()) for c in cands]
+            idx[e] = cands[int(np.argmax(dists))]
+        return idx
+
+    return pick
 
 
 def main() -> None:
@@ -73,6 +136,8 @@ def main() -> None:
 
     n = rig.n
     ratios = torch.full((n,), args_cli.ratio, device=rig.dev)
+    oracle_pick = (make_oracle_picker(rig)
+                   if args_cli.regrasp_target == "oracle" else None)
     trial = 0
     for rnd in range(args_cli.rounds):
         bank_idx = torch.randint(0, rig.bank_size, (n,), device=rig.dev)
@@ -115,11 +180,17 @@ def main() -> None:
             resettle = rig.settle()
             top_slot, move_slot = move_slot, top_slot
             idx_top = idx_move
-            # Regrasp at the new lowest point; stretch the OTHER way.
-            idx_move = rig.lowest_particle()
+            # Regrasp (new lowest point, or the pair-map partner landmark);
+            # stretch the OTHER way.
+            idx_move = (oracle_pick(idx_top) if oracle_pick is not None
+                        else rig.lowest_particle())
             attached = attached & rig.attach_at_particles(idx_move, slot=move_slot)
+            # Lowest-point cycles alternate the pull direction; the oracle
+            # target instead uses the canonical default (the side the grasped
+            # point currently hangs on — never drags the cloth across itself).
             info = rig.stretch(top_slot, move_slot, idx_top, idx_move, ratios,
-                               x_sign=-info["x_sign"])
+                               x_sign=(None if oracle_pick is not None
+                                       else -info["x_sign"]))
             info["settle_steps"] += resettle
             meas = rig.measure(idx_top, idx_move, rig.anchor[:, 2])
             valid = attached & torch.isfinite(meas["cov_plane"])

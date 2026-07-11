@@ -31,6 +31,8 @@ from tensegrity_pick.robots.tensegrity_robot_cfg import TENS_5DOF_GRIPPER_CFG
 from ..shared.cloth_object import apply_cloth_startup_event, disable_complex_colliders_event
 from ..shared.cloth_sorting_scene_cfg import (
     CLOTH_SORTING_SHIRT_CFG,
+    RETRIEVE_MOUNT_HEIGHT_M,
+    RETRIEVE_MOUNT_XY,
     ClothSortingSceneCfg,
     configure_cloth_sim,
 )
@@ -43,41 +45,36 @@ from .mdp import rewards as task_rew
 ##
 
 
-# Local presentation anchor (env-local) — mirrors ShirtPresentEnv.PRESENT_ANCHOR_LOCAL.
-# Kept here (not imported) so the scene cfg has no import cycle with the env.
-_PRESENT_ANCHOR = (0.50, 0.85, 1.10)
-# Holder-arm rest EE offset below its mount (MEASURED, baseline job 3820849:
-# the tensegrity 5-DOF arm's tool_link_0 sits 0.98 m below the mount at the
-# straight-down joint pose below).  Mount so the gripper sits at the anchor.
-_HOLDER_REST_DROP = 0.98
-
-
 @configclass
 class ShirtPresentSceneCfg(ClothSortingSceneCfg):
-    """Shirt-present scene: second robot learns; retriever spawns passively.
+    """Shirt-present scene: second robot learns; retriever grips passively.
 
-    Finding #3 fix (visual): the passive holder is posed to GRIP the anchor
-    patch instead of hanging in its far rest pose.  It is mounted directly
-    above the (local) presentation anchor with the arm pointing straight down
-    so its gripper sits at the grasp point.  The actual "hold" is still the
-    static solver anchor (see ShirtPresentEnv); this only makes the retriever
-    visually plausible.  NOTE: exact fingertip alignment is cosmetic and should
-    be GUI-confirmed on a workstation (Alex cannot render); ``_HOLDER_REST_DROP``
-    is the measured rest drop and can be nudged there.
+    The holder tensegrity is scenery representing the retriever gripping the shirt
+    at the first-grasp / presentation anchor.  Its FIXTURE is at
+    ``RETRIEVE_MOUNT_XY``/``RETRIEVE_MOUNT_HEIGHT_M`` (0.15, 0.0, 2.30).  Its ARM
+    is posed by an IK solution (``scripts/skrl/solve_holder_ik.py``) so the CLOSED
+    gripper's FINGERTIP (modelled ~0.14 m beyond tool_link_0 along the approach
+    axis) sits at the presentation anchor (0.15, 0.90, 1.60) — the retriever grips
+    the first-grasp point with its fingertips, not the wrist flange.  ``finger_joint``
+    is baked CLOSED (0.7854); the four-bar linkage settles closed in ~1.5 s.  The
+    PD drives HOLD the arm + closed gripper (targets set in ShirtPresentEnv.__init__).
+    Residual ~2.5 cm, in the camera-plane x only (x is weakly controllable — the
+    base is prismatic in y,z only).  Regenerate the joint values with the solver if
+    the anchor, the tip offset, or the asset changes.
     """
 
     holder_robot: ArticulationCfg = TENS_5DOF_GRIPPER_CFG.replace(
         prim_path="{ENV_REGEX_NS}/HolderRobot",
         init_state=ArticulationCfg.InitialStateCfg(
-            pos=(_PRESENT_ANCHOR[0], _PRESENT_ANCHOR[1],
-                 _PRESENT_ANCHOR[2] + _HOLDER_REST_DROP),
-            # Straight-down arm pose so tool_link_0 reaches the anchor below.
+            pos=(RETRIEVE_MOUNT_XY[0], RETRIEVE_MOUNT_XY[1], RETRIEVE_MOUNT_HEIGHT_M),
+            # IK-solved grip: closed-gripper FINGERTIP -> anchor (0.15, 0.90, 1.60).
             joint_pos={
-                "base_y_joint": 0.0,
-                "base_z_joint": 0.0,
-                "elbow_joint": 0.0,
-                "wrist_y_joint": 0.0,
-                "wrist_x_joint": 0.0,
+                "base_y_joint": 0.278,
+                "base_z_joint": -0.026,
+                "elbow_joint": 1.057,
+                "wrist_x_joint": 0.358,
+                "wrist_y_joint": 0.238,
+                "finger_joint": 0.78,  # closed (joint limit is [0, 0.785])
             },
         ),
     )
@@ -302,6 +299,22 @@ class ShirtPresentEnvCfg(ManagerBasedRLEnvCfg):
         self.episode_length_s = 8.0
         self.viewer.eye = (3.5, 3.5, 3.5)
         configure_cloth_sim(self)
+
+        # The passive holder must RIGIDLY hold its IK grip pose against gravity.
+        # Its native arm gains (elbow 35 N·m / stiffness 400, wrist 3.5 N·m) droop
+        # ~8 cm at the fingertip.  Give the holder its OWN stiffened arm/base drives
+        # (deepcopy so the shared TENS_5DOF_GRIPPER_CFG used by other tasks/the
+        # learning robot is untouched); it is scenery, so physical torque limits
+        # do not matter here.
+        import copy
+
+        self.scene.holder_robot.actuators = copy.deepcopy(self.scene.holder_robot.actuators)
+        for group in ("base_y", "base_z", "elbow", "wrist"):
+            act = self.scene.holder_robot.actuators[group]
+            act.stiffness = 5000.0
+            act.damping = 500.0
+            act.effort_limit_sim = 1000.0
+            act.velocity_limit_sim = 50.0
 
     def _set_robot_params(
         self,

@@ -565,3 +565,81 @@ open-approaches the low hem corner, closes and grasps it, lifts it to the
 holder's height and pulls horizontally into a taut chord (~38 % of episodes
 reach the full present latch); the failure modes are a bunched/under-spread
 garment (coverage < 0.60) and occasional drops.
+
+---
+
+## Phase 3: Setup revert + physically-correct holder grip (IK)
+
+**Date:** 2026-07-11
+
+### Summary
+
+Two visual-verification fixes to the *scene setup* (not the policy), so the task
+iterates from a physically-correct starting state:
+
+1. **Reverted two mis-positioned values** to their first-inspection pose.  A prior
+   agent had, during the hem-to-hem redesign, moved the presentation anchor to
+   `(0.50, 0.85, 1.10)` and the holder fixture above it.  Both reverted: anchor
+   back to the shared first-inspection pose, holder fixture back to
+   `RETRIEVE_MOUNT_XY`/`_HEIGHT_M` `(0.15, 0.0, 2.30)`.
+2. **Made the passive holder actually GRIP** the first-grasp anchor with its
+   CLOSED gripper FINGERTIP (previously it hung in its rest pose, gripper open,
+   with the shirt held only by the invisible solver anchor — finding #3 from the
+   first inspection).
+
+### The geometry conflict (why the anchor sits at 1.60)
+
+From the reverted mount `(0.15, 0.0, 2.30)`, the holder's gripper cannot reach the
+first-inspection anchor `(0.15, 0.90, 1.60)` with the arm STRAIGHT: the base rail
+is prismatic only (base_y ±0.5 m 1:1; base_z ∈[−0.5,0], +0.42/unit → tool z-range
+only ~[1.12, 1.33]).  y=0.90 already exceeds base_y's 0.5 travel, and z=1.60 is
+above the straight-arm ceiling.  A full 5-DOF bent-arm solve on **tool_link_0**
+still fell ~4 cm short (fully extended, base at limits).
+
+**Resolution:** target the CLOSED gripper's **fingertip**, not the wrist flange.
+All gripper body frames collapse onto the mount base (`robotiq_base_link ≡
+tool_link_0`; the finger bodies are at their pivots ~2 cm out), so there is no
+body at the tip.  Modelled as `tool_link_0 + approach_dir · L`, `approach_dir =
+normalize(wrist_link → tool_link_0)`, `L = 0.14 m` (2F-140 base→closed-tip
+estimate).  The ~14 cm fingertip reach restores enough envelope that the ORIGINAL
+`1.60` anchor is comfortably reachable with a RELAXED pose (no joint at a limit),
+so no anchor lowering was needed.  Residual ~2.5 cm, essentially all in the
+camera-plane **x** (x is weakly controllable — the base is prismatic in y,z only).
+
+### Changes
+
+- **`shirt_present_env.py`** — `PRESENT_ANCHOR_LOCAL = (0.15, 0.90, 1.60)`
+  (restored).  `ShirtPresentEnv.__init__` sets the holder PD targets to
+  `default_joint_pos` so the drives HOLD the IK grip pose + closed gripper
+  (`reset_scene_to_default` writes joint STATE each reset but not TARGETS, so a
+  one-time set persists).
+- **`shirt_present_env_cfg.py`** — holder `init_state.joint_pos` = IK grip
+  (base_y 0.278, base_z −0.026, elbow 1.057, **wrist_x 0.358, wrist_y 0.238**,
+  finger_joint 0.78 closed; limit [0, 0.785]).  Holder arm/base actuators
+  stiffened (own `copy.deepcopy` — shared `TENS_5DOF_GRIPPER_CFG` untouched) to
+  stiffness 5000 / damping 500 / effort 1000: the native 400-stiffness/35-N·m
+  arm drooped ~8 cm at the fingertip.
+- **`scripts/skrl/solve_holder_ik.py`** (new) — DLS IK solver (analytic Jacobian):
+  closes the gripper, then two-pass fingertip-shift solve targeting the anchor.
+  `--anchor_z_sweep`, `--tip_offset`, `--verify`.  Regenerate the baked joints if
+  the anchor / tip_offset / asset changes.
+- **`scripts/skrl/play_zero.py`** (new) — zero-action GUI playback of a task setup
+  (no checkpoint) for visual verification.
+
+### Gotcha (cost ~an hour, worth flagging)
+
+`Articulation.find_joints(names)` returns ids in **articulation order** (default
+`preserve_order=False`), NOT the query order.  The holder orders its wrists
+`[wrist_x, wrist_y]`; querying `[.., wrist_y, wrist_x]` silently **swapped** the
+two solved wrist values when baked by name → the deployed fingertip missed by
+7.8 cm even though the solver reported 2.5 cm.  Fix: `preserve_order=True`, and
+keep the solution vector, printed labels, and by-name baking all in one order.
+
+### Verification (2026-07-11)
+
+`solve_holder_ik.py --verify` (deployed cfg, 300 steps): closed-gripper fingertip
+holds **2.86 cm** from the anchor, steady from step 60 on (finger_joint 0.782, no
+drift).  Zero-agent GUI playback (`play_zero.py`, 4 envs, workstation) confirmed
+visually by Georg: the holder grips the shirt's hang point with closed fingertips.
+`tip_offset = 0.14 m` is an estimate confirmed by eye — adjust `--tip_offset` and
+regenerate if the asset changes.

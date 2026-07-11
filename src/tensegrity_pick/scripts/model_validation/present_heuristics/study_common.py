@@ -52,6 +52,7 @@ from tensegrity_pick.tasks.manager_based.shared.cloth_metrics import (
     rest_distance,
     silhouette_coverage,
     stretch_ratio,
+    two_sided_visible_fraction,
 )
 from tensegrity_pick.tasks.manager_based.shared.cloth_sorting_env import (
     HANG_ANCHOR_RADIUS,
@@ -88,10 +89,11 @@ CSV_FIELDS = [
     "idx_top", "idx_move",
     "rest_x_top", "rest_y_top", "rest_x_move", "rest_y_move",
     "rest_dist", "target_ratio", "meas_ratio",
-    "cov_plane", "cov_yaw_mean", "cov_yaw_max",
+    "cov_plane", "cov_yaw_mean", "cov_yaw_max", "vis_frac",
     "extent_u", "extent_v", "drape_below_top",
     "settle_steps", "stretch_steps", "p95_speed",
     "x_sign", "attached_ok", "valid",
+    "kp_a", "kp_b",
 ]
 
 
@@ -244,7 +246,8 @@ class StudyRig:
     def stretch(self, top_slot: int, move_slot: int,
                 idx_top: torch.Tensor, idx_move: torch.Tensor,
                 target_ratio: torch.Tensor,
-                x_sign: torch.Tensor | None = None) -> dict:
+                x_sign: torch.Tensor | None = None,
+                settle: bool = True) -> dict:
         """Horizontal presentation stretch (the study's canonical procedure).
 
         Moves ``move_slot`` on a straight line to the SAME HEIGHT (and Y) as
@@ -282,7 +285,7 @@ class StudyRig:
             self.hold_pos[move_slot] = b
             self.sim_steps(1)
             steps += 1
-        settle_steps = self.settle()
+        settle_steps = self.settle() if settle else 0
         return {"stretch_steps": steps, "settle_steps": settle_steps,
                 "x_sign": x_sign, "final_len": length}
 
@@ -312,6 +315,7 @@ class StudyRig:
             "cov_plane": cov_plane,
             "cov_yaw_mean": covs.mean(dim=0),
             "cov_yaw_max": covs.max(dim=0).values,
+            "vis_frac": two_sided_visible_fraction(pos),
             "extent_u": ext[:, 0], "extent_v": ext[:, 1],
             "drape_below_top": top_z - pos[:, :, 2].min(dim=1).values,
             "p95_speed": self.cloth.nodal_vel_w.norm(dim=-1).quantile(0.95, dim=1),

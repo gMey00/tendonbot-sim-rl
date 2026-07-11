@@ -94,6 +94,70 @@ def silhouette_coverage(
     return silhouette_area(points, view_axis, cell_size) / max(ref_area, 1e-9)
 
 
+def two_sided_visible_fraction(
+    points: torch.Tensor,
+    view_axis: int = 1,
+    cell_size: float = DEFAULT_CELL_SIZE,
+    layer_gap: float = 0.015,
+) -> torch.Tensor:
+    """Fraction ``[N]`` of particles visible from the front OR back camera.
+
+    Complements ``silhouette_coverage``: the silhouette counts overlapping
+    layers ONCE, so a sleeve draped in front of the torso does not reduce
+    coverage even though the torso patch behind it is not inspectable from
+    either side.  This metric rasterizes the same image plane and, per cell,
+    clusters the particles along the view axis into depth layers (split where
+    consecutive depth gaps exceed ``layer_gap`` ≈ 3× the mesh spacing): the
+    NEAREST layer is what the front camera (+view_axis, looking along
+    −view_axis) sees, the FARTHEST what the back camera sees; middle layers
+    are hidden from both.  Returns visible particles ÷ all particles.
+
+    A flat two-panel presentation scores ≈ 1.0 (front camera sees the front
+    panel, back camera the back panel); every extra fabric layer folded across
+    the silhouette lowers it.  Limitation: layers in CONTACT (< ``layer_gap``
+    apart) merge into one cluster and count as visible, so the metric is a
+    LOWER bound on occlusion — only clearly separated occluded layers are
+    caught.
+    """
+    pts = _as_batch(points)
+    axes = [a for a in range(3) if a != view_axis]
+    uv = pts[..., axes]
+    depth = pts[..., view_axis]                                # [N, P]
+    ij = ((uv - uv.min(dim=1, keepdim=True).values) / cell_size).long()
+    grid_dim = int(ij.max().item()) + 1 if ij.numel() else 1
+    if grid_dim > _MAX_GRID:
+        raise ValueError(
+            f"two_sided_visible_fraction: extent {grid_dim * cell_size:.1f} m "
+            f"exceeds the {_MAX_GRID}-cell grid cap — wrong units or exploded "
+            "cloth?"
+        )
+    cell = ij[..., 0] * grid_dim + ij[..., 1]                  # [N, P]
+    # Group by cell with depth ascending inside each cell (two stable sorts).
+    ord1 = depth.argsort(dim=1)
+    ord2 = cell.gather(1, ord1).argsort(dim=1, stable=True)
+    order = ord1.gather(1, ord2)                               # [N, P]
+    c_s = cell.gather(1, order)
+    d_s = depth.gather(1, order)
+    new_cell = torch.ones_like(c_s, dtype=torch.bool)
+    new_cell[:, 1:] = c_s[:, 1:] != c_s[:, :-1]
+    gap = torch.zeros_like(d_s)
+    gap[:, 1:] = d_s[:, 1:] - d_s[:, :-1]
+    clus = (new_cell | (gap > layer_gap)).long().cumsum(dim=1) - 1
+    # First / last cluster id of each cell run (clus is non-decreasing, so a
+    # forward cummax over cell starts / reversed cummin over cell ends
+    # propagates the boundary cluster ids across the run).
+    first = torch.where(new_cell, clus, torch.zeros_like(clus)).cummax(dim=1).values
+    end = torch.ones_like(new_cell)
+    end[:, :-1] = new_cell[:, 1:]
+    big = clus.max() + 1 if clus.numel() else 1
+    last = torch.where(end, clus, torch.full_like(clus, int(big)))
+    last = last.flip(1).cummin(dim=1).values.flip(1)
+    vis_sorted = (clus == first) | (clus == last)
+    visible = torch.zeros_like(vis_sorted)
+    visible.scatter_(1, order, vis_sorted)
+    return visible.float().mean(dim=1)
+
+
 def plane_extent(points: torch.Tensor, view_axis: int = 1) -> torch.Tensor:
     """Bounding-box extents ``[N, 2]`` (u, v) of the projected silhouette.
 

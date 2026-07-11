@@ -396,8 +396,11 @@ def fig_keypoint_analysis(hks, hkp, fr):
     # (b) keypoint-pair map by region.
     ax = axes[1]
     if hkp is not None:
-        anc_xy = fr[hkp.idx_top.astype(int).values][:, :2]
-        kA = ((anc_xy[:, None, :] - mk.KEYPOINT_XY[None, :, :]) ** 2).sum(-1).argmin(1)
+        if "kp_a" in hkp.columns and hkp.kp_a.notna().all():
+            kA = hkp.kp_a.astype(int).values          # logged directly (new runs)
+        else:
+            anc_xy = fr[hkp.idx_top.astype(int).values][:, :2]
+            kA = ((anc_xy[:, None, :] - mk.KEYPOINT_XY[None, :, :]) ** 2).sum(-1).argmin(1)
         rA = mk.KEYPOINT_REGION[kA]
         rB = mk.PARTICLE_REGION[hkp.idx_move.astype(int).values]
         cov = hkp.cov_plane.values
@@ -543,6 +546,20 @@ def main() -> None:
                                       d.cov_yaw_max.values))
                 entries.append((label, d.cov_plane.values))
 
+    h2o = load_csv("present_h2o_oracle_regrasp.csv")
+    if h2o is not None:
+        d = h2o[h2o.stage == 2]
+        if len(d):
+            rows.append(summarize("H2 oracle-guided regrasp",
+                                  d.cov_plane.values, d.cov_yaw_max.values))
+            entries.append(("oracle-guided regrasp", d.cov_plane.values))
+            p = h2o.pivot_table(index="trial", columns="stage",
+                                values="cov_plane")
+            if 1 in p.columns and 2 in p.columns:
+                dd = (p[2] - p[1]).dropna()
+                print(f"[h2o] paired Δ(stage2−stage1): median {dd.median():.3f}, "
+                      f"{(dd > 0).mean():.0%} improved (n={len(dd)})")
+
     fig_marker_map(fr)
 
     oracle_ref = None
@@ -597,6 +614,12 @@ def main() -> None:
         rows.append(summarize("H1 + shake @1.05", hs.cov_plane.values,
                               hs.cov_yaw_max.values))
         entries.append(("H1 + shake", hs.cov_plane.values))
+
+    hp = load_csv("present_h6_pulse.csv")
+    if hp is not None:
+        rows.append(summarize("H1 + tautness pulse 1.10→1.05",
+                              hp.cov_plane.values, hp.cov_yaw_max.values))
+        entries.append(("H1 + tautness pulse", hp.cov_plane.values))
 
     ho = load_csv("present_h5_oracle_pick.csv")
     if ho is not None:

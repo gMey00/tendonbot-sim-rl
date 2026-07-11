@@ -88,6 +88,26 @@ def main() -> int:
     ok &= check("face-on width", ext[0, 0].item(), 0.99, 1.01)
     ok &= check("folded width", ext[1, 0].item(), 0.49, 0.51)
 
+    print("two_sided_visible_fraction:")
+    # 1 layer → all visible; 2 separated layers (front+back panel) → all
+    # visible; 3 separated layers → the middle hidden from both cameras.
+    two = torch.cat([sq, sq + torch.tensor([0.0, 0.03, 0.0])])
+    three = torch.cat([two, sq + torch.tensor([0.0, 0.06, 0.0])])
+    ok &= check("1 layer", cm.two_sided_visible_fraction(sq).item(), 0.999, 1.0)
+    ok &= check("2 layers", cm.two_sided_visible_fraction(two).item(), 0.999, 1.0)
+    ok &= check("3 layers (middle hidden)",
+                cm.two_sided_visible_fraction(three).item(), 0.66, 0.68)
+    # Steep single sheet: in-cell depth spread > layer_gap must NOT split —
+    # depth-sorted neighbours stay close along a connected surface as long as
+    # the point spacing is below layer_gap (this 10 mm test grid is 2× coarser
+    # than the shirt mesh, hence the slightly relaxed bound).
+    tilt = sq.clone()
+    tilt[:, 1] = sq[:, 0] * 2.0
+    ok &= check("tilted single sheet", cm.two_sided_visible_fraction(tilt).item(),
+                0.98, 1.0)
+    vb = cm.two_sided_visible_fraction(torch.stack([sq, two[: sq.shape[0]]]))
+    ok &= check("batched [0]", vb[0].item(), 0.999, 1.0)
+
     print("stretch_ratio / rest_distance:")
     rd = cm.rest_distance(flat, torch.tensor([0]), torch.tensor([100]))  # corner→corner along one edge
     a = torch.zeros(4, 3)

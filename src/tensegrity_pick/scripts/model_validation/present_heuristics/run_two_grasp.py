@@ -50,6 +50,13 @@ parser.add_argument("--shake_amp", type=float, default=0.0,
                          "applied to the moving anchor after the stretch, to "
                          "release folds before the final settle")
 parser.add_argument("--shake_cycles", type=int, default=3)
+parser.add_argument("--pulse_ratio", type=float, default=0.0,
+                    help="extra method: tautness pulse — overstretch to this "
+                         "ratio first (brief hold, no settle), then relax to "
+                         "the target ratio and settle (the human 'snap' that "
+                         "pops folds open without paying the ringing settle "
+                         "of holding the higher tautness)")
+parser.add_argument("--pulse_hold_steps", type=int, default=30)
 AppLauncher.add_app_launcher_args(parser)
 args_cli, _ = parser.parse_known_args()
 
@@ -71,8 +78,15 @@ def main() -> None:
     states_dir = os.path.join("outputs", "present_heuristics", "states",
                               args_cli.method)
     log = sc.TrialLog(csv_path, states_dir)
-    sc.dump_flat_rest(rig, os.path.join(
-        REPO, "doc", "reports", "data", "present_heuristics_flat_rest.pt"))
+    # The flat-rest dump is the study's FIXED offline reference frame (regions,
+    # markers, border distances were built in it).  Each boot re-adopts a
+    # slightly different settled rest shape (per-particle drift ~1.6 mm median,
+    # up to ~15 mm, see report §1.2), so NEVER overwrite an existing dump —
+    # later runs must analyze in the original frame.
+    flat_rest_path = os.path.join(
+        REPO, "doc", "reports", "data", "present_heuristics_flat_rest.pt")
+    if not os.path.exists(flat_rest_path):
+        sc.dump_flat_rest(rig, flat_rest_path)
 
     n = rig.n
     trial = 0
@@ -87,9 +101,23 @@ def main() -> None:
             idx_move = rig.lowest_particle()
             attached = rig.attach_at_particles(idx_move, slot=1)
             ratios = torch.full((n,), ratio, device=rig.dev)
-            info = rig.stretch(top_slot=0, move_slot=1,
-                               idx_top=idx_top, idx_move=idx_move,
-                               target_ratio=ratios)
+            if args_cli.pulse_ratio > 0.0:
+                # Tautness pulse: overstretch (no settle), brief hold, relax
+                # to the target ratio, then the one canonical settle.
+                pulse = torch.full((n,), args_cli.pulse_ratio, device=rig.dev)
+                pre = rig.stretch(top_slot=0, move_slot=1, idx_top=idx_top,
+                                  idx_move=idx_move, target_ratio=pulse,
+                                  settle=False)
+                rig.sim_steps(args_cli.pulse_hold_steps)
+                info = rig.stretch(top_slot=0, move_slot=1, idx_top=idx_top,
+                                   idx_move=idx_move, target_ratio=ratios,
+                                   x_sign=pre["x_sign"])
+                info["stretch_steps"] += (pre["stretch_steps"]
+                                          + args_cli.pulse_hold_steps)
+            else:
+                info = rig.stretch(top_slot=0, move_slot=1,
+                                   idx_top=idx_top, idx_move=idx_move,
+                                   target_ratio=ratios)
             if args_cli.shake_amp > 0.0:
                 # Sinusoidal ±Y (out-of-plane) shake of the moving anchor to
                 # flap open residual folds, then a fresh damped settle.
