@@ -174,7 +174,7 @@ Tensegrity variant — 6 dims:
 | `grasp_active` | 1 | 1.0 while the attachment grasp holds |
 | `actions` | 6 | Previous action |
 
-**Head variant only** (+39 dims → 76 total; `actions` grows to 8):
+**Head variant only** (+39 dims → 74 total; `actions` grows to 8):
 
 | Term | Dims | Description |
 |---|---|---|
