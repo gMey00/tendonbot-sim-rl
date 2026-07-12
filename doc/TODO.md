@@ -432,12 +432,18 @@ choice + a cooperative Task 2, not more robot-2 training.
 
 ### S5 — Grasp-fidelity evaluation gates (thesis-critical, low cost)  → 🤖 INF
 
-- 🔴 **Pre-condition gate** (approach alignment, finger clearance, single- vs multi-layer
-  detection at the grasp point) + **stochastic misgrasp/slip gate** calibrated to published
-  parallel-jaw cloth stats (DRAPER: 16–22 % misgrasp) — **evaluation-only, opt-in flags,
-  default off** (training keeps the deterministic attachment; SoftGym-lineage precedent).
-- 🔴 **Ranking-preservation study**: best checkpoints under idealized vs gated grasp; promote
-  gates into training ONLY if success drops > 0.15 absolute AND checkpoint ranking reorders.
+- ✅ **Pre-condition + stochastic misgrasp/slip gates** (2026-07-12, INF):
+  `GraspFidelityCfg` in `shared/cloth_sorting_env.py`, opt-in, default off, bit-identical
+  ungated path; DRAPER-calibrated; robot-free rig `check_grasp_gates.py` ALL PASS (per-region
+  mixture match, alignment physics, slip vs analytic Φ) + `test_shirt_fixes.py` 5/5 —
+  [pipeline_infra_tracking.md](reports/pipeline_infra_tracking.md) §M3. Note: shirt_distribute's
+  local `_update_grasp` override bypasses the gates (T3 one-liner if wanted).
+- ✅ **Ranking-preservation study** (2026-07-12, INF): `eval_grasp_fidelity.py` harness; pick
+  production checkpoints (agent_8000/agent_12000): ideal 0.990/0.990 → gated 0.000/0.000,
+  ranking PRESERVED → **verdict: KEEP gates evaluation-only**; slip-capacity calibration
+  flagged as the follow-up before absolute reads. Present pair non-informative (07-08
+  checkpoints predate the 07-10 holder rework) — rerun on T2's Phase-1 checkpoints.
+  Tables + caveats: [pipeline_infra_tracking.md](reports/pipeline_infra_tracking.md) §M4.
 
 ### Task 3 polish (independent)  → 🤖 T3
 

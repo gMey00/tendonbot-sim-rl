@@ -277,6 +277,78 @@ sweep) — ALL PASS:
   limitation: it is a lower bound; expect it to matter on crumpled piles
   (shirt_pick bank) rather than relaxed hangs.
 
-## M4 — ranking-preservation harness ⏳
+## Resolved false alarm: "shirt_pick playback regression" was a stale checkpoint
 
-(runs in progress)
+First M4 runs used pick run `2026-07-03_02-47-24` (agent_16000/20000, the
+tracking report's Phase-2 eval table: present 0.729/0.844) and got
+present_rate = 0.000. A worktree bisect showed branch point `7f89063` and the
+current branch give **bit-identical** results (present 0.000, grasp 0.812,
+mean|act| 1.028) — so (a) the INF/T1 Stage-2 changes are provably invisible
+in playback, and (b) nothing regressed tonight. The actual cause:
+`PRESENTATION_POS` moved in Phase 3 ((0.15, 0.50, 1.10) → (0.15, 0.90, 1.60))
+and the Phase-2 checkpoints carry the shirt to the OLD pose — the windowed
+latch correctly scores them 0. The production Phase-3 run
+`2026-07-03_19-33-17_ppo_torch_seed3` (agent_12000: present 1.000/grasp
+1.000) is the valid stage-1 baseline; the M4 study below uses its
+checkpoints. Lesson recorded: always rank checkpoints of the CURRENT task
+definition; the Phase-2 table in shirt_pick_optimization_tracking.md is
+historical.
+
+## M4 — ranking-preservation harness ✅ (2026-07-12)
+
+[eval_grasp_fidelity.py](../../src/tensegrity_pick/scripts/model_validation/eval_grasp_fidelity.py):
+one boot per task, ≥ 2 checkpoints, each evaluated deterministically
+(mean actions, seed 7, 96 episodes, identical reset draws) under
+(a) idealized and (b) gated grasp; prints per-checkpoint success, gate-event
+counts, and the pre-registered verdict (promote gates into training ONLY if
+success drops > 0.15 absolute AND the ranking reorders — report §2-Q5).
+Implementation note: ALL env interaction (reset included) must run inside
+`torch.inference_mode()` — a second reset outside it trips "Inplace update to
+inference tensor" (first multi-run harness in the repo to hit this).
+
+### shirt_pick (production stage-1 run `2026-07-03_19-33-17_seed3`)
+
+| checkpoint | ideal present | gated present | drop | misgrasps | slips | gated grasp_rate |
+|---|---|---|---|---|---|---|
+| agent_8000 | 0.990 | 0.000 | 0.990 | 72 | 204 | 0.750 |
+| agent_12000 | 0.990 | 0.000 | 0.990 | 57 | 208 | 0.750 |
+
+- The idealized column reproduces the stage-1 selection numbers (0.979–1.000
+  in the pick tracking report) — **the M1–M3 shared-code changes are invisible
+  in checkpoint playback** (also confirmed bit-identically vs the branch
+  point, see the false-alarm section above).
+- **Ranking preserved, verdict: KEEP gates evaluation-only** (drop 0.99 >
+  0.15, but no reorder — the rule requires both).
+- Reading the gated 0.000 correctly: the policies re-grasp resiliently under
+  gates (444 attempts/96 eps, grasp_rate still 0.75) but ~2 slips/episode
+  break the windowed stable-hold latch. A whole-garment carry loads the pinch
+  with the full 0.30 kg (2.94 N static + swing accelerations) against a
+  N(4.0, 1.5) N capacity draw → ≥ 1 slip/episode is near-certain. The
+  DRAPER-calibrated *misgrasp* side is well-grounded; the *slip capacity* is
+  our estimate — before reading gated numbers as absolutes, calibrate
+  `slip_capacity_mean_n/std_n` against a real 2F-140 cloth-pinch pull test
+  (the 2F-140 commands 10–125 N grip force; fabric pinch capacity is the
+  unknown). Every knob is a cfg field.
+
+### shirt_present (UR5e run `2026-07-08_16-03-46_seed43`) — non-informative, env drift
+
+| checkpoint | ideal present | gated present | ideal grasp | gated grasp | misgr | slips |
+|---|---|---|---|---|---|---|
+| best_agent | 0.000 | 0.000 | 0.094 | 0.042 | 2 | 1 |
+| agent_104000 | 0.000 | 0.000 | 0.073 | 0.031 | 4 | 5 |
+
+These checkpoints predate the 2026-07-10/11 holder-grip rework (holder anchor
+→ 1.60, IK closed-fingertip grip, arm stiffening — commit `1dd5a3b`): on
+today's env their idealized grasp_rate is 0.07–0.09 vs the 0.73 measured on
+their training-era env (need_visual_verification README). With no
+current-env-trained present checkpoint pair available yet, the table only
+demonstrates the harness runs end-to-end on the task; **rerun once T2 lands
+Phase-1 checkpoints** (one command, usage in the script header). Consistent
+detail: the precondition gate blocks 68/77 attempts — misaligned approaches
+on an env the policy wasn't trained for.
+
+### Standing recommendation
+
+Gates stay **evaluation-only** (G2 decision input). Two follow-ups for
+Phase 2: (1) calibrate slip capacity physically, (2) re-run both studies on
+T1/T2's Phase-2 checkpoints — the harness + this section are the template.
