@@ -72,16 +72,25 @@ class FKSampledPoseCommand(CommandTerm):
             self._sampling_joint_ids = self.joint_ids
             self._sampling_body_idx = self.body_idx
 
-        # Body indices used for the (optional) geometric self-collision filter.
-        # We exclude the gripper's internal finger cluster (many links naturally
-        # <5 cm apart) so the pairwise-origin check only flags genuine arm/base
-        # self-intersection — keeping the gripper *base* link as its representative.
-        if cfg.self_collision_filter:
+        # Body indices used for the (optional) geometric self-collision filter and
+        # the link-height (floor) filter.  We exclude the gripper's internal finger
+        # cluster (many links naturally <5 cm apart) so the pairwise check only
+        # flags genuine arm/base self-intersection — keeping the gripper *base*
+        # link as its representative.
+        if cfg.self_collision_filter or cfg.fk_min_link_height_w is not None:
             self._collision_body_ids: list[int] | None = self._resolve_collision_bodies(self._sampling_art)
         else:
             self._collision_body_ids = None
-        # Lazily calibrated on the first resample (see _calibrate_collision_pairs).
-        self._collision_pairs: list[tuple[int, int]] | None = None
+        # Structural-pair calibration state: close-fraction statistics accumulate
+        # across resamples until `self_collision_calibration_min_samples` configs
+        # have been seen, then the tested-pair list freezes (robust to a small
+        # first batch, e.g. play/eval with 4 envs — see _update_calibration).
+        self._collision_pairs: torch.Tensor | None = None  # (P, 2) long tensor
+        self._calib_candidates: list[tuple[int, int]] | None = None
+        self._calib_close_counts: torch.Tensor | None = None
+        self._calib_n_samples: int = 0
+        self._calib_frozen: bool = False
+        self._rejection_stats_printed: bool = False
 
         self.pose_command_b = torch.zeros(self.num_envs, 7, device=self.device)
         self.pose_command_b[:, 3] = 1.0
@@ -267,56 +276,87 @@ class FKSampledPoseCommand(CommandTerm):
         sit a few cm apart in every configuration.  Capsules + an adjacency skip of
         ≥2 fix both (verified empirically across the workspace).
         """
-        n_bodies = link_pos_w.shape[1]
+        n_envs, n_bodies = link_pos_w.shape[0], link_pos_w.shape[1]
         two_r = 2.0 * self.cfg.self_collision_radius
         # Capsule axis endpoints: a0 = parent origin (shifted), a1 = own origin.
         a1 = link_pos_w
         a0 = link_pos_w.clone()
         a0[:, 1:] = link_pos_w[:, :-1]  # link 0 stays a point (a0==a1)
 
-        # Lazily calibrate which body pairs to actually test.  A fixed adjacency
-        # skip cannot generalise: different arms stack a different number of
-        # rigid wrist/tool/EE/gripper frames that sit within ``2*radius`` in
-        # *every* configuration and would false-positive constantly.  Instead, on
-        # the first full-size batch we measure, per candidate pair, the fraction
-        # of configs where the capsules are within ``2*radius``; pairs that are
-        # close almost always are *structural* (rigidly stacked) and excluded,
-        # leaving only pairs that are sometimes-far / sometimes-close — i.e. the
-        # genuine self-collision candidates (gripper-into-base, elbow-into-body…).
-        if self._collision_pairs is None:
-            self._calibrate_collision_pairs(a0, a1, n_bodies, two_r)
+        # Calibrate which body pairs to actually test.  A fixed adjacency skip
+        # cannot generalise: different arms stack a different number of rigid
+        # wrist/tool/EE/gripper frames that sit within ``2*radius`` in *every*
+        # configuration and would false-positive constantly.  We measure, per
+        # candidate pair, the fraction of configs where the capsules are within
+        # ``2*radius``; pairs that are close almost always are *structural*
+        # (rigidly stacked) and excluded, leaving only pairs that are
+        # sometimes-far / sometimes-close — the genuine self-collision candidates
+        # (gripper-into-base, elbow-into-body…).  Statistics accumulate across
+        # resamples until enough configs were seen (robust to small batches),
+        # then the pair list freezes.
+        if not self._calib_frozen:
+            self._update_calibration(a0, a1, n_bodies, two_r)
 
-        free = torch.ones(link_pos_w.shape[0], dtype=torch.bool, device=link_pos_w.device)
-        for i, j in self._collision_pairs:
-            dist = self._segment_segment_distance(a0[:, i], a1[:, i], a0[:, j], a1[:, j])
-            free &= dist > two_r
-        return free
+        if self._collision_pairs is None or self._collision_pairs.numel() == 0:
+            return torch.ones(n_envs, dtype=torch.bool, device=link_pos_w.device)
 
-    def _calibrate_collision_pairs(
+        # Vectorised over env × pair: gather both capsules for every kept pair
+        # and run one batched segment-distance call.
+        pi = self._collision_pairs[:, 0]
+        pj = self._collision_pairs[:, 1]
+        n_pairs = pi.shape[0]
+        dist = self._segment_segment_distance(
+            a0[:, pi].reshape(-1, 3), a1[:, pi].reshape(-1, 3),
+            a0[:, pj].reshape(-1, 3), a1[:, pj].reshape(-1, 3),
+        ).view(n_envs, n_pairs)
+        return (dist > two_r).all(dim=1)
+
+    def _update_calibration(
         self, a0: torch.Tensor, a1: torch.Tensor, n_bodies: int, two_r: float
     ) -> None:
-        """Pick the body pairs to test by excluding rigidly-stacked (structural)
-        pairs — see ``_collision_free``.  Runs once, on the first resample (which
-        is the full startup reset over all envs, so the fraction estimate is
-        well-sampled), and caches the kept-pair list for the rest of training.
+        """Accumulate structural-pair statistics and refresh the tested-pair list.
+
+        Called from ``_collision_free`` on every batch until
+        ``self_collision_calibration_min_samples`` configs have been seen, then
+        freezes.  The current estimate is used for filtering from the very first
+        batch, so the filter is always active; it just keeps refining while the
+        sample count is small.
         """
         skip = self.cfg.self_collision_adjacency_skip
         thr = self.cfg.self_collision_structural_threshold
-        candidates = [
-            (i, j) for i in range(n_bodies) for j in range(i + 1 + skip, n_bodies)
-        ]
-        kept = []
-        for i, j in candidates:
-            dist = self._segment_segment_distance(a0[:, i], a1[:, i], a0[:, j], a1[:, j])
-            frac_close = (dist < two_r).float().mean().item()
-            if frac_close < thr:
-                kept.append((i, j))
-        self._collision_pairs = kept
-        print(
-            f"[FKSampledPoseCommand] self-collision filter calibrated on {a0.shape[0]} envs: "
-            f"testing {len(kept)}/{len(candidates)} body pairs "
-            f"(excluded {len(candidates) - len(kept)} structural/rigid pairs)."
+        if self._calib_candidates is None:
+            self._calib_candidates = [
+                (i, j) for i in range(n_bodies) for j in range(i + 1 + skip, n_bodies)
+            ]
+            self._calib_close_counts = torch.zeros(
+                len(self._calib_candidates), dtype=torch.float64, device=a0.device
+            )
+
+        ci = torch.tensor([p[0] for p in self._calib_candidates], device=a0.device)
+        cj = torch.tensor([p[1] for p in self._calib_candidates], device=a0.device)
+        n_envs = a0.shape[0]
+        dist = self._segment_segment_distance(
+            a0[:, ci].reshape(-1, 3), a1[:, ci].reshape(-1, 3),
+            a0[:, cj].reshape(-1, 3), a1[:, cj].reshape(-1, 3),
+        ).view(n_envs, len(self._calib_candidates))
+        self._calib_close_counts += (dist < two_r).sum(dim=0).to(torch.float64)
+        self._calib_n_samples += n_envs
+
+        frac_close = self._calib_close_counts / max(self._calib_n_samples, 1)
+        kept = [p for k, p in enumerate(self._calib_candidates) if frac_close[k] < thr]
+        self._collision_pairs = (
+            torch.tensor(kept, dtype=torch.long, device=a0.device)
+            if kept else torch.empty(0, 2, dtype=torch.long, device=a0.device)
         )
+
+        if self._calib_n_samples >= self.cfg.self_collision_calibration_min_samples:
+            self._calib_frozen = True
+            print(
+                f"[FKSampledPoseCommand] self-collision filter calibrated on "
+                f"{self._calib_n_samples} configs: testing {len(kept)}/"
+                f"{len(self._calib_candidates)} body pairs "
+                f"(excluded {len(self._calib_candidates) - len(kept)} structural/rigid pairs)."
+            )
 
     # ------------------------------------------------------------------
     # Unified FK sampling (optionally with self-collision rejection)
@@ -357,6 +397,14 @@ class FKSampledPoseCommand(CommandTerm):
         lower = torch.where(invalid_limit_mask, default_joint_pos - fallback_half_range, lower)
         upper = torch.where(invalid_limit_mask, default_joint_pos + fallback_half_range, upper)
 
+        # Optional per-joint sampling restriction to default ± half_range: arms
+        # with full-circle limits (Kinova continuous joints) otherwise sample the
+        # entire mathematical envelope — an untrainable target distribution.
+        if self.cfg.fk_sampling_half_range is not None:
+            hr = self.cfg.fk_sampling_half_range
+            lower = torch.maximum(lower, default_joint_pos - hr)
+            upper = torch.minimum(upper, default_joint_pos + hr)
+
         # Sample from the inner portion of each joint range (cfg.joint_range_margin).
         margin = (upper - lower) * self.cfg.joint_range_margin
         lower = lower + margin
@@ -374,7 +422,14 @@ class FKSampledPoseCommand(CommandTerm):
         out_quat_b = torch.zeros(n, 4, device=self.device)
         out_quat_b[:, 0] = 1.0
 
-        max_iters = self.cfg.self_collision_max_iters if self.cfg.self_collision_filter else 1
+        # Rejection sampling runs when any sample filter is active (self-collision
+        # and/or the floor-clearance checks); otherwise a single round suffices.
+        use_rejection = (
+            self.cfg.self_collision_filter
+            or self.cfg.fk_min_ee_height_w is not None
+            or self.cfg.fk_min_link_height_w is not None
+        )
+        max_iters = self.cfg.self_collision_max_iters if use_rejection else 1
         for it in range(max_iters):
             random_joint_positions = lower + (upper - lower) * torch.rand(
                 n, len(jids), device=self.device
@@ -401,10 +456,15 @@ class FKSampledPoseCommand(CommandTerm):
                 out_pos_b[:] = pos_b
                 out_quat_b[:] = quat_b
 
+            free = torch.ones(n, dtype=torch.bool, device=self.device)
             if self.cfg.self_collision_filter:
-                free = self._collision_free(link_subset[:, self._collision_body_ids, :3])
-            else:
-                free = torch.ones(n, dtype=torch.bool, device=self.device)
+                free &= self._collision_free(link_subset[:, self._collision_body_ids, :3])
+            if self.cfg.fk_min_link_height_w is not None:
+                free &= (
+                    link_subset[:, self._collision_body_ids, 2] > self.cfg.fk_min_link_height_w
+                ).all(dim=1)
+            if self.cfg.fk_min_ee_height_w is not None:
+                free &= body_pose[:, 2] > self.cfg.fk_min_ee_height_w
 
             newly = free & ~accepted
             out_pos_b[newly] = pos_b[newly]
@@ -412,6 +472,15 @@ class FKSampledPoseCommand(CommandTerm):
             accepted |= free
             if bool(accepted.all()):
                 break
+
+        if use_rejection and not self._rejection_stats_printed:
+            self._rejection_stats_printed = True
+            n_acc = int(accepted.sum())
+            print(
+                f"[FKSampledPoseCommand] rejection sampling (first resample, {n} envs): "
+                f"{n_acc}/{n} accepted within {max_iters} rounds "
+                f"({n - n_acc} fell back to an unfiltered sample)."
+            )
 
         self.pose_command_b[env_ids, :3] = out_pos_b
         self.pose_command_b[env_ids, 3:] = quat_unique(out_quat_b) if self.cfg.make_quat_unique else out_quat_b
@@ -514,12 +583,41 @@ class FKSampledPoseCommandCfg(CommandTermCfg):
     self_collision_max_iters: int = 8
     """Max rejection-sampling rounds; only still-colliding envs are re-sampled."""
 
+    self_collision_calibration_min_samples: int = 1024
+    """The structural-pair calibration keeps accumulating close-fraction
+    statistics across resamples until it has seen at least this many sampled
+    configurations, then freezes the tested-pair list.  With a full-size
+    training reset (thousands of envs) this freezes on the first resample —
+    identical to a one-shot calibration; with few envs (play/eval) it keeps
+    refining instead of caching a poorly-sampled estimate forever."""
+
     self_collision_exclude_patterns: list[str] = (
         "inner", "outer", "finger", "knuckle", "pad",
     )
     """Body-name substrings excluded from the check (the Robotiq finger cluster),
     so the gripper's tightly-packed internal links don't swamp the pairwise
     origin check with false positives.  The gripper *base* link is kept."""
+
+    # ── FK workspace restriction (rejection + sampling range) ─────────────
+    fk_sampling_half_range: float | None = None
+    """If set, FK joint sampling is restricted to ``default ± half_range`` (rad),
+    intersected with the joint limits, *before* ``joint_range_margin`` trims the
+    ends.  Use on arms whose raw limits span the full circle (Kinova continuous
+    joints, wide elbow ranges): unrestricted sampling covers the entire
+    mathematical envelope — behind the mount, folded onto itself — which is an
+    untrainable target distribution (iteration 19).  ``1.5`` matches the UR
+    arms' reset-clamped ±1.5 rad, which trains well."""
+
+    fk_min_ee_height_w: float | None = None
+    """If set, reject FK samples whose EE body origin (world frame) is below
+    this height.  Keeps targets (and the gripper hanging under them) clear of
+    the collidable ground plane — a below-ground target is physically
+    unreachable and poisons training."""
+
+    fk_min_link_height_w: float | None = None
+    """If set, reject FK samples where *any* checked link origin (world frame)
+    is below this height — configurations that fold the elbow/forearm through
+    the floor are unreachable even when the EE itself is above ground."""
     """Fraction of each joint's range to exclude at both ends when sampling.
 
     A margin of 0.10 (default) samples from the inner 80% of each joint range,

@@ -124,6 +124,52 @@ def orientation_command_error_tanh(
     return 1 - torch.tanh(error / std)
 
 
+def orientation_refine_gated(
+    env: ManagerBasedRLEnv,
+    orientation_std: float,
+    position_std: float,
+    command_name: str,
+    asset_cfg: SceneEntityCfg,
+) -> torch.Tensor:
+    """Position-gated orientation-tracking reward (redundant-arm refinement).
+
+    Returns ``(1 - tanh(orient_err/orientation_std)) * (1 - tanh(pos_err/position_std))``
+    — an orientation-tracking tanh reward multiplied by a smooth position-proximity
+    gate.  The gate is ~0 while the end-effector is far from the target position and
+    ~1 once it is close, so the term only rewards orientation **after** position is
+    (nearly) achieved.
+
+    Why this is safe against the P1 regression (see tracking log iteration 14):
+    the blanket ``-0.5`` orientation weight wrecked position because it rewarded
+    orientation *unconditionally*, so the 6-DOF arms traded position for it.  Here
+    moving away from the target lowers **both** the gate and the main position
+    reward, so there is never an incentive to sacrifice position.  A *redundant*
+    arm (Frankenstein wrist / Kinova 7th DOF) can instead reduce orientation error
+    at fixed position via its null space — pure gain, no position cost.  Intended
+    only for redundant variants (added with a positive weight); the two rigid
+    6-DOF UR-F140 arms have no spare DOF to exploit and are excluded by the caller.
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    command = env.command_manager.get_command(command_name)
+
+    des_pos_b = command[:, :3]
+    des_quat_b = command[:, 3:7]
+    des_pos_w, _ = combine_frame_transforms(
+        asset.data.root_state_w[:, :3], asset.data.root_state_w[:, 3:7], des_pos_b
+    )
+    des_quat_w = quat_mul(asset.data.root_state_w[:, 3:7], des_quat_b)
+
+    curr_pos_w = asset.data.body_state_w[:, asset_cfg.body_ids[0], :3]
+    curr_quat_w = asset.data.body_state_w[:, asset_cfg.body_ids[0], 3:7]
+
+    pos_err = torch.norm(curr_pos_w - des_pos_w, dim=1)
+    orient_err = quat_error_magnitude(curr_quat_w, des_quat_w)
+
+    position_gate = 1.0 - torch.tanh(pos_err / position_std)
+    orientation_reward = 1.0 - torch.tanh(orient_err / orientation_std)
+    return orientation_reward * position_gate
+
+
 def pose_goal_reached(
     env: ManagerBasedRLEnv,
     position_threshold: float,

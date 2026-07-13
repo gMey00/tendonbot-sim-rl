@@ -22,11 +22,13 @@ the boilerplate so the six variants stay consistent.
 from __future__ import annotations
 
 import math
+import os
 
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets.articulation import ArticulationCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationTermCfg as ObsTerm
+from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
@@ -129,6 +131,35 @@ def configure_f140_reach(
         pitch=(math.pi, math.pi),
         yaw=(-math.pi, math.pi),
     )
+    # ── OPT-IN (iteration-18 diagnostic): FK-sampled reachable full-pose targets ──
+    # Off by default (env var unset -> the fixed-orientation box baseline stays
+    # bit-exact). When REACH_FK_TARGETS is set, drop the box and sample targets by
+    # forward-kinematics of random joint configs (the pre-iteration-14 mode): the
+    # target orientation is then *reachable by construction*. Tests whether that
+    # removes the OSC-on-UR instability and unlocks orientation tracking on the
+    # 6-DOF arms (both plausibly caused by the box's geometrically-unreachable
+    # gripper-down orientation, P2). NOTE: per-arm FK targets are NOT a shared
+    # cross-arm distribution — position errors are no longer comparable across arms.
+    if os.environ.get("REACH_FK_TARGETS", "") not in ("", "0"):
+        env.commands.ee_pose.uniform_ranges = None
+        # Reject FK samples that are self-colliding or fold through the floor:
+        # both produce physically-unreachable targets that poison training
+        # (iteration 19: Kinova plateaued at 24-35 cm on the unfiltered
+        # full-envelope distribution).  Floor clearances are in the WORLD frame
+        # (ground plane at z=0): links keep 5 cm; the EE keeps 30 cm so the
+        # ~24 cm Robotiq 2F-140 hanging below robotiq_base_link stays clear.
+        env.commands.ee_pose.self_collision_filter = True
+        env.commands.ee_pose.fk_min_link_height_w = 0.05
+        env.commands.ee_pose.fk_min_ee_height_w = 0.30
+
+    # ── OPT-IN probe knob: episode length (task-space hardening, iteration 20) ──
+    # Joint control solves FK full-pose targets within the 6 s episode, but the
+    # task-space controllers (greedy DLS / OSC paths) may need more time for the
+    # large reorientations.  Unset -> 6 s (baseline unchanged).
+    _episode_s = os.environ.get("REACH_EPISODE_S", "")
+    if _episode_s not in ("", "0"):
+        env.episode_length_s = float(_episode_s)
+
     # Disable debug-vis marker point-instancers during (headless) training:
     # at 4096 envs they trigger a FabricManager prototype mismatch and a
     # carb.tasking mutex-recursion assertion crash.  They are GUI-only anyway;
@@ -141,6 +172,25 @@ def configure_f140_reach(
         joint_names=controlled_joints,
         alpha=0.2,
     )
+
+    # ── OPT-IN: tensegrity-wrist matched-pair A/B knobs (joint action space) ──
+    # For the "does the wrist help" study on a Frankenstein arm (iteration-18).
+    # Both off by default -> no change. NOTE: only wired for the joint action
+    # space (the IK/OSC configs override arm_action after this and read
+    # commands.ee_pose.joint_names to size themselves; do not combine these knobs
+    # with those spaces without extending the wiring).
+    #   REACH_FK_SAMPLE_BASE_ONLY : FK-sample only the base (non-wrist) joints, so
+    #     targets are reachable with the wrist at neutral -> base-reachable set.
+    #   REACH_LOCK_WRIST          : drop the wrist from the joint action (it then
+    #     holds at its PD neutral) -> a base-equivalent controller on the same arm.
+    # The 4 cells (base/frank targets × wrist active/locked) bracket the wrist's
+    # redundancy benefit (base targets) vs capability gain (frank targets).
+    _wrist_joints = ("wrist_x_joint", "wrist_y_joint")
+    _base_only_joints = [j for j in controlled_joints if j not in _wrist_joints]
+    if os.environ.get("REACH_FK_SAMPLE_BASE_ONLY", "") not in ("", "0"):
+        env.commands.ee_pose.joint_names = _base_only_joints
+    if os.environ.get("REACH_LOCK_WRIST", "") not in ("", "0"):
+        env.actions.arm_action.joint_names = _base_only_joints
 
     # ── Rewards: track the gripper-base EE body ───────────────────────────
     for term in (
@@ -167,6 +217,29 @@ def configure_f140_reach(
     # while the 7-DOF Kinova (redundant) improved.  The reference balance — which
     # Isaac Lab validated on the Franka reach, itself a uniform-box task — keeps
     # position the dominant objective, so it is restored here unchanged.
+
+    # ── OPT-IN: position-gated orientation refinement (redundant arms only) ──
+    # Iteration 16 experiment.  Disabled by default (env var unset -> weight 0)
+    # so the 24-variant position-only baseline stays bit-exact and citable.  When
+    # REACH_ORIENT_REFINE_WEIGHT > 0, ADD a reward that tracks orientation only
+    # once position is (nearly) achieved (smooth position gate).  It cannot cause
+    # the P1 position regression (moving off-target lowers both the gate and the
+    # position reward); a redundant arm can instead spend its spare DOF (the
+    # Frankenstein wrist / Kinova 7th joint) on orientation at fixed position.
+    # Only added for redundant arms (>6 controlled joints): the rigid 6-DOF
+    # UR5e-/UR10-F140 arms have no spare DOF and are left untouched (per P2/§3.3).
+    _refine_w = float(os.environ.get("REACH_ORIENT_REFINE_WEIGHT", "0") or "0")
+    if _refine_w > 0.0 and len(controlled_joints) > 6:
+        env.rewards.orientation_refine = RewTerm(
+            func=mdp.orientation_refine_gated,
+            weight=_refine_w,
+            params={
+                "asset_cfg": SceneEntityCfg("robot", body_names=[F140_EE_BODY]),
+                "command_name": "ee_pose",
+                "orientation_std": float(os.environ.get("REACH_ORIENT_REFINE_ORISTD", "0.3")),
+                "position_std": float(os.environ.get("REACH_ORIENT_REFINE_POSSTD", "0.1")),
+            },
+        )
 
     # ── Observations / terminations: controlled joints only ───────────────
     # Encode joint positions as (sin, cos) to remove the ±π wrap discontinuity
@@ -205,3 +278,25 @@ def configure_f140_reach(
         mode="reset",
         params=clamp_params,
     )
+    # ── Kinova: clamp the continuous-joint USD limits *before* the PhysX bake ──
+    # The Kinova Gen3 continuous joints (joint_1/3/5/7) are authored with limits
+    # outside PhysX's supported [-2π, 2π] range; PhysX throws `setLimitParams()`
+    # 8-9× when it bakes the articulation at sim.reset().  The reset-mode clamp
+    # above only runs *after* the bake, so it silences the limits for stepping
+    # but not that init-time error, and a mode="prestartup" event is rejected by
+    # Isaac Lab while replicate_physics=True (which reach needs).  So we wrap the
+    # spawner: it clamps env_0's joint-limit USD attributes before the clone /
+    # bake, using the same default±range/2 rule as the reset term (baked limits,
+    # and training, unchanged).  Only Kinova authors out-of-range limits; the UR
+    # arms stay on the reset-mode clamp alone.
+    usd_path = getattr(env.scene.robot.spawn, "usd_path", "") or ""
+    if "Kinova" in usd_path:
+        # Module-level spawner + registry (Hydra-safe: the config round-trip
+        # serialises spawn.func to "module:qualname", which a closure cannot satisfy).
+        mdp.register_joint_limit_clamp(
+            usd_path=usd_path,
+            joint_defaults=dict(env.scene.robot.init_state.joint_pos or {}),
+            fallback_range=clamp_fallback_range,
+            max_range=clamp_max_range,
+        )
+        env.scene.robot.spawn.func = mdp.spawn_usd_with_clamped_joint_limits

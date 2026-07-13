@@ -25,6 +25,8 @@ Differences from the franka sample, by intent:
 
 from __future__ import annotations
 
+import os
+
 from isaaclab.controllers.operational_space_cfg import OperationalSpaceControllerCfg
 from isaaclab.envs.mdp.actions.actions_cfg import OperationalSpaceControllerActionCfg
 
@@ -53,13 +55,30 @@ def apply_osc_action(env, controlled_joints: list[str]) -> None:
     # OSC controls only the rigid arm joints; the compliant tensegrity wrist
     # stays position-held (excluding it from the Jacobian is well-defined — the
     # action term slices the EE-body Jacobian by the controlled joint ids).
-    osc_joints = [j for j in controlled_joints if j not in TENSEGRITY_WRIST_JOINTS]
+    #
+    # OPT-IN (iteration-20 experiment, REACH_OSC_INCLUDE_WRIST): include the wrist
+    # in the OSC joint set as a *damped-compliant* joint — stiffness zeroed (so
+    # OSC's torque isn't fought by PD) but viscous damping KEPT.  Iteration 15's
+    # divergence came from zeroing the wrist PD entirely: a near-massless
+    # 3.5 N·m joint with no dissipation oscillates and blows up the task-space
+    # loop.  Keeping damping is the middle ground that may let OSC actually use
+    # the wrist (which the wrist A/B showed matters for pose capability).
+    _include_wrist = os.environ.get("REACH_OSC_INCLUDE_WRIST", "") not in ("", "0")
+    if _include_wrist:
+        osc_joints = list(controlled_joints)
+    else:
+        osc_joints = [j for j in controlled_joints if j not in TENSEGRITY_WRIST_JOINTS]
 
     # OSC computes joint efforts; the implicit position-PD on the controlled
     # joints must be disabled or it competes with the controller (cf. franka OSC,
     # which zeroes the shoulder/forearm gains).
     for name, actuator in env.scene.robot.actuators.items():
-        if name.startswith("gripper") or name == "tendon_wrist":
+        if name.startswith("gripper"):
+            continue
+        if name == "tendon_wrist":
+            if _include_wrist:
+                actuator.stiffness = 0.0
+                actuator.damping = float(os.environ.get("REACH_OSC_WRIST_DAMPING", "20") or "20")
             continue
         actuator.stiffness = 0.0
         actuator.damping = 0.0
@@ -74,13 +93,35 @@ def apply_osc_action(env, controlled_joints: list[str]) -> None:
     # A joint posture target is only accepted when null-space control is active.
     nullspace_target = "default" if redundant else "none"
 
-    env.actions.arm_action = OperationalSpaceControllerActionCfg(
+    # ── OPT-IN OSC stabilisation-sweep overrides (iteration-17 step 1b) ──
+    # Defaults reproduce the settled config exactly (env vars unset -> no change),
+    # so the position-only baseline stays bit-exact. Used to search for a config
+    # that makes OSC seed-robust on the non-redundant UR arms (all four UR-OSC
+    # variants are bimodal; see tracking log iteration 17).
+    _osc_impedance = os.environ.get("REACH_OSC_IMPEDANCE", "variable_kp")
+    _osc_kp = float(os.environ.get("REACH_OSC_STIFFNESS", "100") or "100")
+    _osc_kp_min = float(os.environ.get("REACH_OSC_STIFFNESS_MIN", "50") or "50")
+    _osc_kp_max = float(os.environ.get("REACH_OSC_STIFFNESS_MAX", "200") or "200")
+    _osc_zeta = float(os.environ.get("REACH_OSC_DAMPING_RATIO", "1.0") or "1.0")
+
+    # OPT-IN (iteration 21): EMA-smooth the raw 13-D OSC actions (pose +
+    # stiffness), mirroring the joint space's α=0.2 (report audit item #4).
+    _ts_ema = os.environ.get("REACH_TS_EMA", "")
+    _osc_cfg_cls = OperationalSpaceControllerActionCfg
+    _osc_extra: dict = {}
+    if _ts_ema not in ("", "0"):
+        from tensegrity_pick.tasks.manager_based.reach import mdp as _reach_mdp
+
+        _osc_cfg_cls = _reach_mdp.EMAOSCActionCfg
+        _osc_extra = {"ema_alpha": float(_ts_ema)}
+
+    env.actions.arm_action = _osc_cfg_cls(
         asset_name="robot",
         joint_names=list(osc_joints),
         body_name=F140_EE_BODY,
         controller_cfg=OperationalSpaceControllerCfg(
             target_types=["pose_abs"],
-            impedance_mode="variable_kp",
+            impedance_mode=_osc_impedance,
             # NOTE: the franka sample uses FULL inertial decoupling, which forms
             # Λ = (J M⁻¹ Jᵀ)⁻¹.  On our arm+Robotiq-gripper articulations that
             # inverse is ill-conditioned.  PARTIAL decoupling (translational /
@@ -93,9 +134,9 @@ def apply_osc_action(env, controlled_joints: list[str]) -> None:
             inertial_dynamics_decoupling=True,
             partial_inertial_dynamics_decoupling=True,
             gravity_compensation=False,
-            motion_stiffness_task=100.0,
-            motion_damping_ratio_task=1.0,
-            motion_stiffness_limits_task=(50.0, 200.0),
+            motion_stiffness_task=_osc_kp,
+            motion_damping_ratio_task=_osc_zeta,
+            motion_stiffness_limits_task=(_osc_kp_min, _osc_kp_max),
             nullspace_control=nullspace_control,
         ),
         # franka uses "center" (joint-range midpoint), but that is undefined/NaN for
@@ -106,4 +147,5 @@ def apply_osc_action(env, controlled_joints: list[str]) -> None:
         position_scale=1.0,
         orientation_scale=1.0,
         stiffness_scale=100.0,
+        **_osc_extra,
     )

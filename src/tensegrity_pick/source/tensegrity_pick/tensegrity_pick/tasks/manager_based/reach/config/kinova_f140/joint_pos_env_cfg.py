@@ -24,6 +24,15 @@ class KinovaF140ReachEnvCfg(ReachEnvCfg):
             clamp_fallback_range=6.2832,
             clamp_max_range=None,
         )
+        # FK-target mode only (box mode ignores joint sampling): restrict FK
+        # sampling to default ± 1.5 rad.  The Kinova's raw limits are full-circle
+        # (continuous joints, 4.4-5.3 rad elbow ranges), so unrestricted FK
+        # sampling spans the entire envelope — untrainable (iteration 19: 24-35 cm
+        # plateau).  ±1.5 matches the UR arms' reset-clamped range, which trains.
+        import os as _os
+        self.commands.ee_pose.fk_sampling_half_range = float(
+            _os.environ.get("REACH_FK_HALF_RANGE", "1.5") or "1.5"
+        )
 
 
 @configclass

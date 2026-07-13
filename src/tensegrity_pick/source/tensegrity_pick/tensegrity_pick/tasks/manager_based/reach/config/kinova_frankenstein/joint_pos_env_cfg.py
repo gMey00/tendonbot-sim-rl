@@ -24,6 +24,14 @@ class KinovaFrankensteinReachEnvCfg(ReachEnvCfg):
             clamp_fallback_range=6.2832,
             clamp_max_range=None,
         )
+        # FK-target mode only: restrict FK sampling to default ± 1.5 rad — the
+        # Kinova's full-circle limits otherwise make the FK target distribution
+        # untrainable (iteration 19; see kinova_f140/joint_pos_env_cfg.py).
+        # The tensegrity wrist joints (±0.873 rad) are unaffected (min applies).
+        import os as _os
+        self.commands.ee_pose.fk_sampling_half_range = float(
+            _os.environ.get("REACH_FK_HALF_RANGE", "1.5") or "1.5"
+        )
 
 
 @configclass
