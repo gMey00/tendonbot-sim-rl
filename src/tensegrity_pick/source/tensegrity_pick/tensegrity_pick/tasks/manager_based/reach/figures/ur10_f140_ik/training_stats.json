@@ -1,5 +1,5 @@
 {
-  "run": "2026-07-02_10-33-04_ppo_torch_seed42",
+  "run": "2026-07-13_02-43-55_ppo_torch_seed42",
   "variant": "ur10_f140_ik",
   "completion": {
     "is_complete": true,
@@ -10,113 +10,113 @@
   },
   "scalars": {
     "Stats / Inference time (ms)": {
-      "final_mean": 0.40198588371276855,
-      "final_std": 0.0015668238785618948,
+      "final_mean": 0.4018839359283447,
+      "final_std": 0.0015134587711407045,
       "max_step": 100000
     },
     "Stats / Env stepping time (ms)": {
-      "final_mean": 12.52217664718628,
-      "final_std": 0.019097672265057042,
+      "final_mean": 12.546596431732178,
+      "final_std": 0.029192666657843102,
       "max_step": 100000
     },
     "Reward / Instantaneous reward (max)": {
-      "final_mean": -0.00013599256344605238,
-      "final_std": 4.515407977146149e-05,
+      "final_mean": 0.0031150929629802705,
+      "final_std": 2.939032316750595e-05,
       "max_step": 100000
     },
     "Reward / Instantaneous reward (min)": {
-      "final_mean": -0.02218778021633625,
-      "final_std": 0.00036552216937018825,
+      "final_mean": -0.03541414067149162,
+      "final_std": 0.0021563363292751775,
       "max_step": 100000
     },
     "Reward / Instantaneous reward (mean)": {
-      "final_mean": -0.0031691203825175763,
-      "final_std": 7.132635966850165e-05,
+      "final_mean": -0.0005421320514869876,
+      "final_std": 0.0003033030496108,
       "max_step": 100000
     },
     "Episode_Reward/end_effector_position_tracking": {
-      "final_mean": -0.006413974380120635,
-      "final_std": 0.00021845370143134063,
+      "final_mean": -0.016932012233883142,
+      "final_std": 0.001699174225816742,
       "max_step": 100000
     },
     "Episode_Reward/end_effector_position_tracking_fine_grained": {
-      "final_mean": 0.0809650681912899,
-      "final_std": 0.0007376721455562546,
+      "final_mean": 0.05793815180659294,
+      "final_std": 0.003833872617042704,
       "max_step": 100000
     },
     "Episode_Reward/end_effector_orientation_tracking": {
-      "final_mean": -0.1612304225564003,
-      "final_std": 0.0009222690364252352,
+      "final_mean": -0.04472697302699089,
+      "final_std": 0.0023690402634615427,
       "max_step": 100000
     },
     "Episode_Reward/position_reached": {
-      "final_mean": 8.841128192216274e-07,
-      "final_std": 1.2694982556508026e-08,
+      "final_mean": 6.593050841274816e-07,
+      "final_std": 5.910317065051539e-08,
       "max_step": 100000
     },
     "Episode_Reward/orientation_reached": {
-      "final_mean": 0.0,
-      "final_std": 0.0,
+      "final_mean": 4.3627356660635996e-07,
+      "final_std": 3.7273496329625675e-08,
       "max_step": 100000
     },
     "Episode_Reward/pose_reached": {
-      "final_mean": 0.0,
-      "final_std": 0.0,
+      "final_mean": 3.591901986510493e-07,
+      "final_std": 5.266475624308432e-08,
       "max_step": 100000
     },
     "Episode_Reward/action_rate": {
-      "final_mean": -0.001917736593168229,
-      "final_std": 3.7750408130969216e-05,
+      "final_mean": -0.009126617200672626,
+      "final_std": 0.0007975666151591073,
       "max_step": 100000
     },
     "Episode_Reward/joint_vel": {
-      "final_mean": -0.0062607429455965756,
-      "final_std": 0.0003171383268523935,
+      "final_mean": -0.0034062667982652783,
+      "final_std": 0.00023247893436080557,
       "max_step": 100000
     },
     "Loss / Policy loss": {
-      "final_mean": 0.0026094726868905126,
-      "final_std": 0.0006113263776317938,
+      "final_mean": -0.0002249066805234179,
+      "final_std": 0.0013570343473834122,
       "max_step": 100000
     },
     "Loss / Value loss": {
-      "final_mean": 0.07197704799473285,
-      "final_std": 0.010049363751233489,
+      "final_mean": 0.0912922315299511,
+      "final_std": 0.00855361252415384,
       "max_step": 100000
     },
     "Loss / Entropy loss": {
-      "final_mean": 0.06351792514324188,
-      "final_std": 0.0010533347432695962,
+      "final_mean": -0.011582570523023606,
+      "final_std": 0.004187988031027948,
       "max_step": 100000
     },
     "Policy / Standard deviation": {
-      "final_mean": 0.10381701961159706,
-      "final_std": 0.001611716987014522,
+      "final_mean": 0.3107781231403351,
+      "final_std": 0.020095112753585522,
       "max_step": 100000
     },
     "Learning / Learning rate": {
-      "final_mean": 0.000564356887480244,
-      "final_std": 2.2761541841120282e-05,
+      "final_mean": 0.0017222594935446978,
+      "final_std": 0.00027407483785031025,
       "max_step": 100000
     },
     "Stats / Algorithm update time (ms)": {
-      "final_mean": 42.75573806762695,
-      "final_std": 0.5407007665840482,
+      "final_mean": 42.58029899597168,
+      "final_std": 0.5032618039042333,
       "max_step": 100000
     },
     "Reward / Total reward (max)": {
-      "final_mean": -0.2205984875559807,
-      "final_std": 0.01429140473896295,
+      "final_mean": 0.3518819838762283,
+      "final_std": 0.0191769978546555,
       "max_step": 100000
     },
     "Reward / Total reward (min)": {
-      "final_mean": -1.2562726855278015,
-      "final_std": 0.20225280298243545,
+      "final_mean": -2.5571171402931214,
+      "final_std": 1.099944277085663,
       "max_step": 100000
     },
     "Reward / Total reward (mean)": {
-      "final_mean": -0.569290566444397,
-      "final_std": 0.011222226470827594,
+      "final_mean": -0.09953669533133506,
+      "final_std": 0.05179209728975803,
       "max_step": 100000
     },
     "Episode / Total timesteps (max)": {
