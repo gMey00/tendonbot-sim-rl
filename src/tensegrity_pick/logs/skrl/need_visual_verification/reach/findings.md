@@ -3,6 +3,27 @@
 Notes from live playback sessions (see `README.md` for the checklist and
 per-variant priorities). Logged as issues come up, referenced by variant dir.
 
+> **Resolution status (2026-07-07, iteration 16 in the
+> [tracking log](../../../../../../../doc/reports/reach_optimization_tracking.md)):**
+> - **Kinova startup errors: FIXED.** Root cause confirmed (USD limits baked by
+>   PhysX at `sim.reset()`, before the reset-mode clamp). Fixed with a before-bake
+>   spawner wrapper; verified 8→0 `setLimitParams` errors, 0 NaN, identical baked
+>   limits, across all 4 action spaces + both Kinova arms.
+> - **Orientation / unused wrist: INVESTIGATED.** An opt-in, position-gated
+>   orientation-refinement reward (redundant arms only, off by default) recovers
+>   orientation where the redundancy is *controller-accessible* — `kinova_f140_osc`
+>   9 %→75 % orient for +0.3 cm — and is safely inert where it is not
+>   (`ur5e_frankenstein_osc`, wrist excluded from OSC: 0 %→0 %, position kept).
+>   See the tracking log Part B for the full before/after table and per-variant
+>   root-cause.
+> - **Multi-seed follow-up (2026-07-08, iteration 17): OSC is only seed-robust on
+>   the redundant Kinova arms.** A 5-seed grid revealed the single-seed(42)
+>   "OSC passes" was luck — all four *UR*-OSC variants are bimodal (converge on
+>   some seeds, diverge 20–60 cm / collapsed episodes on others). The bimodal
+>   approach behaviour the visual check flagged on `ur10_frankenstein_osc` is
+>   this instability, not a one-off seed outlier. Kinova-OSC is tight across
+>   seeds. Non-OSC spaces are stable.
+
 ## Cross-cutting: startup errors on Kinova variants
 
 - **Kinova arm checkpoints throw PhysX joint-limit errors at startup**, and

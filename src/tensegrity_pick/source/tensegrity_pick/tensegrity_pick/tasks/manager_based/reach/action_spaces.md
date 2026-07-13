@@ -92,15 +92,37 @@ When touching any of these configs, keep the comparison fair:
 
 ## Results by action space
 
-Converged means over the 24-variant grid (seed 42, 100k timesteps,
-2026-07-02; position error / % of steps within 5 cm):
+**THESIS dataset (iteration 22, 2026-07-13): FK full-pose targets (fixed
+sampler), EMA α=0.2 on every action space, 5 seeds {0,1,2,42,123}.** Converged
+means over the 24-variant grid (position error / % steps pos < 5 cm / % steps
+pose = pos < 5 cm AND ori < 0.3 rad):
 
-| Space | Mean pos. error | Mean success |
-|---|---|---|
-| Joint (EMA) | 3.1 cm | 91 % |
-| IK-Rel | 3.4 cm | 88 % |
-| IK-Abs | 4.0 cm | 84 % |
-| OSC | 7.0 cm (3.3 cm excl. the ur10_frankenstein seed outlier) | 87 % |
+| Space | pos err | pos % | pose % |
+|---|---|---|---|
+| **Joint (EMA)** | **4.7 cm** | **86 %** | **62 %** |
+| IK-Abs (+EMA) | 7.0 cm | 70 % | 33 % |
+| IK-Rel (+EMA) | 7.4 cm | 66 % | 34 % |
+| OSC (+EMA) | 9.8 cm | 47 % | 14 % |
+
+Two robot-dependent qualifications (full analysis: tracking log iterations
+17–22):
+
+1. **On the 7-DOF Kinova the action-space choice barely matters** (all four
+   spaces 2.9–6.0 cm; `kinova_f140_osc` is the tightest task-space cell in the
+   grid at 2.9 cm / 91 % / 32 %). On the 6-DOF UR arms it matters enormously —
+   joint control is decisive there, and **OSC on non-redundant arms is not
+   recommended** (bimodal seed-divergence on box targets, iter 17; consistently
+   worst on FK targets under every config tried, iters 18–22).
+2. **Task-space actions must be EMA-smoothed** (`REACH_TS_EMA=0.2`, matching
+   the joint action's α): iteration 21 showed EMA doubles task-space pose%;
+   a 6-D rotation action and stiffer OSC gains were both tested and are
+   *worse*. EMA is mixed-to-harmful only on UR-OSC (already not recommended).
+
+Historical note: the earlier single-seed box-grid table (2026-07-02, "OSC
+passes everywhere") was seed-42 luck — multi-seed analysis (iteration 17)
+revealed the UR-OSC bimodality, and the box's geometrically-unreachable fixed
+orientation was the root cause (removed by the FK targets). Do not cite the
+single-seed numbers.
 
 Per-variant numbers and history: [README — Training Results](README.md#training-results)
 and the [optimization tracking log](../../../../../../../../doc/reports/reach_optimization_tracking.md).

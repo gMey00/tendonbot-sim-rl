@@ -16,6 +16,69 @@ share the same MDP (rewards, terminations, curriculum, sim parameters):
 
 ![Task Scene](figures/scene_setup.png)
 
+## Purpose of this task (read this first)
+
+Reach is **not** primarily a robot-vs-robot benchmark. Its role in the project is:
+
+1. **Controller hardening** — get each *(robot × action space)* controller working
+   robustly on *reachable* targets, so it can be reused in the harder downstream
+   cloth tasks without hitting breaking points (divergence, NaNs, collapsed
+   episodes). Reach is the cheap place to find and fix those failure modes.
+2. **Per-robot action-space selection** — for *each* robot, determine which action
+   space / control mechanism (joint · IK-Rel · IK-Abs · OSC) works best, to pick
+   the controller to carry forward per robot.
+3. **Tensegrity-wrist evaluation** — determine whether the compliant 2-DOF
+   tensegrity wrist ("Frankenstein" arms) helps, and under which action spaces
+   (it participates under joint/IK but is currently *excluded* from the OSC
+   Jacobian — see [`action_spaces.md`](action_spaces.md)).
+
+Because the comparison is **within** each robot (not across robots), "fairness"
+here means giving each controller **reachable** targets — not a shared cross-robot
+distribution. This is why **per-robot FK-sampled targets** (each robot samples its
+own reachable poses via forward kinematics) are the right design for the hardening
+runs: a shared box or a shared reference-robot distribution inevitably lands in
+some robot's unreachable / singular region, which *manufactures* the very breaking
+points we want to eliminate. The uniform-box grid below is retained as a settled
+position-only comparison; the FK-target work (tracking log iterations 17–20) is
+the controller-hardening direction. See the
+[tracking log](../../../../../../../../doc/reports/reach_optimization_tracking.md)
+for the multi-seed evidence that the box's fixed (unreachable) orientation was the
+root cause of both the OSC-on-UR instability and the "0 % orientation on UR arms".
+
+**THESIS results (iteration 22, 2026-07-13) — the final consistent dataset.**
+One locked config everywhere: `REACH_FK_TARGETS=1` (fixed sampler:
+self-collision filter + floor clearance), Kinova sector
+`REACH_FK_HALF_RANGE=1.0`, **EMA α=0.2 on every action space**
+(`REACH_TS_EMA=0.2` for task-space; the joint action has it built in);
+5 seeds {0,1,2,42,123}. Cell = pos cm / pos % / pose % (pose = position < 5 cm
+AND orientation < 0.3 rad):
+
+| Arm | Joint | IK-Rel | IK-Abs | OSC |
+|---|---|---|---|---|
+| Kinova-F140 | 3.4 / 90 / 43 | 3.7 / 86 / 45 | 3.1 / 90 / 35 | **2.9 / 91 / 32** |
+| Kinova-Frankenstein | **4.6 / 85 / 37** | 6.0 / 69 / 29 | 5.1 / 80 / 26 | 3.9 / 85 / 11 |
+| UR5e-F140 | **3.4 / 91 / 86** | 6.1 / 71 / 37 | 5.8 / 77 / 45 | 9.1 / 43 / 16 |
+| UR5e-Frankenstein | **5.3 / 79 / 60** | 7.9 / 59 / 31 | 6.1 / 75 / 44 | 12.4 / 20 / 7 |
+| UR10-F140 | **5.2 / 87 / 84** | 10.0 / 60 / 35 | 11.3 / 47 / 22 | 13.2 / 31 / 16 |
+| UR10-Frankenstein | **6.2 / 80 / 64** | 10.8 / 49 / 27 | 10.7 / 51 / 28 | 17.1 / 10 / 3 |
+
+Per-robot action-space answer: **joint control wins overall** — decisively on
+the 6-DOF UR arms, marginally on the 7-DOF Kinova, where the action-space
+choice barely matters and `kinova_f140_osc` is the grid's tightest task-space
+cell (redundancy properly exploited once targets are well-scoped). Task-space
+fallback of record: **IK-Abs + EMA**. Hardening lessons baked into this table:
+task-space actions must be EMA-smoothed (iteration 21 — doubles pose%; a 6-D
+rotation action and stiffer OSC are *worse*); **no OSC on non-redundant (UR)
+arms** (bimodal divergence on box targets, consistently worst on FK; EMA
+mixed-to-harmful there); the tensegrity wrist is a **capability extension**
+(wrist A/B on the fixed sampler: locking it on wrist-requiring targets costs
+22 pose-points, 57 → 35 %) and is only usable under joint/IK control —
+wrist-under-OSC is closed (pure-effort diverges, damped-compliant strictly
+worse). Per-variant figures and reports (`figures/`, `reports/`) are
+regenerated from the seed-42 thesis runs; the full 132-run dataset (tfevents +
+final checkpoints) is preserved in
+[`logs/skrl/theses_logs/reach/`](../../../../../../logs/skrl/theses_logs/).
+
 ## Table of Contents
 
 - [Variants](#variants)
@@ -226,8 +289,17 @@ Success metrics (logging only, weight 1×10⁻⁶ — divide the TensorBoard val
 
 
 Reset: controlled joints to default ± 0.125 rad offset, zero velocity;
-`clamp_infinite_joint_limits` replaces infinite/oversized joint limits
-(Kinova continuous joints, UR ±2π joints) with finite ranges.
+`clamp_infinite_joint_limits` (reset-mode) replaces infinite/oversized joint
+limits (Kinova continuous joints, UR ±2π joints) with finite ranges.
+
+> **Kinova before-bake clamp.** The Kinova continuous joints are authored beyond
+> PhysX's `[-2π, 2π]`, so PhysX threw `setLimitParams()` errors when it *baked*
+> the articulation at `sim.reset()` — before the reset-mode clamp runs (fixed
+> for stepping, but noisy at load). The Kinova robot spawner is therefore wrapped
+> (`spawn_usd_with_clamped_joint_limits`, `reach/mdp/events.py`) to clamp the
+> source (`env_0`) joint-limit USD attributes *before* the clone/bake, using the
+> same `default ± range/2` rule so the baked limits are unchanged. See
+> [tracking log iteration 16](../../../../../../../../doc/reports/reach_optimization_tracking.md).
 
 ### Simulation Parameters
 
@@ -296,23 +368,38 @@ conda run --no-capture-output -n env_isaaclab \
 
 ### F140 grid
 
-Converged values (last 10 % of training), seed 42, 100k timesteps, runs of
-2026-07-02. Cell = **mean position error (cm) / % of steps within 5 cm**.
-Orientation is loose by design; the 7-DOF Kinovas track it best.
+Converged values (last 10 % of training), **5 seeds {0,1,2,42,123}, 100k
+timesteps**, runs of 2026-07-08. Cell = **mean position error (cm) / mean % of
+steps within 5 cm** over the 5 seeds. Orientation is loose by design (position
+task); see the pose-tracking read-out below.
 
 | Arm | Joint | IK-Rel | IK-Abs | OSC |
 |---|---|---|---|---|
-| UR5e-F140 | **1.8 / 96 %** | 2.1 / 93 % | 2.1 / 94 % | 2.1 / 93 % |
-| UR5e-Frankenstein | 3.7 / 87 % | 3.8 / 88 % | 3.8 / 87 % | 3.8 / 91 % |
-| UR10-F140 | 3.2 / 91 % | 3.2 / 88 % | 4.7 / 85 % | 3.1 / 91 % |
-| UR10-Frankenstein | 4.7 / 88 % | 4.9 / 83 % | 5.1 / 83 % | 20.1 / 58 % † |
-| Kinova-F140 | 2.9 / 88 % | 4.0 / 89 % | 5.8 / 67 % | 3.7 / 87 % |
-| Kinova-Frankenstein | 2.5 / 93 % | 2.7 / 88 % | 2.4 / 90 % | 3.0 / 90 % |
+| UR5e-F140 | 3.2 / 91 % | 2.3 / 93 % | **1.9 / 95 %** | 15.8 / 65 % ‡ |
+| UR5e-Frankenstein | 3.6 / 88 % | 3.7 / 89 % | 4.2 / 85 % | 28.0 / 51 % ‡ |
+| UR10-F140 | 3.4 / 91 % | 3.3 / 90 % | 3.7 / 90 % | 7.3 / 83 % ‡ |
+| UR10-Frankenstein | 5.7 / 83 % | 4.7 / 86 % | 5.0 / 86 % | 23.0 / 55 % ‡ |
+| Kinova-F140 | 2.7 / 90 % | 3.0 / 90 % | 4.2 / 80 % | 2.7 / 90 % |
+| Kinova-Frankenstein | 4.1 / 83 % | 2.9 / 92 % | 2.3 / 92 % | 2.6 / 91 % |
 
-† Seed-42 optimization outlier, not a controller failure: the identical config
-converges to 4.1 cm / 90 % (seed 7) and 6.5 cm / 76 % (seed 123). See the
+‡ **OSC is only seed-robust on the redundant Kinova arms.** On the 6-DOF UR arms
+it is **bimodal** — converges on some seeds, diverges (20–60 cm, collapsed
+episodes) on others; the mean hides that. The single-seed(42) grid reported these
+as passing because seed 42 happened to be a converging seed. The Kinova-OSC cells
+are tight (std ≤ 0.8 cm). Full per-seed breakdown and std: see the
 [tracking log](../../../../../../../../doc/reports/reach_optimization_tracking.md),
-iteration 15.
+**iteration 17**. Open problem: stabilise OSC on the non-redundant UR arms.
+
+**Orientation (pose-tracking).** Reading `pose_reached` (position AND orientation
+< 0.3 rad, the honest signal — `orientation_reached` alone is inflated by
+collapsed OSC episodes): real orientation tracking is a **Kinova-only,
+redundancy-scaled** phenomenon — best `Kinova-Frankenstein IK-Abs ≈ 29 %`, then
+Kinova-Frankenstein joint/ik ≈ 21 %, Kinova-F140 4–12 %. **Every UR arm (rigid and
+Frankenstein) is 0–3 %** — the tensegrity wrist does not rescue orientation there
+(P2: geometrically unreachable for 6-DOF-effective arms). OSC suppresses it even
+on the redundant arm (Kinova-Frankenstein-OSC ≈ 1 %, wrist excluded from the
+Jacobian). Iteration 16 shows a gated reward lifts this to 75 % where the
+redundancy is controller-accessible (`kinova_f140_osc`).
 
 Per-variant figures and reports are generated into
 [`figures/<variant>/`](figures/) and [`reports/<variant>/`](reports/) — e.g.

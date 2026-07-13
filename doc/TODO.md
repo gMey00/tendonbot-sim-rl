@@ -565,6 +565,119 @@ is a flat-laid, welded **ClothesNet** shirt built from `TNSC_Tshirt_Ts1_0`.
 - 🟢 **Hyperparameter sweep**: rollouts, learning rate, network depth for cloth task (higher observation complexity than cube tasks)
 - 🟢 **Domain randomisation**: add cloth parameter randomisation (stiffness ±20%) and mass randomisation once cloth is working
 
+### Reach comparison grid — optimization follow-ups (iteration 16+)
+
+Context: the 24-variant grid is settled at its **position** ceiling (23/24 pass;
+the one miss is a seed outlier). See [reach optimization tracking §Iteration 16](reports/reach_optimization_tracking.md)
+for the Kinova startup fix and the orientation-refinement study. Next steps, in
+priority order:
+
+- ✅ ~~**Step 1 — multi-seed the whole grid.**~~\
+  **DONE (2026-07-08):** 24 variants × 5 seeds {0,1,2,42,123} = 120 runs, all
+  COMPLETED. Result **overturned** the single-seed story: it did NOT turn
+  23/24→24/24 — instead it revealed **OSC is only seed-robust on the redundant
+  Kinova arms; all four UR-OSC variants are bimodal** (converge on some seeds,
+  diverge 20–60 cm on others; seed 42 was a lucky seed). Non-OSC spaces are stable.
+  README results table + [iteration 17](reports/reach_optimization_tracking.md)
+  updated with multi-seed means±std and the pose-tracking orientation read-out.
+- 🔴 **Step 1b (NEW, promoted from a footnote) — stabilise OSC on non-redundant
+  (UR) arms.** This is now the grid's real weak spot. The variable-kp /
+  partial-decoupling OSC config has no null-space regulariser on the 6-DOF UR arms
+  (null-space control is Kinova-only), so the redundancy-free task-space loop is
+  seed-fragile. Try: lower `motion_stiffness_task`, higher damping ratio, or add a
+  posture/null-space regulariser for the non-redundant case — multi-seed each
+  candidate on `ur5e_f140_osc` (the cleanest bimodal case: seeds 0/1/2 diverge,
+  42/123 converge). Until fixed, **report UR-OSC multi-seed and flag it**, or
+  restrict the OSC action-space conclusions to the Kinova arms.\
+  **Sweep 1 result (2026-07-08, job 3828799, [iteration 18](reports/reach_optimization_tracking.md)):**
+  3 configs × 5 seeds on `ur5e_f140_osc`. `fixed` and `lowstiff` alone don't help
+  (still bimodal). **`fixed_lowstiff` (fixed impedance + kp 50) is the lead: 4/5
+  seeds converge at 1.6–2.1 cm** (rescued the baseline-diverging 0/1/2!) but
+  flipped seed 42 → not a full fix; the divergence is a seed-dependent bifurcation
+  the stiffness knobs shift but don't close. Knobs are env-var overrides in
+  `osc_reach_common.py` (`REACH_OSC_IMPEDANCE`/`_STIFFNESS`/`_STIFFNESS_MIN`/
+  `_STIFFNESS_MAX`/`_DAMPING_RATIO`; defaults = settled config → baseline bit-exact).
+- ✅ ~~**Step 1b-next — attack the root cause via FK-sampled (reachable) targets.**~~\
+  **DONE (2026-07-10, job 3830573, [iter-18 FK diagnostic](reports/reach_optimization_tracking.md)):**
+  the box's unreachable gripper-down orientation was indeed the driver. With
+  FK-reachable targets (`REACH_FK_TARGETS=1`, opt-in gate in `f140_reach_common.py`):
+  (a) **UR5e joint tracks full pose at 76–89 % across all 5 seeds** (box: 0 %) —
+  P2's "no orientation on UR" was target-induced, not arm-induced; (b) **OSC
+  catastrophic divergence is eliminated** (no collapse; max 12.5 cm vs box's
+  19–27 cm). BUT OSC is still a weak full-pose controller (~10 cm/30 % vs joint's
+  3 cm/92 % on the same targets) — it needs redundancy. Net: FK targets fix
+  orientation + OSC-collapse but reframe the task to full-pose reach where
+  joint/IK dominate on non-redundant arms.
+- 🟡 **Decision (Georg/advisor): re-base the reach study to FK full-pose targets?**
+  Upside: real orientation on every arm + no OSC collapse + a stronger action-space
+  story (redundancy-gated OSC). Cost: per-arm FK isn't a shared cross-arm
+  distribution (need a reference-robot scheme for comparable position errors), the
+  FK sampler wants re-validation, and it's a research-question pivot. The box grid
+  stays as the settled position-only comparison regardless.
+- ✅ ~~**Per-robot-FK grid + wrist A/B**~~ **DONE (2026-07-10, iter 19):** purpose
+  reframed (per-robot hardening, not cross-robot; README §Purpose). UR arms: joint
+  control dominates FK full-pose (UR5e 3.2 cm/86 % pose); task-space controllers
+  mediocre (9–15 cm) but no divergence. **Kinova grid failed to learn (24–35 cm)**
+  — FK sampling spans its full envelope (no `clamp_max_range`, continuous joints)
+  unlike the URs' ±1.5 rad clamp. Wrist A/B: wrist = **capability extension**
+  (locked on wrist-requiring targets: pose 60→22 %), not redundancy help.
+- ✅ ~~**Kinova FK sampling fix + collision-filter audit**~~ **DONE (2026-07-12,
+  iter 20):** filter audited & fixed (running calibration, floor clearance,
+  vectorised, wired into FK mode) + Kinova `fk_sampling_half_range=1.5`. Full
+  grid v2 re-run (24×5): **Kinova rescued** (24–35 cm → 5.9–13.3 cm;
+  kinova_f140 joint 5.9 cm/79 %), UR replicates v1, no OSC collapse anywhere.
+- ✅ ~~**Task-space controller hardening probes**~~ **DONE (iter 20, all
+  negative-informative):** 12 s episodes and doubled IK-Rel scale are each
+  *worse* — the task-space gap on FK full-pose targets is inherent to greedy
+  DLS/OSC pathing, not a time/step-size artifact. **Hardened per-robot
+  recommendation: joint control everywhere; IK-Abs as task-space fallback.**
+- ✅ ~~**Wrist-under-OSC**~~ **CLOSED (iter 20):** damped-compliant inclusion in
+  the OSC Jacobian is stable (no iteration-15 divergence) but strictly worse
+  than exclusion (ur5e 15.1/12 % vs 9.0/40 %). The wrist's capability extension
+  is only accessible under joint/IK control.
+- ✅ ~~**Stage 0b — EMA on task-space actions**~~ **ADOPTED (2026-07-12, iter
+  21):** `REACH_TS_EMA=0.2` — pose% doubled (22→45), pos err −26 % on both
+  ur5e IK variants. IK-Abs+EMA = task-space fallback of record (5.8 cm/77 %/45 %).
+- ✅ ~~**THESIS GRID (full consistent rerun)**~~ **DONE (2026-07-13, iter 22):**
+  24×5 + wrist A/B, one locked config (FK fixed sampler, Kinova sector 1.0
+  [probe: pose 22→55-67 %], EMA α=0.2 everywhere). Kinova transformed (all 8
+  variants 2.9–6.0 cm; kinova_f140_osc = tightest task-space cell 2.9 cm/91 %/32 %);
+  joint control wins overall (decisive on URs, marginal on Kinova); UR-OSC
+  stays not-recommended. Wrist A/B on fixed sampler: capability extension
+  confirmed (57 vs 35 % pose). **Figures/reports regenerated, action_spaces.md
+  + README rewritten, 132 runs curated into `logs/skrl/theses_logs/reach/grid`
+  (+`wrist_ab`), visual-verification package in
+  `need_visual_verification/reach/thesis_fk/` (7 video-ready checkpoints +
+  play-command checklist).** Remaining human steps: Georg's visual pass +
+  videos; commit the branch.
+- 🟢 **Stage 1 (residual task-space control), deferred — payoff now marginal:**
+  EMA alone nearly meets the ≤5 cm adoption threshold (5.8 cm); build residual
+  only if a downstream task actually needs a sub-5 cm task-space controller.
+- 🟢 **Optional follow-up:** Kinova pose % (22 % joint) trails the URs (86 %) —
+  its ±1.5 rad sector around the folded default yields a harder orientation
+  distribution; tune the sector (or per-joint ranges) if Kinova full-pose
+  quality matters downstream.
+- 🟢 **Sweep tooling bug (still open):** run-dir name is timestamp-to-the-second +
+  seed, so same-second same-seed array tasks collide (bit the OSC sweep, 2/15). Add
+  the config tag / `SLURM_ARRAY_TASK_ID` to the run name for multi-config sweeps.
+- 🟡 **Step 2 — promote orientation refinement to an opt-in "quality tier."**\
+  Position is saturated; orientation is the untapped axis and is recoverable **only
+  where redundancy is controller-accessible** (iteration 16: `kinova_f140_osc`
+  9 %→75 % pose for +0.3 cm). Enable `orientation_refine_gated` (via
+  `REACH_ORIENT_REFINE_WEIGHT`) for **Kinova-OSC and Kinova/Frankenstein
+  IK-Abs/joint**. NOT for: rigid UR-F140 (0 % pose, geometrically unreachable),
+  UR-Frankenstein (multi-seed confirms wrist doesn't rescue it, ~0 % pose),
+  `*_frankenstein_osc` (wrist excluded from Jacobian → ~1 % pose), or the
+  **UR-OSC variants until step 1b stabilises them**. **Tune the weight per action
+  space** (OSC≈0.5, IK-Abs≈0.2 from the iteration-16 sweep) via a {0.2, 0.35, 0.5}
+  × 3-seed sweep. Keep the position-only baseline reproducible (term off by default).
+- 🟢 **Step 3 — targeted position cleanup for the IK-Abs space.**\
+  IK-Abs is the weakest space and `kinova_f140_ikabs` (5.8 cm/67 %, jerky) is the
+  grid's worst. Controller tuning, not reward: small sweep of the IK-Abs
+  differential-IK damping / action-EMA / `initial_log_std` for that space only.
+- 🟢 **Do NOT** chase orientation on the rigid 6-DOF UR arms (P2: geometrically
+  unreachable) or re-include the wrist in the OSC Jacobian (iteration 15: diverges).
+
 ---
 
 ## Tooling / Infrastructure
