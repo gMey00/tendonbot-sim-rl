@@ -1,3 +1,8 @@
 # Cloth/pose state banks are large regenerable binaries — LFS (GitLab hard-rejects >100 MB plain blobs;
 # the Task-1 terminal bank and region-biased hanging banks will exceed it).
 res/**/*.pt filter=lfs diff=lfs merge=lfs -text
+renders/**/*.webm filter=lfs diff=lfs merge=lfs -text
+renders/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
+renders/**/*.png filter=lfs diff=lfs merge=lfs -text
+renders/**/*.mov filter=lfs diff=lfs merge=lfs -text
+renders/**/*.gif filter=lfs diff=lfs merge=lfs -text
