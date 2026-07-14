@@ -8,7 +8,7 @@ share the same MDP (rewards, terminations, curriculum, sim parameters):
 
 - **F140 comparison grid** — 6 industrial arms × 4 action spaces
   (**24 variants**), built for the action-space study
-  ([research brief](../../../../../../../../doc/reports/RESEARCH_BRIEF_action_spaces.md)).
+  ([research brief](../../../../../../../../doc/reports/tmp/RESEARCH_BRIEF_action_spaces.md)).
   Targets are a uniform position box; orientation is intentionally loose.
 - **Tensegrity family** — the original 5-DOF tensegrity manipulator (PD,
   Tendon, Physical Tendon, Physical Hierarchical). Targets are FK-sampled
@@ -41,7 +41,7 @@ some robot's unreachable / singular region, which *manufactures* the very breaki
 points we want to eliminate. The uniform-box grid below is retained as a settled
 position-only comparison; the FK-target work (tracking log iterations 17–20) is
 the controller-hardening direction. See the
-[tracking log](../../../../../../../../doc/reports/reach_optimization_tracking.md)
+[tracking log](../../../../../../../../doc/reports/tracking/reach_optimization_tracking.md)
 for the multi-seed evidence that the box's fixed (unreachable) orientation was the
 root cause of both the OSC-on-UR instability and the "0 % orientation on UR arms".
 
@@ -186,7 +186,7 @@ sampling (see tracking log, iteration 13).
 | this README | variant matrix, shared MDP, training workflow, results |
 | [action_spaces.md](action_spaces.md) | the 4 controllers of the grid: joint EMA, IK-Rel/Abs, OSC (wrist handling, inertial decoupling), per-space PPO settings, fairness rules |
 | [physical_elbow_spec.md](config/tensegrity_tendon/physical_elbow_spec.md) | tensegrity physical-elbow kinematics and actuation |
-| [optimization tracking log](../../../../../../../../doc/reports/reach_optimization_tracking.md) | full change history (iterations 0–15) with root-cause analyses |
+| [optimization tracking log](../../../../../../../../doc/reports/tracking/reach_optimization_tracking.md) | full change history (iterations 0–15) with root-cause analyses |
 | [reach task handoff](../../../../../../../../doc/reach_task_handoff.md) | mission/state snapshot of the grid study (2026-07-01) |
 | [Alex quickstart](../../../../../../../../doc/Alex_cluster/alex_quickstart.md) | cluster workflow (Slurm, rendering caveats) |
 
@@ -299,7 +299,7 @@ limits (Kinova continuous joints, UR ±2π joints) with finite ranges.
 > (`spawn_usd_with_clamped_joint_limits`, `reach/mdp/events.py`) to clamp the
 > source (`env_0`) joint-limit USD attributes *before* the clone/bake, using the
 > same `default ± range/2` rule so the baked limits are unchanged. See
-> [tracking log iteration 16](../../../../../../../../doc/reports/reach_optimization_tracking.md).
+> [tracking log iteration 16](../../../../../../../../doc/reports/tracking/reach_optimization_tracking.md).
 
 ### Simulation Parameters
 
@@ -387,7 +387,7 @@ it is **bimodal** — converges on some seeds, diverges (20–60 cm, collapsed
 episodes) on others; the mean hides that. The single-seed(42) grid reported these
 as passing because seed 42 happened to be a converging seed. The Kinova-OSC cells
 are tight (std ≤ 0.8 cm). Full per-seed breakdown and std: see the
-[tracking log](../../../../../../../../doc/reports/reach_optimization_tracking.md),
+[tracking log](../../../../../../../../doc/reports/tracking/reach_optimization_tracking.md),
 **iteration 17**. Open problem: stabilise OSC on the non-redundant UR arms.
 
 **Orientation (pose-tracking).** Reading `pose_reached` (position AND orientation

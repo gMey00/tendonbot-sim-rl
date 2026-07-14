@@ -106,14 +106,14 @@ during the cube's fall into the drum:
 
 `green_in_target` stays the dominant terminal goal at weight 100.
 `release` stays at weight 25. See
-[mdp/rewards.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/mdp/rewards.py)
+[mdp/rewards.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/mdp/rewards.py)
 and
-[place_env_cfg.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/place_env_cfg.py).
+[place_env_cfg.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/place_env_cfg.py).
 
 ### 1.5 Evaluation harness
 
 The place evaluation harness
-[scripts/skrl/evaluate_place.py](../../src/tensegrity_pick/scripts/skrl/evaluate_place.py)
+[scripts/skrl/evaluate_place.py](../../../src/tensegrity_pick/scripts/skrl/evaluate_place.py)
 mirrors `evaluate_reach.py`: it loads the env via the Isaac Lab Hydra path
 (for `checkpoint`) or directly via `parse_env_cfg` (for `zero`/`random`),
 runs the agent for 10 episodes per parallel env, and writes aggregated
@@ -184,7 +184,7 @@ is selected on best reward rather than the final-step value.
 ## 3. Figures
 
 ### 3.1 PPO per-seed place success
-![PPO per-seed place success](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/figures/aggregate/place_ppo_per_seed.png)
+![PPO per-seed place success](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/figures/aggregate/place_ppo_per_seed.png)
 
 Per-seed held-out success for the trained policy (5 dots per variant,
 black bar = seed mean). PD and sim-tendon show the split between
@@ -192,14 +192,14 @@ solved seeds (top) and collapsed seeds (bottom). Physical tendon is a
 tight cluster near 1.0.
 
 ### 3.2 Baseline success-rate comparison
-![Baseline place success](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/figures/aggregate/place_baseline_comparison.png)
+![Baseline place success](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/figures/aggregate/place_baseline_comparison.png)
 
 Bars are mean ± std across the 5 evaluation seeds. The zero and random
 baselines are at 0 % success for every variant — the place task admits no
 "accidental" success, unlike reach (where random reached 11–15 %).
 
 ### 3.3 PPO per-seed grasp success
-![PPO per-seed grasp success](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/figures/aggregate/place_ppo_per_seed_grasp.png)
+![PPO per-seed grasp success](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/figures/aggregate/place_ppo_per_seed_grasp.png)
 
 The grasp counterpart of §3.1. In contrast to the placement scatter, all
 five seeds of all three variants sit in a tight cluster at ≈ 1.0
@@ -210,7 +210,7 @@ collapse on PD and sim tendon is **entirely a release/placement failure by means
 not a grasping failure** (§5).
 
 ### 3.4 Baseline grasp-rate comparison
-![Baseline grasp success](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/figures/aggregate/place_baseline_comparison_grasp.png)
+![Baseline grasp success](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/figures/aggregate/place_baseline_comparison_grasp.png)
 
 The grasp counterpart of §3.2. The PPO bars are at ≈ 1.0 for every
 variant, while the baselines are at ≈ 0 (zero never closes the gripper,
@@ -506,24 +506,24 @@ release height.
 ### Completed in this iteration
 
 - **Place evaluation harness written and validated** —
-  [evaluate_place.py](../../src/tensegrity_pick/scripts/skrl/evaluate_place.py),
+  [evaluate_place.py](../../../src/tensegrity_pick/scripts/skrl/evaluate_place.py),
   the place analogue of `evaluate_reach.py`, with the inference-mode fix
   (§9.2) and latch-snapshot handling (§9.1). Smoke-tested on tendon seed 3
   (1.000 success over 150 episodes).
 - **Full 5-seed × 3-variant × 3-agent evaluation** — 45 cells, 500
   episodes each, driven by
-  [run_place_eval_matrix.sh](../../src/tensegrity_pick/scripts/training/run_place_eval_matrix.sh).
+  [run_place_eval_matrix.sh](../../../src/tensegrity_pick/scripts/training/run_place_eval_matrix.sh).
 - **Aggregation + figures** —
-  [plot_place_eval_results.py](../../src/tensegrity_pick/scripts/plotting/plot_place_eval_results.py).
+  [plot_place_eval_results.py](../../../src/tensegrity_pick/scripts/plotting/plot_place_eval_results.py).
 
 ---
 
 ## 11. Reproducibility — file pointers
 
 ### Code
-- [src/tensegrity_pick/scripts/skrl/evaluate_place.py](../../src/tensegrity_pick/scripts/skrl/evaluate_place.py)
-- [src/tensegrity_pick/scripts/training/run_place_eval_matrix.sh](../../src/tensegrity_pick/scripts/training/run_place_eval_matrix.sh)
-- [src/tensegrity_pick/scripts/plotting/plot_place_eval_results.py](../../src/tensegrity_pick/scripts/plotting/plot_place_eval_results.py)
+- [src/tensegrity_pick/scripts/skrl/evaluate_place.py](../../../src/tensegrity_pick/scripts/skrl/evaluate_place.py)
+- [src/tensegrity_pick/scripts/training/run_place_eval_matrix.sh](../../../src/tensegrity_pick/scripts/training/run_place_eval_matrix.sh)
+- [src/tensegrity_pick/scripts/plotting/plot_place_eval_results.py](../../../src/tensegrity_pick/scripts/plotting/plot_place_eval_results.py)
 
 ### Data
 - Training runs (git-tracked): `logs/skrl/theses_logs/cube_place/{tensegrity,tensegrity_tendon,tensegrity_physical_tendon}/2026-06-22_*_ppo_torch_seed{0..4}/` — the 15 evaluated runs, each with all 61 checkpoints, the TensorBoard event file and `params/`. Copied here from the gitignored working tree `logs/skrl/cube_place/...` so they are versioned with the report.
@@ -531,7 +531,7 @@ release height.
 - Eval batch log: `/home/woody/iwfa/iwfa131h/slurm_logs/Place-Eval_<jobid>.out`
 
 ### Figures
-- [place_ppo_per_seed.png](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/figures/aggregate/place_ppo_per_seed.png)
-- [place_baseline_comparison.png](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/figures/aggregate/place_baseline_comparison.png)
-- [place_ppo_per_seed_grasp.png](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/figures/aggregate/place_ppo_per_seed_grasp.png)
-- [place_baseline_comparison_grasp.png](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/figures/aggregate/place_baseline_comparison_grasp.png)
+- [place_ppo_per_seed.png](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/figures/aggregate/place_ppo_per_seed.png)
+- [place_baseline_comparison.png](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/figures/aggregate/place_baseline_comparison.png)
+- [place_ppo_per_seed_grasp.png](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/figures/aggregate/place_ppo_per_seed_grasp.png)
+- [place_baseline_comparison_grasp.png](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_place/figures/aggregate/place_baseline_comparison_grasp.png)

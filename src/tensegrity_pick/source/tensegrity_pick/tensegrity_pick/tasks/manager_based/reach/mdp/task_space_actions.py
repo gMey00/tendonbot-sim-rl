@@ -1,7 +1,7 @@
 """Hardened task-space action terms (iteration 21).
 
 Implements the research report's Rank-1 fixes for the task-space controllers'
-pose errors (`doc/reports/RESEARCH_REPORT_taskspace_pose_error.md`):
+pose errors (`doc/reports/tmp/RESEARCH_REPORT_taskspace_pose_error.md`):
 
 1. **6-D continuous rotation action for absolute differential IK** —
    Isaac Lab's ``DifferentialInverseKinematicsAction`` in absolute mode consumes

@@ -35,5 +35,5 @@ pytest test/ -v
 ## Related
 
 - [Robot configs under test](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/robots/) — `ArticulationCfg` definitions and `TendonEffortAction`
-- [Step response script](../src/tensegrity_pick/scripts/step_response_test.py) — PID validation tested by `test_step_response.py`
+- [Step response script](../src/tensegrity_pick/scripts/diagnostics/step_response_test.py) — PID validation tested by `test_step_response.py`
 - [Source code & tasks](../src/tensegrity_pick/README.md) — extension overview

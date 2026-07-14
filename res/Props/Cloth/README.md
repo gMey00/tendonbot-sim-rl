@@ -41,10 +41,9 @@ larger than ½ edge make spring neighbours overlap and the solver injects energy
 The other `TNSC_Tshirt_*` directories are the candidate source pool — only
 `Ts1_0` has been turned into a USD so far.
 
-The authoritative cloth research is now
-[`doc/reports/cloth_sim_research/RESEARCH_isaaclab_cloth.md`](../../../doc/reports/cloth_sim_research/RESEARCH_isaaclab_cloth.md);
-`cloth_simulation_isaacsim_research.md` here is the earlier (pre-ClothesNet)
-backend comparison, kept for history.
+The cloth backend research (backend comparison and parameter research) lives in
+[`cloth_simulation_isaacsim_research.md`](cloth_simulation_isaacsim_research.md)
+here.
 
 > **Note:** the welded ClothesNet assets were produced by standalone build
 > scripts (vertex welding + offset-aware surface-deformable authoring) that are
@@ -112,8 +111,6 @@ Enables `/physics/enableDeformableBeta` automatically (needed for XPBD).
 | **Newton VBD** | Experimental | — | Not yet in Isaac Lab; best future option |
 
 See [cloth_simulation_isaacsim_research.md](cloth_simulation_isaacsim_research.md)
-and the authoritative
-[RESEARCH_isaaclab_cloth.md](../../../doc/reports/cloth_sim_research/RESEARCH_isaaclab_cloth.md)
 for the detailed backend comparison and parameter research.
 
 ## Scripts Reference

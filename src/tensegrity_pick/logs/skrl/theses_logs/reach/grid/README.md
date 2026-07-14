@@ -25,6 +25,6 @@ REACH_FK_TARGETS=1 REACH_TS_EMA=0.2 REACH_FK_HALF_RANGE=1.0 \
 (`REACH_FK_HALF_RANGE` only affects the Kinova variants; harmless elsewhere.
 `REACH_TS_EMA` only affects task-space variants.)
 
-Results tables & analysis: `doc/reports/reach_optimization_tracking.md`
+Results tables & analysis: `doc/reports/tracking/reach_optimization_tracking.md`
 iterations 17–22 (iteration 22 = this dataset); summary in the reach README
 and `action_spaces.md`.

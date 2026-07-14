@@ -14,7 +14,7 @@ requirements.**
 ## 1. The task
 
 Goal-conditioned bin placement (TossingBot-style formulation, see
-`doc/reports/RESEARCH_cloth_sorting_pipeline.md` §4): the second robot holds the classified
+`doc/reports/tmp/RESEARCH_cloth_sorting_pipeline.md` §4): the second robot holds the classified
 shirt and must **drop/place it into the commanded drum** (3 drums at `(0.15, 1.0)`,
 `(1.35, 1.0)`, `(0.75, 1.6)`; the per-episode target bin is resampled uniformly so "nearest bin"
 ≠ "correct bin" and the policy cannot ignore the goal — the machinery exists in the stub).
@@ -63,7 +63,7 @@ Recommended reset recipe (all pieces exist):
 Same decision and reasoning as the shirt_present agent (keep the two tasks comparable):
 
 - **Robot: UR5e-F140** (`Template-Shirt-Distribute-UR5e-F140-v0`) — best reach-grid variant
-  (1.8 cm / 96 %, `doc/reports/reach_optimization_tracking.md` Iter. 14–15), already mounted at
+  (1.8 cm / 96 %, `doc/reports/tracking/reach_optimization_tracking.md` Iter. 14–15), already mounted at
   the second-robot pedestal `(0.75, 1.0, 0.75)` in the shared scene. Fallback: `Kinova-F140`.
 - **Action space: joint-space** (reach winner, 3.1 cm / 91 %). Stub uses
   `JointPositionActionCfg` (delta, scale 0.5) — proven on the cloth tasks; the reach winner was
@@ -93,7 +93,7 @@ Shared: `.../tasks/manager_based/shared/` — **read-only for you** (§8).
 - **Port from `shirt_place`** (the validated drop-into-drum task — your closest relative):
   release-event one-shot with quality grading, anti-hover fade, clearance shaping,
   `placed_and_settled`, belt penalties; `shirt_place/mdp/rewards.py` +
-  `doc/reports/shirt_place_optimization_tracking.md` document why each exists.
+  `doc/reports/tracking/shirt_place_optimization_tracking.md` document why each exists.
 - Reference for env bookkeeping style: `shirt_pick/shirt_pick_env.py` (one-shot events consumed
   by the reward manager next step, metrics logged in `_reset_idx`, windowed latches).
 
@@ -142,7 +142,7 @@ Shared: `.../tasks/manager_based/shared/` — **read-only for you** (§8).
 
 ## 7. Documentation & reporting (repo style — mandatory)
 
-- **`doc/reports/shirt_distribute_optimization_tracking.md`** (stub exists): dated iteration
+- **`doc/reports/tracking/shirt_distribute_optimization_tracking.md`** (stub exists): dated iteration
   entries — goal, changes, experiments (including losers, kept for the record), results tables,
   root-cause analyses. Update as you go.
 - **`shirt_distribute/README.md`** (stub exists): task definition, MDP tables, decisions with

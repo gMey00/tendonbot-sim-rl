@@ -6,7 +6,7 @@ You are a coding agent with full access to this repo, running on the **FAPS serv
 sessions have priority; your GPU needs are smoke-tests only). You execute roadmap
 stages **S4 + S5** of
 [doc/pipeline_stage2_execution_plan.md](pipeline_stage2_execution_plan.md), based on
-[doc/reports/RESEARCH_REPORT_shirt_sorting_stage2.md](reports/RESEARCH_REPORT_shirt_sorting_stage2.md)
+[doc/reports/tmp/RESEARCH_REPORT_shirt_sorting_stage2.md](reports/tmp/RESEARCH_REPORT_shirt_sorting_stage2.md)
 (§2-Q3, §2-Q5, §3 Stages 4/5). **You are the ONLY agent allowed to edit
 `tasks/manager_based/shared/**`** — three task agents (T1/T2/T3) depend on your
 deliverables and rebase on them; ship early, keep everything opt-in and

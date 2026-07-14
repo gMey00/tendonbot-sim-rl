@@ -1,7 +1,7 @@
 """Reward / observation / termination functions for the shirt_distribute task.
 
 Ports the release-into-drum design validated in shirt_place
-(``shirt_place/mdp/rewards.py`` + ``doc/reports/shirt_place_optimization_tracking.md``),
+(``shirt_place/mdp/rewards.py`` + ``doc/reports/tracking/shirt_place_optimization_tracking.md``),
 retargeted to the goal-conditioned COMMANDED bin (``env.target_bin_pos_w``):
 
   1. Carry:    tanh XY proximity of the grasp point to the commanded bin,

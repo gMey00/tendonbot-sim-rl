@@ -7,7 +7,7 @@ interactive sessions have priority). Heavy training moves to the Alex cluster
 (`doc/Alex_cluster/alex_quickstart.md`) in Phase 2. You execute roadmap stages
 **S0(T1-part) → S2** of
 [doc/pipeline_stage2_execution_plan.md](pipeline_stage2_execution_plan.md), based on
-[doc/reports/RESEARCH_REPORT_shirt_sorting_stage2.md](reports/RESEARCH_REPORT_shirt_sorting_stage2.md)
+[doc/reports/tmp/RESEARCH_REPORT_shirt_sorting_stage2.md](reports/tmp/RESEARCH_REPORT_shirt_sorting_stage2.md)
 (§2-Q1 option c, §3 Stages 0/2). Siblings: T2 (shirt_present), T3
 (shirt_distribute), INF (shared infra) — coordination rules in §8.
 
@@ -18,7 +18,7 @@ interactive sessions have priority). Heavy training moves to the Alex cluster
   checkpoints/agent_12000.pt` (low-drop alternative `agent_8000`: present 0.979,
   drop 0.01–0.02); known blemish: **5–7 % post-latch grasp slips**. Task package:
   `src/tensegrity_pick/source/.../tasks/manager_based/shirt_pick/`; tracking:
-  `doc/reports/shirt_pick_optimization_tracking.md`.
+  `doc/reports/tracking/shirt_pick_optimization_tracking.md`.
 - The pick heuristic is the **highest point** of the crumpled shirt —
   depth-camera-trivial and literature-standard; semantic keypoints are UNRELIABLE
   on crumpled cloth (research report §2-Q1) — keep it as the bootstrap.
@@ -105,7 +105,7 @@ any Slurm submission.
 
 ## 6. Documentation & reporting
 
-- `doc/reports/shirt_pick_optimization_tracking.md`: dated iterations, losers
+- `doc/reports/tracking/shirt_pick_optimization_tracking.md`: dated iterations, losers
   kept, measured numbers only.
 - `shirt_pick/README.md`: MDP tables when the MDP changes.
 - Tick `doc/TODO.md` (Pipeline Stage 2 → S0/S2).

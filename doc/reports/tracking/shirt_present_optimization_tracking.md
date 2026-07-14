@@ -9,9 +9,9 @@
 anchor at the presentation pose (idealized task-1 terminal state); zero/random agents pass
 for both robot variants.  The learning arm cannot yet grasp (single attachment slot).
 No training runs yet.  Pipeline context:
-[RESEARCH_cloth_sorting_pipeline.md](RESEARCH_cloth_sorting_pipeline.md) ·
-staged plan in [doc/TODO.md](../TODO.md) · task docs in the
-[shirt_present README](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shirt_present/README.md).
+[RESEARCH_cloth_sorting_pipeline.md](../tmp/RESEARCH_cloth_sorting_pipeline.md) ·
+staged plan in [doc/TODO.md](../../TODO.md) · task docs in the
+[shirt_present README](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shirt_present/README.md).
 
 ---
 
@@ -84,7 +84,7 @@ independent attachment slots (slot 0 = hand, slot 1 = holder anchor; this env
 now anchors on slot 1), and the two-attachment stretch test is **stable
 through tautness ratio 1.15** (steady-state max particle speed ≤ 0.7 m/s,
 bbox +5 %, both grasps intact, no NaN) — no handover fallback needed.  Full
-results: [cloth_stage0_physics_derisk.md](cloth_stage0_physics_derisk.md) §2;
+results: [cloth_stage0_physics_derisk.md](../cloth_stage0_physics_derisk.md) §2;
 script: `scripts/model_validation/test_two_attachments.py`.  The shirt_place
 regression stayed 5/5 after the refactor.  Note for the future MDP: the
 one-step attach transient (~2.8 m/s particle snap) decays within ~5 steps —
@@ -92,7 +92,7 @@ ignore the first steps after a grasp in reward/termination predicates.
 
 ## Planned Phase 1: Bank Reset + Hand Grasp + Coverage Reward
 
-Per the staged plan ([doc/TODO.md](../TODO.md)):
+Per the staged plan ([doc/TODO.md](../../TODO.md)):
 1. ~~Multi-slot attachments + stretch validation~~ — **DONE** (see update above).
 2. Reset from the shirt_pick terminal-state bank
    (`ShirtPickEnv.snapshot_terminal_states` provides the capture side).
@@ -368,7 +368,7 @@ After Georg's visual inspection of the run-6 checkpoint (findings in
 `logs/skrl/need_visual_verification/shirt_present/findings.md`), the naive
 lowest-point second grasp was replaced with the **hem-corner ↔ hem-corner,
 horizontal-pull** geometry validated by the FAPS heuristics study
-([present_heuristics_study.md](present_heuristics_study.md): scripted hem↔hem
+([present_heuristics_study.md](../present_heuristics_study.md): scripted hem↔hem
 median camera-plane coverage **0.820** @ ratio 1.05 vs **0.679** for the naive
 lowest-point rule, +0.14).  Six visual-inspection findings were addressed in
 the same pass.

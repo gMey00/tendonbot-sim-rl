@@ -1,8 +1,7 @@
 """Per-cube reward machine for the cube-sorting task (Iteration R4).
 
 Implements the Mealy automaton ``{FREE, HELD, PLACED, LOST}`` and the
-single per-step ``per_cube_reward`` function described in
-:doc:`doc/reports/cube_sort_research/cube_sort_mdp_redesign_consolidated.md` §B.
+single per-step ``per_cube_reward`` function.
 
 This module replaces the env-level ``was_grasped`` latch (which was a
 non-Markovian, non-potential reward transformation that produced the

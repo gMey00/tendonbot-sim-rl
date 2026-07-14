@@ -20,8 +20,6 @@ Lifecycle (both backends):
 
 The RL task keeps a kinematic rigid-body proxy (``shirt_proxy``) synced to the cloth
 centroid, so reward/observation functions work unchanged for either backend.
-
-See ``doc/reports/cloth_sim_research/RESEARCH_isaaclab_cloth.md``.
 """
 
 from __future__ import annotations
@@ -91,8 +89,7 @@ class GraspMode(Enum):
 
 @dataclass
 class PBDClothParams:
-    """PBD particle-cloth parameters, per the Isaac Sim 5.1 cloth research
-    (``doc/reports/cloth_sim_research/RESEARCH_isaaclab_cloth.md``).
+    """PBD particle-cloth parameters, per the Isaac Sim 5.1 cloth research.
 
     The decisive correction over every earlier attempt: **the collision offsets
     must track the mesh particle spacing.**  NVIDIA's particle-cloth docs:

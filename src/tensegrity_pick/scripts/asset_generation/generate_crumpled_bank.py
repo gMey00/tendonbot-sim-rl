@@ -1,7 +1,7 @@
 """Generate the cached crumpled-shirt state bank (Task-1 initial states).
 
 Implements the SoftGym-style drop-and-settle protocol (the field standard for
-crumpled cloth initial states, see doc/reports/RESEARCH_cloth_sorting_pipeline.md §1)
+crumpled cloth initial states, see doc/reports/tmp/RESEARCH_cloth_sorting_pipeline.md §1)
 in parallel envs:
 
   per round:

@@ -2,7 +2,7 @@
 
 This report documents the changes made to get the *physical* (body-force,
 antiparallelogram) tendon variant of the reach task to a trainable state, per
-the recommendations in [reach_evaluation_findings.md](reach_evaluation_findings.md)
+the recommendations in [reach_evaluation_findings.md](task_evaluations/reach_evaluation_findings.md)
 (§9) and the project-thesis discussion (§6, "the physical tendon variant calls
 primarily for an intermediate actuation layer").
 
@@ -296,23 +296,13 @@ the script docstring documents this.
   implication #3, the investment went into the actuator model and
   observations, not reward tuning.
 - **USD assets** — the linkage joint limits and the closure joint were
-  verified correct; no rebuild needed.
-
-## 6 Next steps
-
-1. Retrain both physical variants (5 seeds each) with
-   `run_reach_pipeline.sh`-style seed aggregation; compare against the 31.4 %
-   baseline and the ~98 % sim-tendon reference.
-2. Re-run the physical step-response validation with the 80 N wrist
-   saturation.
-3. Sensitivity sweep over the cable-stop parameters if training shows
-   stiffness-related instability.
+  verified correct. No rebuild needed.
 
 ---
 
 # Addendum — 2026-07-10: GUI review findings, controller retune, PhysX forensics
 
-The user's GUI review of the seed-0 policies and the first scripted heuristic
+GUI review of the seed-0 policies and the first scripted heuristic
 ("oscillates around the target, sometimes does not approach at all, occasional
 linkage breaks; heuristic worse than RL") triggered a second, deeper
 investigation.  Chronology and outcomes:

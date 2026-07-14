@@ -34,7 +34,7 @@ The hem-to-hem redesign does not beat it in-scene: the study's *winning* hem↔h
 grasp needs a high second hem corner RL cannot learn to grasp, and the
 *learnable* accessible-corner version's coverage (0.64) is below the naive
 stretch's (0.68).  Full write-up:
-[tracking report Phase 2](../../../../../../doc/reports/shirt_present_optimization_tracking.md).
+[tracking report Phase 2](../../../../../../doc/reports/tracking/shirt_present_optimization_tracking.md).
 
 ## How to play
 

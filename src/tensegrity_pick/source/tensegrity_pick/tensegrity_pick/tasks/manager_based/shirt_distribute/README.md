@@ -18,7 +18,7 @@ and the policy cannot ignore the goal.
 > rewards are the shirt_place release design retargeted to the commanded bin.
 > Phase 1 was blocked by a diagnosed **goal-conditioned mode collapse** (per-seed
 > 2-of-3-bin specialisation); a literature review
-> ([research report](../../../../../../../../doc/reports/RESEARCH_REPORT_goal_conditioned_mode_collapse))
+> ([research report](../../../../../../../../doc/reports/tmp/RESEARCH_REPORT_goal_conditioned_mode_collapse))
 > traced it to cross-goal critic interference under an aggregate return
 > normalizer. Three rounds of the report's levers — **per-goal value/advantage
 > normalization + multi-head critic + goal one-hot** (Phase 2), difficulty-
@@ -30,7 +30,7 @@ and the policy cannot ignore the goal.
 > ceiling (the scripted baseline itself tops out at 0.88), a **task-side**
 > refinement (e.g. a TossingBot throw for the far drum), not a learning one.
 > Full analysis in the
-> [optimization tracking](../../../../../../../../doc/reports/shirt_distribute_optimization_tracking.md)
+> [optimization tracking](../../../../../../../../doc/reports/tracking/shirt_distribute_optimization_tracking.md)
 > (Phases 2 / 2b / 2c).
 
 ## Results (UR5e-F140)
@@ -220,7 +220,7 @@ Same event set as shirt_pick (conveyor collider swap, cloth prestartup,
 scene/arm/gripper reset); the env's `_reset_cloth` then overrides the arm with
 a sampled holding pose, forces the gripper closed and restores a hanging-bank
 state at the recorded fingertip (slot 0) — see the initial-state section of
-the [optimization tracking](../../../../../../../../doc/reports/shirt_distribute_optimization_tracking.md).
+the [optimization tracking](../../../../../../../../doc/reports/tracking/shirt_distribute_optimization_tracking.md).
 
 ## Simulation Parameters
 
@@ -268,8 +268,8 @@ python scripts/skrl/evaluate_shirt_distribute.py --headless \
 
 ## Related
 
-- [Optimization tracking](../../../../../../../../doc/reports/shirt_distribute_optimization_tracking.md)
-- [Research report (pipeline plan)](../../../../../../../../doc/reports/RESEARCH_cloth_sorting_pipeline.md)
+- [Optimization tracking](../../../../../../../../doc/reports/tracking/shirt_distribute_optimization_tracking.md)
+- [Research report (pipeline plan)](../../../../../../../../doc/reports/tmp/RESEARCH_cloth_sorting_pipeline.md)
 - [shirt_present](../shirt_present/README.md) — pipeline task 2 (produces this task's initial states)
 - [shirt_place](../shirt_place/README.md) — the validated release-into-drum reference (reward design donor)
 - [shirt_sort](../shirt_sort/README.md) — legacy template, superseded by this task

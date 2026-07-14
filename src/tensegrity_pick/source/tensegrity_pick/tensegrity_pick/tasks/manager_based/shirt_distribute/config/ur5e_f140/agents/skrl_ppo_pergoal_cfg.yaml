@@ -3,7 +3,7 @@ seed: 42
 # ============================================================================
 #  Per-goal PPO — goal-conditioned mode-collapse fix (research report §C #1)
 # ============================================================================
-#  doc/reports/RESEARCH_REPORT_goal_conditioned_mode_collapse
+#  doc/reports/tmp/RESEARCH_REPORT_goal_conditioned_mode_collapse
 #
 #  Baseline PPO (skrl_ppo_cfg.yaml) collapses to 2-of-3 bins per seed: the
 #  shared critic + single aggregate return normalizer drives the hardest-so-far

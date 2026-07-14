@@ -16,7 +16,7 @@ condition-assessment cameras (task 2) take over.
 > Stage-0 physics de-risk closed —
 > see [cloth_stage0_physics_derisk.md](../../../../../../../../doc/reports/cloth_stage0_physics_derisk.md);
 > full run log in the
-> [optimization tracking](../../../../../../../../doc/reports/shirt_pick_optimization_tracking.md).
+> [optimization tracking](../../../../../../../../doc/reports/tracking/shirt_pick_optimization_tracking.md).
 
 ## Table of Contents
 
@@ -44,7 +44,7 @@ it for inspection:
 
 1. **Reach** the shirt lying on the conveyor belt.
 2. **Grasp** it at its highest point (the canonical, depth-camera-trivial
-   pick per the [research report](../../../../../../../../doc/reports/RESEARCH_cloth_sorting_pipeline.md) §2).
+   pick per the [research report](../../../../../../../../doc/reports/tmp/RESEARCH_cloth_sorting_pipeline.md) §2).
 3. **Lift** it clear of the belt.
 4. **Present** it at the presentation pose `PRESENTATION_POS = (0.15, 0.90, 1.60)`
    — the Project-Thesis workspace-analysis pose, probe-verified reachable
@@ -295,7 +295,7 @@ Trade-off: agent_12000 slips the grasp late in 5–7 % of episodes (after the
 present latch); `agent_8000` is the low-drop alternative if the Task-1→2
 handoff prefers held-at-end robustness.  Phase-2 history (interim pose,
 v1 bank, 0.85 present; rejected fine-tune) is preserved in the
-[tracking report](../../../../../../../../doc/reports/shirt_pick_optimization_tracking.md).
+[tracking report](../../../../../../../../doc/reports/tracking/shirt_pick_optimization_tracking.md).
 
 Figures — run 1 in `figures/tensegrity/`, continuation below:
 
@@ -351,8 +351,8 @@ caches); warm starts ~3 min.  Use `PYTHONUNBUFFERED=1` when redirecting logs.
 
 ## Related
 
-- [Optimization tracking](../../../../../../../../doc/reports/shirt_pick_optimization_tracking.md)
-- [Research report (pipeline plan)](../../../../../../../../doc/reports/RESEARCH_cloth_sorting_pipeline.md)
+- [Optimization tracking](../../../../../../../../doc/reports/tracking/shirt_pick_optimization_tracking.md)
+- [Research report (pipeline plan)](../../../../../../../../doc/reports/tmp/RESEARCH_cloth_sorting_pipeline.md)
 - [shirt_place](../shirt_place/README.md) — the validated predecessor task (grasp mechanics, cloth model, PPO determinism profile)
 - [shirt_present](../shirt_present/README.md) — pipeline task 2 (consumes this task's terminal states)
 - [shirt_distribute](../shirt_distribute/README.md) — pipeline task 3

@@ -1,7 +1,6 @@
 """Per-cube grasp predicate for the cube-sorting task (Iteration R2).
 
-Implements the multi-conjunct ``is_holding`` predicate from
-:doc:`doc/reports/cube_sort_research/cube_sort_mdp_redesign_consolidated.md` §A.
+Implements the multi-conjunct ``is_holding`` predicate.
 
 The predicate is intentionally **per cube** (not per env) so the reward
 machine in R4 can differentiate which cube is currently held in the

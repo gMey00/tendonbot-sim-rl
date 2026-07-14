@@ -19,7 +19,7 @@ spaces). The final "thesis" policies were trained on **FK-sampled reachable
 full-pose targets** with **EMA-smoothed actions**. Unlike older "box" policies,
 these actually track target **orientation**, not just position. Full context:
 `.../reach/README.md` (§Purpose + thesis results table) and the tracking log
-`doc/reports/reach_optimization_tracking.md` (iterations 16–22). The curated
+`doc/reports/tracking/reach_optimization_tracking.md` (iterations 16–22). The curated
 checkpoints and a per-variant checklist live in
 `src/tensegrity_pick/logs/skrl/need_visual_verification/reach/thesis_fk/`
 (`README.md` there = the authoritative checklist; this prompt is the how-to).

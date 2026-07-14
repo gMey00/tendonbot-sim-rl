@@ -20,7 +20,7 @@
 #     observation group and in rewards only.
 #   * exact attachment state, both-grasps flags, the full particle field.
 # The asymmetric-AC pattern that routes a "critic" group to the value network
-# is verified and documented in doc/reports/pipeline_infra_tracking.md §M1.
+# is verified and documented in doc/reports/tmp/pipeline_infra_tracking.md §M1.
 
 from __future__ import annotations
 

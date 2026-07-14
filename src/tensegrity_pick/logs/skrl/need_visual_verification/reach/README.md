@@ -119,5 +119,5 @@ spot-checks is enough.
 - Remaining joint / IK-Rel variants (`*_ik`, and the bare arm dirs): reach in
   the 2–5 cm band; play only if a Priority 1–2 result surprises you.
 
-Full per-variant numbers: `doc/reports/reach_optimization_tracking.md`
+Full per-variant numbers: `doc/reports/tracking/reach_optimization_tracking.md`
 (iteration 15) and the reach task `README.md` results matrix.

@@ -1,6 +1,6 @@
 """Per-goal multi-head value network for shirt_distribute (mode-collapse fix B1).
 
-Research report ``doc/reports/RESEARCH_REPORT_goal_conditioned_mode_collapse``
+Research report ``doc/reports/tmp/RESEARCH_REPORT_goal_conditioned_mode_collapse``
 §C #1 ("MultiCriticAL single-actor / multi-critic", Mysore et al. 2022): keep a
 single shared Gaussian actor but give the *critic* one output head per commanded
 bin so cross-goal value estimates stop interfering.  The shared trunk keeps the

@@ -2,9 +2,9 @@
 
 Stage-2 agent **INF** (branch `project/pipeline-infra`): observation contract,
 asymmetric actor–critic, grasp-fidelity gates. Task prompt:
-[agent_prompt_pipeline_infra.md](../agent_prompt_pipeline_infra.md); roadmap
+[agent_prompt_pipeline_infra.md](../../tmp/agent_prompt_pipeline_infra.md); roadmap
 stages S4 + S5 of
-[pipeline_stage2_execution_plan.md](../pipeline_stage2_execution_plan.md).
+[pipeline_stage2_execution_plan.md](../../tmp/pipeline_stage2_execution_plan.md).
 
 Milestones: **M1** skrl asym-AC verdict → **M2** camera-realistic observation
 library → **M3** grasp-fidelity gates (opt-in) → **M4** ranking-preservation

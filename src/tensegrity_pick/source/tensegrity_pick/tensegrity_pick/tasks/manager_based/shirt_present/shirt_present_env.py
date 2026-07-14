@@ -35,7 +35,7 @@
 # at the anchor's HEIGHT, and z=1.60 is beyond the UR5e's vertical reach from
 # its z=0.75 pedestal.  The coverage metric is translation-invariant
 # (cloth_metrics rasterizes the zero-based silhouette), so relocating the
-# anchor is metric-neutral.  See ``doc/reports/shirt_present_optimization_tracking.md``.
+# anchor is metric-neutral.  See ``doc/reports/tracking/shirt_present_optimization_tracking.md``.
 
 from __future__ import annotations
 

@@ -1,7 +1,7 @@
 """V4 verification: per-cube ``is_placed`` predicate (Iteration R3).
 
 Pure-tensor unit tests covering the gentle-release and fly-through cases
-called out in :doc:`doc/reports/cube_sort_optimization_tracking.md` (R3),
+called out in :doc:`doc/reports/tracking/cube_sort_optimization_tracking.md` (R3),
 plus the not-held requirement and the sticky-latch behaviour.
 """
 

@@ -58,6 +58,7 @@
 | Ref | Authors | Title | Year | Impl. | Thesis | Cred. | Summary |
 |-----|---------|-------|------|-------|--------|-------|---------|
 | [Ha2021FlingBot](sources/cloth_manipulation/Papers/Ha2021FlingBot.pdf) | Ha, H. & Song, S. | "FlingBot: The Unreasonable Effectiveness of Dynamic Manipulation for Cloth Unfolding" | 2021 | 🟡 | 🟢 | 🟢 | Dynamic fling actions for cloth unfolding. Innovative manipulation primitive relevant for the sorting pipeline. [OpenReview](https://openreview.net/pdf?id=0QJeE5hkyFZ) |
+| [Zeng2019TossingBot](sources/Citations/Zeng2019TossingBot.md) | Zeng, A. et al. | "TossingBot: Learning to Throw Arbitrary Objects with Residual Physics" | 2019 | 🟢 | 🟢 | 🟢 | Goal-conditioned pick-and-place/throw policy, generalizing across target positions via a learned residual. Direct precedent for shirt_distribute's goal-conditioned bin-selection design (master thesis §2.5). [arXiv](https://arxiv.org/abs/1903.11239) |
 
 ---
 

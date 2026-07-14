@@ -10,9 +10,9 @@
 `Metrics/distribute_success_rate`); zero/random agents pass for both robot variants.
 Shirt starts on the belt edge (not yet from the task-2 terminal bank); rewards are stub
 shaping.  No training runs yet.  Pipeline context:
-[RESEARCH_cloth_sorting_pipeline.md](RESEARCH_cloth_sorting_pipeline.md) ·
-staged plan in [doc/TODO.md](../TODO.md) · task docs in the
-[shirt_distribute README](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shirt_distribute/README.md).
+[RESEARCH_cloth_sorting_pipeline.md](../tmp/RESEARCH_cloth_sorting_pipeline.md) ·
+staged plan in [doc/TODO.md](../../TODO.md) · task docs in the
+[shirt_distribute README](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shirt_distribute/README.md).
 
 ---
 
@@ -594,7 +594,7 @@ sacrifices one of {recyclable, trash}, and which one is seed-dependent.**
 
 Phase 1 ended blocked on **goal-conditioned mode collapse** (per-seed
 2-of-3-bin specialisation; best deterministic 0.596). A dedicated literature
-review — [`RESEARCH_REPORT_goal_conditioned_mode_collapse`](RESEARCH_REPORT_goal_conditioned_mode_collapse)
+review — [`RESEARCH_REPORT_goal_conditioned_mode_collapse`](../tmp/RESEARCH_REPORT_goal_conditioned_mode_collapse)
 — diagnosed the cause as **cross-goal critic interference under a single
 aggregate return normalizer**: with symmetric per-goal rewards the operative
 asymmetry is *transient return scale* (the hardest-so-far goal's returns are

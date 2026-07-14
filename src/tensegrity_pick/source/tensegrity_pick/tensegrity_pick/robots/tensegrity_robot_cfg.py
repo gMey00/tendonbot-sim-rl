@@ -100,7 +100,7 @@ TENS_5DOF_GRIPPER_CFG = ArticulationCfg(
         # R1 (cube_sort rework): contact sensors must be activated on the
         # SPAWNER, not on the ArticulationCfg root (Isaac Lab Issue #2985 —
         # silent no-op there). Required for the per-cube `is_holding`
-        # predicate built in R2; see doc/reports/cube_sort_optimization_tracking.md.
+        # predicate built in R2; see doc/reports/tracking/cube_sort_optimization_tracking.md.
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             rigid_body_enabled=True,

@@ -13,8 +13,7 @@ A ``None`` ``force_matrix_w`` indicates the sensor regex matched zero
 filter prims (Isaac Lab Issue #364) — i.e. the wiring is broken.
 
 References:
-- doc/reports/cube_sort_optimization_tracking.md (Iteration R1)
-- doc/reports/cube_sort_research/cube_sort_mdp_redesign_consolidated.md §A
+- doc/reports/tracking/cube_sort_optimization_tracking.md (Iteration R1)
 """
 
 from __future__ import annotations

@@ -6,8 +6,8 @@
 > retuned inner PID) and a **second physical variant with hierarchical
 > control** (`tensegrity_physical_hier`, inner PID→tension loop) plus a
 > **scripted IK+PID heuristic baseline** for it were added — see
-> [physical_variant_fix_report.md](physical_variant_fix_report.md) and the
-> [tracking log](reach_optimization_tracking.md) iterations 16/16b.
+> [physical_variant_fix_report.md](../physical_variant_fix_report.md) and the
+> [tracking log](../tracking/reach_optimization_tracking.md) iterations 16/16b.
 > The 5-seed retraining + evaluation of both reworked physical variants runs
 > on the cluster; §11 below carries the result stubs and the regeneration
 > commands.  The PD / sim-tendon numbers in this report remain valid.
@@ -89,7 +89,7 @@ Training curves are aggregated as mean ± std across the 5 seeds.
 ### 1.4 Evaluation harness
 
 The unified evaluation harness
-[src/tensegrity_pick/scripts/skrl/evaluate.py](src/tensegrity_pick/scripts/skrl/evaluate.py)
+[src/tensegrity_pick/scripts/skrl/evaluate.py](../../../src/tensegrity_pick/scripts/skrl/evaluate.py)
 loads the env via the standard Isaac Lab Hydra path (for `checkpoint`)
 or directly via `parse_env_cfg` (for the other three agents), runs the
 selected agent for 10 episodes per parallel env, and writes the
@@ -145,7 +145,7 @@ same story.
 ## 3. Figures
 
 ### 3.1 Aggregated training curves
-![Training curves (mean ± std over 5 seeds)](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/07_seed_aggregated.png)
+![Training curves (mean ± std over 5 seeds)](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/07_seed_aggregated.png)
 
 Left panel — total reward (smoothed). PD and simulated-tendon
 saturate near 0.45 within ~20 k env-steps. Physical tendon climbs much
@@ -153,19 +153,19 @@ more slowly and only reaches ~−0.75 by 150 k steps. The right panel
 was empty in the original render because the seed-aggregation plotter
 looked for the tag `Episode_Reward/goal_reached`, while the env
 actually emits `Info / Episode_Reward/position_reached`
-(see [reach_env_cfg.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/reach_env_cfg.py)).
+(see [reach_env_cfg.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/reach_env_cfg.py)).
 The tag list in `plot_reach_training_results.py` has been corrected;
 re-running the plotter against the existing TensorBoard event files
 produces a populated right panel without any new training.
 
 ### 3.2 Baseline success-rate comparison
-![Baseline success rate](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/08_baseline_comparison.png)
+![Baseline success rate](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/08_baseline_comparison.png)
 
 Bars are mean ± std across the 5 training seeds. The red dashed line
 marks the DLS-IK heuristic mean (PD only).
 
 ### 3.3 Final position error
-![Final position error](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/09_position_error_comparison.png)
+![Final position error](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/09_position_error_comparison.png)
 
 PPO bars are below the success threshold (red dashed) on PD and
 simulated tendon. The policy not only crosses the threshold during
@@ -174,14 +174,14 @@ the random/zero baselines decisively (0.22 vs 0.78 m) but stops well
 above the threshold.
 
 ### 3.4 Final orientation error
-![Final orientation error](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/10_orientation_error_comparison.png)
+![Final orientation error](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/10_orientation_error_comparison.png)
 
 PPO is the only agent that regulates orientation. The heuristic is
 position-only by design, and the random/zero baselines have no
 incentive to align.
 
 ### 3.5 PPO per-seed scatter
-![PPO per-seed scatter](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/11_ppo_per_seed.png)
+![PPO per-seed scatter](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/11_ppo_per_seed.png)
 
 Per-seed success rate (left) and final position error (log scale,
 right) for the trained policy. PD is tight at the top. Sim tendon
@@ -190,7 +190,7 @@ physical-tendon spread is dramatic. Seed 4 essentially failed
 (0.09 success, 0.36 m error).
 
 ### 3.6 Per-seed distribution overview
-![Per-seed distribution](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/12_per_seed_distribution.png)
+![Per-seed distribution](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/12_per_seed_distribution.png)
 
 All 50 evaluation cells in one chart, grouped by (variant, agent),
 showing the 5 per-seed dots and the seed-aggregate mean ± std bar.
@@ -375,12 +375,12 @@ Fix: snapshot `position_error` and `orientation_error` **before**
 each `env.step()`; for envs that become done, record the snapshot
 instead of the post-step tensor.
 
-[src/tensegrity_pick/scripts/skrl/evaluate.py](../../src/tensegrity_pick/scripts/skrl/evaluate.py)
+[src/tensegrity_pick/scripts/skrl/evaluate.py](../../../src/tensegrity_pick/scripts/skrl/evaluate.py)
 
 ### 8.2 success_rate metric tensor zeroed by base reset (bug #2, fixed in env and eval)
 
 In
-[fk_sampled_pose_command.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/mdp/fk_sampled_pose_command.py),
+[fk_sampled_pose_command.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/mdp/fk_sampled_pose_command.py),
 the original `FKSampledPoseCommand.reset()` wrote the per-env success
 mask into `self.metrics["success_rate"][env_ids]` and then called
 `return super().reset(env_ids)`. The base `CommandTerm.reset()`
@@ -479,20 +479,20 @@ prioritised against compute budget.
 - **Plot-07 right panel was empty** — root cause was a plot-script
   tag-name mismatch (`Episode_Reward/goal_reached` vs the actual
   `Info / Episode_Reward/position_reached`). Fixed in
-  [plot_reach_training_results.py](../../src/tensegrity_pick/scripts/plotting/plot_reach_training_results.py).
+  [plot_reach_training_results.py](../../../src/tensegrity_pick/scripts/plotting/plot_reach_training_results.py).
   Re-running the plotter against the existing event files produces
   a populated right panel without any new training.
 - **`metric_term["success_rate"]` zeroed after reset** — fixed in
-  [fk_sampled_pose_command.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/mdp/fk_sampled_pose_command.py)
+  [fk_sampled_pose_command.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/mdp/fk_sampled_pose_command.py)
   by re-writing the metric tensors after `super().reset()` zeroes
   them. Training-time extras dict path is unaffected, so no
   regression in TensorBoard logging. (§8.2)
 - **Checkpoint vs direct-path seeding mismatch** — fixed in
-  [evaluate.py](../../src/tensegrity_pick/scripts/skrl/evaluate.py)
+  [evaluate.py](../../../src/tensegrity_pick/scripts/skrl/evaluate.py)
   by explicitly seeding `random` / `numpy` / `torch` / CUDA from
   `--seed` before the first env reset. (§8.3)
 - **Settle-for-N-steps success criterion** — added to
-  [evaluate.py](../../src/tensegrity_pick/scripts/skrl/evaluate.py)
+  [evaluate.py](../../../src/tensegrity_pick/scripts/skrl/evaluate.py)
   as `success_held` (default `--settle_steps 10` ≈ 167 ms at
   60 Hz). A rerun of `evaluate.py` populates the new field
   alongside the existing `success_rate`. (§8.5)
@@ -501,10 +501,10 @@ prioritised against compute budget.
   A rerun of `evaluate.py` populates the new field. (§8.5)
 - **Scripts wrote figures to a stray top-level `source/` tree** —
   fixed in
-  [plot_reach_training_results.py](../../src/tensegrity_pick/scripts/plotting/plot_reach_training_results.py),
-  [plot_place_training_results.py](../../src/tensegrity_pick/scripts/plotting/plot_place_training_results.py)
+  [plot_reach_training_results.py](../../../src/tensegrity_pick/scripts/plotting/plot_reach_training_results.py),
+  [plot_place_training_results.py](../../../src/tensegrity_pick/scripts/plotting/plot_place_training_results.py)
   and
-  [plot_sort_training_results.py](../../src/tensegrity_pick/scripts/plotting/plot_sort_training_results.py)
+  [plot_sort_training_results.py](../../../src/tensegrity_pick/scripts/plotting/plot_sort_training_results.py)
   so they now write to the canonical extension tree
   `src/tensegrity_pick/source/tensegrity_pick/.../figures`. The
   already-generated `aggregate/` figures were moved into the
@@ -522,10 +522,10 @@ prioritised against compute budget.
 ## 10. Reproducibility — file pointers
 
 ### Code
-- [src/tensegrity_pick/scripts/run_reach_pipeline.sh](../../src/tensegrity_pick/scripts/run_reach_pipeline.sh)
-- [src/tensegrity_pick/scripts/rerun_all_evals.sh](../../src/tensegrity_pick/scripts/rerun_all_evals.sh)
-- [src/tensegrity_pick/scripts/skrl/evaluate.py](../../src/tensegrity_pick/scripts/skrl/evaluate.py)
-- [src/tensegrity_pick/scripts/plotting/plot_reach_training_results.py](../../src/tensegrity_pick/scripts/plotting/plot_reach_training_results.py)
+- [src/tensegrity_pick/scripts/run_reach_pipeline.sh](../../../src/tensegrity_pick/scripts/run_reach_pipeline.sh)
+- [src/tensegrity_pick/scripts/rerun_all_evals.sh](../../../src/tensegrity_pick/scripts/rerun_all_evals.sh)
+- [src/tensegrity_pick/scripts/skrl/evaluate.py](../../../src/tensegrity_pick/scripts/skrl/evaluate.py)
+- [src/tensegrity_pick/scripts/plotting/plot_reach_training_results.py](../../../src/tensegrity_pick/scripts/plotting/plot_reach_training_results.py)
 
 ### Data
 - Training runs: `logs/skrl/reach/{tensegrity,tensegrity_tendon,tensegrity_physical_tendon}/2026-05-22_*_ppo_torch/`
@@ -567,9 +567,9 @@ python scripts/plotting/plot_reach_training_results.py --seeds \
 ```
 
 ### Figures
-- [07_seed_aggregated.png](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/07_seed_aggregated.png)
-- [08_baseline_comparison.png](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/08_baseline_comparison.png)
-- [09_position_error_comparison.png](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/09_position_error_comparison.png)
-- [10_orientation_error_comparison.png](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/10_orientation_error_comparison.png)
-- [11_ppo_per_seed.png](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/11_ppo_per_seed.png)
-- [12_per_seed_distribution.png](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/12_per_seed_distribution.png)
+- [07_seed_aggregated.png](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/07_seed_aggregated.png)
+- [08_baseline_comparison.png](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/08_baseline_comparison.png)
+- [09_position_error_comparison.png](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/09_position_error_comparison.png)
+- [10_orientation_error_comparison.png](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/10_orientation_error_comparison.png)
+- [11_ppo_per_seed.png](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/11_ppo_per_seed.png)
+- [12_per_seed_distribution.png](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/figures/aggregate/12_per_seed_distribution.png)

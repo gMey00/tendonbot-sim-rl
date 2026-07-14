@@ -7,7 +7,7 @@
 > `cube_held` reward with a `1-tanh` reach/grasp shape, Iter 1 reached **peak 100%
 > placement** on 2G+1R (both cubes in drum every episode at peak) with zero
 > sorting errors. Iter 2 (4G+2R) plateaus at peak 26% placement — scaling from 2
-> to 4 cubes needs further reward/observation changes. See [optimization tracking](../../../../../../../../doc/reports/cube_sort_optimization_tracking.md)
+> to 4 cubes needs further reward/observation changes. See [optimization tracking](../../../../../../../../doc/reports/tracking/cube_sort_optimization_tracking.md)
 > for the full Iteration 2 plateau diagnosis and proposed next steps.
 
 [← Back to extension overview](../../../../../../README.md) · [Project root](../../../../../../../../README.md)
@@ -267,7 +267,7 @@ Iteration 3 uses 6 green + 4 red cubes with PROCESSING\_MARGIN\_S=70.0
 Multi-cube sorting requires extended training. With 4096 parallel environments
 and 128-step rollouts, Iteration 3 (6G+4R) converges after ~1024K steps across
 four 256K-step runs (fresh + 3 extensions). See the
-[optimization tracking](../../../../../../../../doc/reports/cube_sort_optimization_tracking.md)
+[optimization tracking](../../../../../../../../doc/reports/tracking/cube_sort_optimization_tracking.md)
 for the full training history.
 
 ### PPO Hyperparameters (SKRL)

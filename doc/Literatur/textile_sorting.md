@@ -36,6 +36,18 @@
 
 ---
 
+## Vision-Based Condition Classification (Master Thesis §2.4)
+
+### Journal Articles & Conference Papers
+
+| Ref | Authors | Title | Year | Impl. | Thesis | Cred. | Summary |
+|-----|---------|-------|------|-------|--------|-------|---------|
+| [He2016ResNet](sources/Citations/He2016ResNet.md) | He, K. et al. | "Deep Residual Learning for Image Recognition" | 2016 | 🔴 | 🟢 | 🟢 | Canonical CNN backbone (ResNet); assumed architecture family for a future camera-based damage classifier (unimplemented in this thesis). [DOI](https://doi.org/10.1109/CVPR.2016.90) |
+| [Kahraman2023FabricDefectReview](sources/Citations/Kahraman2023FabricDefectReview.md) | Kahraman, Y. & Durmuşoğlu, A. | "Deep learning-based fabric defect detection: A review" | 2023 | 🟡 | 🟢 | 🟢 | Review of deep-learning fabric/textile defect detection; grounds the camera-based damage-classification objective in the textile-inspection literature specifically. [DOI](https://doi.org/10.1177/00405175221130773) |
+| [Tremblay2018SyntheticData](sources/Citations/Tremblay2018SyntheticData.md) | Tremblay, J. et al. | "Training Deep Networks with Synthetic Data: Bridging the Reality Gap by Domain Randomization" | 2018 | 🟡 | 🟢 | 🟢 | Perception-specific domain randomization for training vision classifiers on synthetic renders; complements the control-focused DR literature for a future synthetic-data-trained classifier. [DOI](https://doi.org/10.1109/CVPRW.2018.00143) |
+
+---
+
 ## Ergonomics & Manual-Labour Context
 
 ### Journal Articles

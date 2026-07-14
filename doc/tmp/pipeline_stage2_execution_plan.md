@@ -1,7 +1,7 @@
 # Pipeline Stage 2 — Execution Plan (parallel agents, gates, GPU schedule)
 
 Operationalizes the roadmap of
-[RESEARCH_REPORT_shirt_sorting_stage2.md](reports/RESEARCH_REPORT_shirt_sorting_stage2.md)
+[RESEARCH_REPORT_shirt_sorting_stage2.md](reports/tmp/RESEARCH_REPORT_shirt_sorting_stage2.md)
 into four parallel coding-agent workstreams, with explicit file ownership,
 decision gates, and instructions for Georg (when to invoke which agent, what to
 merge, what to visually verify). TODO items live in

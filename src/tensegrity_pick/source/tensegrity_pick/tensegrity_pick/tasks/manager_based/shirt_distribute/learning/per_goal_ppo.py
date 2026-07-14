@@ -1,7 +1,7 @@
 """PPO with per-goal return normalization + per-goal advantage normalization.
 
 Implements recommendation #1 of
-``doc/reports/RESEARCH_REPORT_goal_conditioned_mode_collapse`` §C for the
+``doc/reports/tmp/RESEARCH_REPORT_goal_conditioned_mode_collapse`` §C for the
 shirt_distribute goal-conditioned mode collapse: the single aggregate
 ``RunningStandardScaler`` on value targets, together with the global advantage
 normalization in stock GAE, couples the three goals so the hardest-so-far goal's

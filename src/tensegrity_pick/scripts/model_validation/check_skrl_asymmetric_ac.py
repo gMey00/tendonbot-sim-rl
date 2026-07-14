@@ -19,7 +19,7 @@ it AT RUNTIME — don't trust docs — by:
      are exactly 42.0, while the policy consumed the policy dim without them.
 
 PASS  → skrl asymmetric AC works; use the config pattern documented in
-        doc/reports/pipeline_infra_tracking.md.
+        doc/reports/tmp/pipeline_infra_tracking.md.
 FAIL  → states aliased to observations; use the RSL-RL fallback runner.
 
 Usage::

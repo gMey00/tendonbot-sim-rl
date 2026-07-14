@@ -2,7 +2,7 @@
 
 Machine-tagged, reproducible benchmark artifacts produced by
 [`src/tensegrity_pick/scripts/benchmarking/`](../../../../src/tensegrity_pick/scripts/benchmarking/).
-Analysed in [`../benchmark_performance_report.md`](../benchmark_performance_report.md).
+Analysed in [`../../benchmark_performance_report.md`](../../benchmark_performance_report.md).
 
 ## Layout
 

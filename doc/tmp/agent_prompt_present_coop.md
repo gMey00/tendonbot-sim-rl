@@ -5,7 +5,7 @@ cluster** (read `doc/Alex_cluster/alex_quickstart.md` first — Slurm-only GPU a
 `tools/train_alex.sh`, conda env `env_isaaclab`). You continue the `shirt_present`
 work (pipeline Task 2) through roadmap stages **S0(T2-part) → S1 → [gate G1] → S3** of
 [doc/pipeline_stage2_execution_plan.md](pipeline_stage2_execution_plan.md), based on
-[doc/reports/RESEARCH_REPORT_shirt_sorting_stage2.md](reports/RESEARCH_REPORT_shirt_sorting_stage2.md)
+[doc/reports/tmp/RESEARCH_REPORT_shirt_sorting_stage2.md](reports/tmp/RESEARCH_REPORT_shirt_sorting_stage2.md)
 (§2-Q1, §2-Q2, §3 Stages 0/1/3). Three sibling agents run in parallel (T1 =
 shirt_pick, T3 = shirt_distribute, INF = shared infra) — coordination rules in §8
 are hard requirements.
@@ -82,7 +82,7 @@ stays < 0.75 with the fixed holder → the holder pose is the binding constraint
    (no x translation), weak wrist torques (its drives are artificially stiffened
    as scenery — if it becomes an actor, restore physical gains and re-verify it
    can hold; see `shirt_present_env_cfg.py.__post_init__` and
-   [project memory](reports/shirt_present_optimization_tracking.md)). The holder
+   [project memory](reports/tracking/shirt_present_optimization_tracking.md)). The holder
    NEVER releases (regrasp hurts with any target).
 2. **Single joint policy over both arms** (the report's recommended formulation —
    NOT MAPPO): extend the SAME manager-based env with a second action term on
@@ -122,7 +122,7 @@ height distribution over the new bank) before any GPU campaign; smoke-train
 
 ## 6. Documentation & reporting (mandatory, repo style)
 
-- Update `doc/reports/shirt_present_optimization_tracking.md` as you go (dated
+- Update `doc/reports/tracking/shirt_present_optimization_tracking.md` as you go (dated
   iterations, losers kept for the record, measured numbers not adjectives).
 - Update `shirt_present/README.md` MDP tables when the MDP changes.
 - Tick your items in `doc/TODO.md` (Pipeline Stage 2 → S0/S1/S3).

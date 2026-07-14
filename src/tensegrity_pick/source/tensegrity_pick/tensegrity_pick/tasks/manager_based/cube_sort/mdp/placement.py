@@ -1,7 +1,6 @@
 """Per-cube placement predicate for the cube-sorting task (Iteration R3).
 
-Implements the sticky 5-conjunct ``is_placed`` predicate from
-:doc:`doc/reports/cube_sort_research/cube_sort_mdp_redesign_consolidated.md` §C.
+Implements the sticky 5-conjunct ``is_placed`` predicate.
 
 Conjuncts (must hold for ``DWELL_STEPS`` consecutive physics steps before
 ``is_placed`` latches True for the rest of the episode):

@@ -89,10 +89,10 @@ mindmap
 | [linkage_mechanisms.md](linkage_mechanisms.md)         | Linkage Mechanisms & Closed-Loop Kinematics | 13         |
 | [grasping_manipulation.md](grasping_manipulation.md)   | Grasping & Manipulation                     | 17         |
 | [simulation.md](simulation.md)                         | Simulation & Physics Engines                | 42         |
-| [reinforcement_learning.md](reinforcement_learning.md) | Reinforcement Learning                      | 35         |
-| [cloth_manipulation.md](cloth_manipulation.md)         | Cloth & Deformable Object Manipulation      | 22         |
-| [textile_sorting.md](textile_sorting.md)               | Textile Sorting & Recycling                 | 6          |
-| [sim_to_real.md](sim_to_real.md)                       | Sim-to-Real Transfer                        | 10         |
+| [reinforcement_learning.md](reinforcement_learning.md) | Reinforcement Learning                      | 40         |
+| [cloth_manipulation.md](cloth_manipulation.md)         | Cloth & Deformable Object Manipulation      | 23         |
+| [textile_sorting.md](textile_sorting.md)               | Textile Sorting & Recycling                 | 9          |
+| [sim_to_real.md](sim_to_real.md)                       | Sim-to-Real Transfer                        | 12         |
 | [control_kinematics.md](control_kinematics.md)         | Robot Control & Kinematics                  | 14         |
 | [workspace_analysis.md](workspace_analysis.md)         | Workspace Analysis                          | 11         |
 | [robot_hardware.md](robot_hardware.md)                 | Robot Hardware & Datasheets                 | 6          |

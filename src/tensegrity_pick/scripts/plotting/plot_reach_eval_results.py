@@ -3,7 +3,7 @@
 
 Reads the eval JSONs written by ``scripts/skrl/evaluate_reach.py``, aggregates
 per (variant, agent) across seeds, prints a markdown summary table, and writes
-the aggregate figures referenced by ``doc/reports/reach_evaluation_findings.md``:
+the aggregate figures referenced by ``doc/reports/task_evaluations/reach_evaluation_findings.md``:
 
 * ``08_baseline_comparison.png``      — success rate bars per (variant, agent)
 * ``09_position_error_comparison.png`` — final position error bars + threshold

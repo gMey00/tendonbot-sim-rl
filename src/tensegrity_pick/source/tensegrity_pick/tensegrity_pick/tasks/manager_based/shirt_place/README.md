@@ -273,8 +273,7 @@ mean edge ≈ 0.0098 m).  `ClothObject` supports two backends
 (`SHIRT_CLOTH_BACKEND` in `shirt_place_scene_cfg.py`); **PBD particle cloth**
 is the trained default.
 
-The decisive stability fix (see
-`doc/reports/cloth_sim_research/RESEARCH_isaaclab_cloth.md`): **collision
+The decisive stability fix: **collision
 offsets must track the mesh particle spacing** — `particle_contact_offset =
 mean edge length`, `solid_rest_offset = ½ edge`.  Larger offsets put spring
 neighbours inside each other's contact radius and the solver pumps energy →
@@ -509,8 +508,7 @@ cd src/tensegrity_pick
 
 ## Related
 
-- [Optimization tracking report](../../../../../../../../doc/reports/shirt_place_optimization_tracking.md) — full phase-by-phase history
-- [Cloth sim research](../../../../../../../../doc/reports/cloth_sim_research/RESEARCH_isaaclab_cloth.md) — PBD/XPBD backend research
+- [Optimization tracking report](../../../../../../../../doc/reports/tracking/shirt_place_optimization_tracking.md) — full phase-by-phase history
 - [Cube place task](../cube_place/README.md) — rigid-body pick-and-place (reference implementation)
 - [Shirt sort task](../shirt_sort/README.md) — cloth sorting on active conveyor
 - [Robot specification](../../../../../../../../res/Tensegrity/README.md) — kinematic chain, joint constraints, tendon geometry

@@ -5,14 +5,12 @@
 **Framework:** Isaac Lab + skrl (PPO), Isaac Sim
 **Hardware:** NVIDIA RTX A6000 (48 GB)
 
-> **Authoritative design spec for the rework below:**
-> [cube_sort_research/cube_sort_mdp_redesign_consolidated.md](cube_sort_research/cube_sort_mdp_redesign_consolidated.md)
-> (sections referenced as §A–§I throughout this document).
->
-> All concrete thresholds, pseudo-code, and citation pointers needed by the
-> implementation agent live in that file — this tracking file deliberately
-> does **not** duplicate them. Read §G.6 (Implementation order) and §G.7
-> (Verification checklist V1–V10) before starting any iteration below.
+> **Design spec (retired):** the rework below was driven by a consolidated MDP
+> redesign spec (its sections are referenced as §A–§I throughout this document);
+> that research package has since been removed from the repo. This tracking file
+> is the surviving record of *what* was implemented and *how it was verified*
+> (see §G.6 Implementation order and §G.7 Verification checklist V1–V10 as
+> reproduced in the iterations below).
 
 ---
 
@@ -33,7 +31,7 @@ long-term goal is variable N up to 6G+3R per episode.
 | Best policy | `agent_510000.pt` from `2026-04-17_00-42-55_ppo_torch` — 80.5 % placement on 2G+1R |
 | Behaviour on visual playback | **Flings cubes; does not grasp.** Drops red cubes never. |
 | MDP audit | Complete — 8 structural exploits identified (see `Diagnosis` below) |
-| Research synthesis | Complete — see [cube_sort_mdp_redesign_consolidated.md](cube_sort_research/cube_sort_mdp_redesign_consolidated.md) |
+| Research synthesis | Complete (consolidated MDP redesign spec, since retired from the repo) |
 | Active phase | **R1–R7 ✅, R8 launched (PID 1450945) — 🛑 awaiting V6 visual inspection** |
 | R1 V1 | ✅ contact sensors emit forces (single-env smoke) |
 | R2 V2 | ✅ `is_holding` predicate 4/4 unit tests |
@@ -130,10 +128,9 @@ it autonomously in one session, with explicit acceptance criteria taken
 from research §G.7 (V1–V10).
 
 **Rule of thumb for the agent:** every concrete threshold, sensor-API
-gotcha, pseudo-code block, and pitfall correction lives in
-[cube_sort_mdp_redesign_consolidated.md](cube_sort_research/cube_sort_mdp_redesign_consolidated.md).
-This tracking file tells you *what* to do and *how to verify it*; the
-research doc tells you *exactly how* to do it.
+gotcha, pseudo-code block, and pitfall correction lived in the consolidated
+MDP redesign spec (now retired from the repo). This tracking file tells you
+*what* to do and *how to verify it*.
 
 ```
 ┌───────────────────────────────────────────────────────────────────┐
@@ -184,8 +181,8 @@ failure mode that produced the previous 80 %-placement fling policy.
 
 **Files to touch**
 
-- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/robots/tensegrity_robot_cfg.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/robots/tensegrity_robot_cfg.py) — `activate_contact_sensors=False` → `True`.
-- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sorting_scene_cfg.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sorting_scene_cfg.py) — add the two `ContactSensorCfg` entries; flip cube spawner flags.
+- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/robots/tensegrity_robot_cfg.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/robots/tensegrity_robot_cfg.py) — `activate_contact_sensors=False` → `True`.
+- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sorting_scene_cfg.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sorting_scene_cfg.py) — add the two `ContactSensorCfg` entries; flip cube spawner flags.
 - Any Robotiq finger-pad cfg that uses its own spawner (check
   `tasks/manager_based/shared/gripper_cfg.py` and the finger-link CuboidCfgs).
 
@@ -195,7 +192,7 @@ Run a 1-step env reset and assert
 `scene["contact_left"].data.force_matrix_w.shape == (num_envs, 1, N_CUBES, 3)`
 (and same for `contact_right`). If either returns `None`, the filter
 expression is wrong. Add this assertion as a unit test under
-[test/](../../test/).
+[test/](../../../test/).
 
 **Do not advance to R2 until V1 passes.**
 
@@ -203,13 +200,13 @@ expression is wrong. Add this assertion as a unit test under
 
 **Implementation summary**
 
-- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/robots/tensegrity_robot_cfg.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/robots/tensegrity_robot_cfg.py) — `TENS_5DOF_GRIPPER_CFG.spawn.activate_contact_sensors = True` (3DOF arm cfg unchanged; it has no gripper).
-- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sorting_scene_cfg.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sorting_scene_cfg.py):
+- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/robots/tensegrity_robot_cfg.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/robots/tensegrity_robot_cfg.py) — `TENS_5DOF_GRIPPER_CFG.spawn.activate_contact_sensors = True` (3DOF arm cfg unchanged; it has no gripper).
+- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sorting_scene_cfg.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sorting_scene_cfg.py):
   - `_cube_spawn_cfg(...)` sets `activate_contact_sensors=True` on each `CuboidCfg`.
   - Added two separate `ContactSensorCfg` entries (`contact_left`, `contact_right`) with `update_period=0.0`, `history_length=3`, `track_pose=True`, and `filter_prim_paths_expr` enumerating all 16 cubes.
-- [test/test_r1_contact_sensors.py](../../test/test_r1_contact_sensors.py) — pytest V1 (`@pytest.mark.requires_isaac`).
-- [src/tensegrity_pick/scripts/r1_smoke.py](../../src/tensegrity_pick/scripts/r1_smoke.py) — diagnostic smoke runner used as the primary V1 verification (pytest auto-skips Isaac tests when `omni.timeline` import-only check fails — pre-existing conftest behavior).
-- [src/tensegrity_pick/scripts/r1_debug_apis.py](../../src/tensegrity_pick/scripts/r1_debug_apis.py) — one-off USD-API probe (kept for future debugging of contact-API propagation issues).
+- [test/test_r1_contact_sensors.py](../../../test/test_r1_contact_sensors.py) — pytest V1 (`@pytest.mark.requires_isaac`).
+- [src/tensegrity_pick/scripts/r1_smoke.py](../../../src/tensegrity_pick/scripts/r1_smoke.py) — diagnostic smoke runner used as the primary V1 verification (pytest auto-skips Isaac tests when `omni.timeline` import-only check fails — pre-existing conftest behavior).
+- [src/tensegrity_pick/scripts/r1_debug_apis.py](../../../src/tensegrity_pick/scripts/r1_debug_apis.py) — one-off USD-API probe (kept for future debugging of contact-API propagation issues).
 
 **V1 result (smoke run, 2026-04-23)**
 
@@ -291,12 +288,12 @@ whole rework — it is the test the previous `grasp_active` would fail.
 
 **Implementation summary**
 
-- New module: [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/grasp.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/grasp.py).
+- New module: [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/grasp.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/grasp.py).
   - Public function `is_holding(env, cubes_collection_name="cubes", ...) -> Tensor (N_envs, N_cubes)`.
   - Module constants: `F_MIN=0.5 N`, `COS_OPPOSE=-0.7`, `V_CO_MOVING=0.05 m/s`, `Z_ABOVE_BELT=0.01 m`, `DWELL_STEPS=2`, `GA_MIN=0.20 rad`, `GA_MAX=0.78 rad` (tightened from spec's 0.70 to leave a margin around the Robotiq close angle 0.7854 rad).
   - Dwell ring buffer attached to `env._hold_hist` / `env._hold_hist_ptr`, allocated lazily on first call.
   - Reads contact sensors `contact_left` / `contact_right` (R1 fixtures) and the `RigidObjectCollection` named `"cubes"`.
-- New unit test: [test/test_r2_is_holding.py](../../test/test_r2_is_holding.py) — 4 cases covering close / open / flythrough / re-open after close.
+- New unit test: [test/test_r2_is_holding.py](../../../test/test_r2_is_holding.py) — 4 cases covering close / open / flythrough / re-open after close.
 - Existing `grasp_active` property in `cube_sort_env.py` left in place per spec — will be deleted in R4.
 
 **V2 result (pytest, 2026-04-23)**
@@ -373,12 +370,12 @@ Two scripted tests:
 
 **Implementation summary**
 
-- New module: [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/placement.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/placement.py).
+- New module: [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/placement.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/placement.py).
   - Public function `is_placed(env, drum_center, held, cubes_collection_name="cubes") -> Tensor (N_envs, N_cubes)`.
   - Constants: `DRUM_R=0.2735 m`, `DRUM_H=0.30 m`, `CUBE_HALF=0.025 m`, `V_LIN_MAX=0.05 m/s`, `V_ANG_MAX=0.5 rad/s`, `DWELL_STEPS=5` (≈ 0.08 s @ 60 Hz).
   - Sticky latch (`env._place_latch`) plus dwell counter (`env._place_dwell`), allocated lazily.
   - Public `reset_placement_state(env, env_ids)` for the env reset hook (will be wired in R4).
-- New unit test: [test/test_r3_is_placed.py](../../test/test_r3_is_placed.py) — 5 cases covering gentle release, flythrough rejection, held-cube guard, sticky-latch behaviour after release, and reset.
+- New unit test: [test/test_r3_is_placed.py](../../../test/test_r3_is_placed.py) — 5 cases covering gentle release, flythrough rejection, held-cube guard, sticky-latch behaviour after release, and reset.
 
 **V4 result (pytest, 2026-04-23)**
 
@@ -442,13 +439,13 @@ test_v4_reset_clears_latch                    PASSED
 **Files to touch**
 
 - New: `tasks/manager_based/cube_sort/mdp/per_cube_state.py`.
-- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/rewards.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/rewards.py) — delete legacy reward functions.
-- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sort_env_cfg.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sort_env_cfg.py) — `RewardsCfg` and `EventsCfg`.
-- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sort_env.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sort_env.py) — remove `was_grasped` and the env-level latch update.
+- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/rewards.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/rewards.py) — delete legacy reward functions.
+- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sort_env_cfg.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sort_env_cfg.py) — `RewardsCfg` and `EventsCfg`.
+- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sort_env.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sort_env.py) — remove `was_grasped` and the env-level latch update.
 
 **Acceptance — V3**
 
-Write a scripted regression test under [test/](../../test/) that:
+Write a scripted regression test under [test/](../../../test/) that:
 
 - Spawns 3 cubes (indices 0, 1, 2). Manually closes the gripper on cubes
   0 and 2 only.
@@ -464,7 +461,7 @@ not safe to run.
 
 **Implementation summary**
 
-- New module [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/per_cube_state.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/per_cube_state.py)
+- New module [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/per_cube_state.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/per_cube_state.py)
   containing:
   - `_init_buffers(env, N_cubes)` — lazy allocator for the
     `env._mdp_state` dict (`ever_held`, `ever_held_prev`, `held_prev`,
@@ -479,7 +476,7 @@ not safe to run.
     `r_place` (one-shot edge, only if `ever_held`), `r_red`,
     `r_red_drop` (one-shot), `r_time = -C_TIME · #unplaced_green`
     (potential-based, Ng-Harada-Russell-1999 compliant).
-- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sort_env_cfg.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sort_env_cfg.py):
+- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sort_env_cfg.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sort_env_cfg.py):
   - **Deleted 11 legacy goal-related reward terms**: `reaching_object`,
     `reaching_object_fine`, `pre_grasp_approach`, `grasping`,
     `lifting_object`, `height_bonus`, `goal_tracking`,
@@ -491,7 +488,7 @@ not safe to run.
   - Added `EventsCfg.reset_mdp_state` (mode="reset").
   - `_set_robot_params` now wires only `per_cube_reward.tcp_body_name`
     plus the regularisation terms (much shorter).
-- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sort_env.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sort_env.py):
+- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sort_env.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sort_env.py):
   - Removed `_was_grasped` allocation, the `step()` update line, and the
     `_reset_idx` reset line.
   - The `was_grasped` property is **kept as a thin shim** that derives
@@ -589,7 +586,7 @@ table.
 
 **Files to touch**
 
-- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/rewards.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/rewards.py).
+- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/rewards.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/rewards.py).
 
 **Acceptance — V5 (smoke training, 30 K steps)**
 
@@ -614,7 +611,7 @@ already had no live consumer after R4 deleted `goal_tracking` and
 `goal_tracking_fine`, and `r_time = -C_TIME · #unplaced_green` is
 already in `per_cube_reward` with `C_TIME = 0.02`.
 
-- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/rewards.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/rewards.py):
+- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/rewards.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/rewards.py):
   Removed the `urgency_alpha`/`urgency_beta`/`belt_start_x`/`belt_end_x`
   arguments and the urgency-multiplier block from `approach_target_tanh`
   so future ablation configs cannot accidentally re-introduce the
@@ -689,9 +686,9 @@ and the `SharedCubePolicy` pseudo-code.
 **Files to touch**
 
 - New: `tensegrity_pick/models/cube_set_policy.py`.
-- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sort_env_cfg.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sort_env_cfg.py) — replace `nearest_target_rel`/`nearest_distractor_rel` with the new flat layout.
-- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/observations.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/observations.py) — add `cube_features_flat`, `cube_mask_flat`, and the critic-only `per_cube_is_holding`, `per_cube_contact_mag`.
-- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/config/tensegrity/agents/skrl_ppo_cfg.yaml](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/config/tensegrity/agents/skrl_ppo_cfg.yaml).
+- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sort_env_cfg.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/cube_sort_env_cfg.py) — replace `nearest_target_rel`/`nearest_distractor_rel` with the new flat layout.
+- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/observations.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/observations.py) — add `cube_features_flat`, `cube_mask_flat`, and the critic-only `per_cube_is_holding`, `per_cube_contact_mag`.
+- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/config/tensegrity/agents/skrl_ppo_cfg.yaml](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/config/tensegrity/agents/skrl_ppo_cfg.yaml).
 
 **Acceptance**
 
@@ -706,18 +703,18 @@ noise — same V5 invariants apply, plus: forward-pass shape sanity
 
 **Implementation summary**
 
-- New module [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/models/cube_set_policy.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/models/cube_set_policy.py): `CubeSetLayout`, `CubeSetEncoder` (per-cube MLP φ + masked-mean pool ρ), `CubeSetPolicy` (Gaussian, [128,64] ELU torso), `CubeSetValue` (deterministic, same torso + privileged tail concat).
+- New module [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/models/cube_set_policy.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/models/cube_set_policy.py): `CubeSetLayout`, `CubeSetEncoder` (per-cube MLP φ + masked-mean pool ρ), `CubeSetPolicy` (Gaussian, [128,64] ELU torso), `CubeSetValue` (deterministic, same torso + privileged tail concat).
 - Asymmetric actor-critic implemented in a single-obs-vector form (standard PPO requires identical observation_spaces): the layout descriptor splits `[non_set | set | mask | privileged]` and the policy `compute()` simply ignores the privileged tail. Saves us forking skrl PPO.
-- New module [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/cube_set_obs.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/cube_set_obs.py): `cube_features_flat` (15 × 16 = 240), `cube_mask_flat` (16), `gripper_pad_force_mag` (per-pad scalar), `gobj_sim` (R7 placeholder), and the two critic-only privileged channels (`per_cube_is_holding_priv`, `per_cube_contact_mag_priv`, both 16 dims).
+- New module [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/cube_set_obs.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/cube_set_obs.py): `cube_features_flat` (15 × 16 = 240), `cube_mask_flat` (16), `gripper_pad_force_mag` (per-pad scalar), `gobj_sim` (R7 placeholder), and the two critic-only privileged channels (`per_cube_is_holding_priv`, `per_cube_contact_mag_priv`, both 16 dims).
 - N_max raised from spec's 8 → **16** to match the existing `NUM_CUBES_TOTAL` ceiling without losing slots.
 - Per-cube feature vector follows research §D Table verbatim: `[rel_ee(3), v(3), sd_drum(1), is_green(1), active(1), held(1), ever_held(1), placed(1), z_above(1), drum_rel_xy(2)]`.
 - `cube_sort_env.py`: added `self._target_label = TARGET_LABEL` so observations can read the active goal label.
 - `cube_sort_env_cfg.py::ObservationsCfg`: replaced 8 nearest/fingertip/cube-velocity/placed-count/missed-count terms with the new layout. Order is **load-bearing** (the `CubeSetLayout` slice math depends on it). Final layout: non-set (34) → cube_features_flat (240) → cube_mask_flat (16) → privileged tail (32). Total obs dim = **322**.
-- New runner subclass [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/agents/cube_set_runner.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/agents/cube_set_runner.py): overrides `_component()` to register `CubeSetPolicy`/`CubeSetValue` factories that build the `CubeSetLayout` from YAML kwargs. The factory passes the layout into the model constructor (skrl can't serialise Python objects in YAML, so we do it in code).
-- [src/tensegrity_pick/scripts/skrl/train.py](../../src/tensegrity_pick/scripts/skrl/train.py): swaps in `CubeSetRunner` when `--task` matches `cube-sort` (case-insensitive).
-- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/config/tensegrity/agents/skrl_ppo_cfg.yaml](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/config/tensegrity/agents/skrl_ppo_cfg.yaml): models `class:` swapped to `CubeSetPolicy`/`CubeSetValue`, `network:` blocks removed (the model is now self-contained), layout descriptor (`non_set_dim=34`, `set_per_cube_dim=15`, `n_max_cubes=16`, `privileged_dim=32`) added under each model. PPO hyperparameters unchanged (per R6 acceptance criteria).
+- New runner subclass [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/agents/cube_set_runner.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/agents/cube_set_runner.py): overrides `_component()` to register `CubeSetPolicy`/`CubeSetValue` factories that build the `CubeSetLayout` from YAML kwargs. The factory passes the layout into the model constructor (skrl can't serialise Python objects in YAML, so we do it in code).
+- [src/tensegrity_pick/scripts/skrl/train.py](../../../src/tensegrity_pick/scripts/skrl/train.py): swaps in `CubeSetRunner` when `--task` matches `cube-sort` (case-insensitive).
+- [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/config/tensegrity/agents/skrl_ppo_cfg.yaml](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/config/tensegrity/agents/skrl_ppo_cfg.yaml): models `class:` swapped to `CubeSetPolicy`/`CubeSetValue`, `network:` blocks removed (the model is now self-contained), layout descriptor (`non_set_dim=34`, `set_per_cube_dim=15`, `n_max_cubes=16`, `privileged_dim=32`) added under each model. PPO hyperparameters unchanged (per R6 acceptance criteria).
 
-**V-test result: forward-pass shape sanity 4/4 PASS** ([test/test_r6_set_encoder.py](../../test/test_r6_set_encoder.py))
+**V-test result: forward-pass shape sanity 4/4 PASS** ([test/test_r6_set_encoder.py](../../../test/test_r6_set_encoder.py))
 
 | Test | What it covers | Result |
 |---|---|---|
@@ -738,7 +735,7 @@ R4 regression rerun: 3/3 still PASS.
 - `non_set_dim=34` is variant-specific (depends on `len(controlled_joints) × 2`). Tensegrity has 6 controlled joints (2 base + 3 arm + 1 finger), so joint_pos_rel + joint_vel_rel = 12; rest of non-set = 22. If we re-enable other robot variants (kinova/ur10e), each variant YAML needs its own `non_set_dim`.
 - R7's `gobj_sim` is wired as a fixed-zero ObsTerm so that the obs-dim contract stays stable when R7 lands (just swap the implementation, no obs reshape needed).
 
-**Memory note:** [/memories/repo/cube_sort_r6_set_encoder.md](../../) created.
+**Memory note:** [/memories/repo/cube_sort_r6_set_encoder.md](../../../) created.
 
 **What's left for R8:** launch Stage-0 training with this new architecture (1G + 0R, belt_speed=0.05, 4096 envs × 128 rollouts, 10M env-steps, fresh — **no warm-start from any pre-R6 checkpoint** as the obs space and action conditioning are now incompatible).
 
@@ -775,7 +772,7 @@ the gripper closes on a cube, value 0x03 when it closes empty).
 
 **Implementation summary**
 
-- Replaced the placeholder `gobj_sim` ObsTerm in [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/cube_set_obs.py](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/cube_set_obs.py) with the §F four-state register implementation.
+- Replaced the placeholder `gobj_sim` ObsTerm in [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/cube_set_obs.py](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/mdp/cube_set_obs.py) with the §F four-state register implementation.
 - Reads gripper command from `robot.data.joint_pos_target[:, finger_id]` (robust to action-index ordering — `BinaryJointPositionAction` writes its scalar there each step). Reads pos / vel / applied_torque from the same finger joint.
 - Predicates exactly per §F:
   - `commanded_close = cmd > 0.70 * closed_target`
@@ -788,7 +785,7 @@ the gripper closes on a cube, value 0x03 when it closes empty).
 - Returned as float32 (N,1) so it concatenates into the float observation vector without an explicit cast — Robotiq's 4-level register makes ordinal encoding safe.
 - Obs space dimension is **unchanged from R6** (the placeholder reserved the slot). No layout descriptor edit required.
 
-**V-test result: 5/5 PASS** ([test/test_r7_gobj_sim.py](../../test/test_r7_gobj_sim.py))
+**V-test result: 5/5 PASS** ([test/test_r7_gobj_sim.py](../../../test/test_r7_gobj_sim.py))
 
 | Test | What it covers | Result |
 |---|---|---|
@@ -806,7 +803,7 @@ R6 forward-pass (4/4) and R4 reward machine (3/3) regressions still PASS — ful
 - The V9 hardware-side acceptance ("non-degenerate distribution at deploy") is **not** testable in sim alone — it requires a converged R8 policy + monitor run on the real Robotiq 2F-140. Tracked as a deploy-time check; sim correctness via the unit tests above is sufficient to unblock R8.
 - The 4-level ordinal encoding (0, 2, 3) is fed to the network as a float. The DeepSets torso has a `RunningStandardScaler` upstream, which will normalise it in expectation. We don't one-hot-encode — research §F is explicit that the real Robotiq value should be passed-through, and one-hot would be a sim-to-real mismatch.
 
-**Memory note:** R7 specifics rolled into [/memories/repo/cube_sort_r6_set_encoder.md](../../) (small enough to keep next to R6).
+**Memory note:** R7 specifics rolled into [/memories/repo/cube_sort_r6_set_encoder.md](../../../) (small enough to keep next to R6).
 
 **Ready for R8** — observation pipeline frozen.
 
@@ -887,7 +884,7 @@ These are one-line fixes, not architectural problems.
 
 **Wiring fixes during launch:**
 
-1. First launch failed with `ValueError: Unknown class: CubeSetPolicy` — root cause: `models.separate: False` in YAML triggers skrl's `shared_model` factory which uses its own `get_extra` switch (does not consult `Runner._component()`). **Fixed** by setting `separate: True` in [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/config/tensegrity/agents/skrl_ppo_cfg.yaml](../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/config/tensegrity/agents/skrl_ppo_cfg.yaml). The CubeSet models do not actually share weights anyway, so this is more correct.
+1. First launch failed with `ValueError: Unknown class: CubeSetPolicy` — root cause: `models.separate: False` in YAML triggers skrl's `shared_model` factory which uses its own `get_extra` switch (does not consult `Runner._component()`). **Fixed** by setting `separate: True` in [src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/config/tensegrity/agents/skrl_ppo_cfg.yaml](../../../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/config/tensegrity/agents/skrl_ppo_cfg.yaml). The CubeSet models do not actually share weights anyway, so this is more correct.
 
 **🛑 Awaiting V6 (visual inspection by user) — per the user mandate.**
 
@@ -1003,12 +1000,9 @@ Final success criterion (Stage 3, variable N up to 6G+3R):
 
 ## Pointers
 
-- **Authoritative redesign spec:** [cube_sort_research/cube_sort_mdp_redesign_consolidated.md](cube_sort_research/cube_sort_mdp_redesign_consolidated.md).
-- **Source research reports** (kept for citation chain in thesis):
-  [cube_sort_research/RL Pick-and-Place MDP Redesign.md](cube_sort_research/RL%20Pick-and-Place%20MDP%20Redesign.md),
-  [cube_sort_research/cube_sort_fix_claude_research.md](cube_sort_research/cube_sort_fix_claude_research.md),
-  [cube_sort_research/Constructing Force-Closure Grasps.html](cube_sort_research/Constructing%20Force-Closure%20Grasps.html).
-- **Project bibliography:** [doc/Literatur/](../Literatur/README.md).
+- **Design spec:** the consolidated MDP redesign spec and its source research
+  reports have been retired from the repo.
+- **Project bibliography:** [doc/Literatur/](../../Literatur/README.md).
 - **Pre-rework history (full text):** `cube_sort_optimization_tracking.md.bak.<timestamp>` next to this file.
 - **Best fling-baseline checkpoint** (do **not** warm-start the rework
   from this — keep only as ablation): `logs/skrl/cube_sort/2026-04-17_00-42-55_ppo_torch/checkpoints/agent_510000.pt`.

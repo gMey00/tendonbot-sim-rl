@@ -72,7 +72,7 @@ linear base).  Full change log:
 
 Implementation of the three-task condition-sorting pipeline
 (`shirt_pick` → `shirt_present` → `shirt_distribute`) per the research report
-[RESEARCH_cloth_sorting_pipeline.md](reports/RESEARCH_cloth_sorting_pipeline.md).
+[RESEARCH_cloth_sorting_pipeline.md](reports/tmp/RESEARCH_cloth_sorting_pipeline.md).
 Task stubs, the central scene and all robot-variant registrations were created 2026-07-03.
 
 
@@ -96,7 +96,7 @@ Task stubs, the central scene and all robot-variant registrations were created 2
 - ✅ **Cloth sim profile + PPO determinism profile:** 60 Hz/decimation-1, 24 PBD iterations, GPU
   buffer sizing, and the entropy-0/log-std-capped skrl profile (fixes the deterministic-play gap) come
   from shirt_place — see
-  [shirt_place_optimization_tracking.md](reports/shirt_place_optimization_tracking.md) and the
+  [shirt_place_optimization_tracking.md](reports/tracking/shirt_place_optimization_tracking.md) and the
   reward **dt-scaling** lesson (one-shot weights need ~60× per-step weights).
 - ✅ **Central scene** shared by all three tasks:
   [shared/cloth_sorting_scene_cfg.py](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shared/cloth_sorting_scene_cfg.py)
@@ -157,7 +157,7 @@ All three items validated — full findings, methodology and reproduction comman
 
 ### Task 1 — shirt_pick (pick from belt → present to camera)
 
-Progress log: [shirt_pick_optimization_tracking.md](reports/shirt_pick_optimization_tracking.md).
+Progress log: [shirt_pick_optimization_tracking.md](reports/tracking/shirt_pick_optimization_tracking.md).
 
 - ✅ Stub: robot-agnostic cfg + tensegrity variant
   ([shirt_pick_env.py](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shirt_pick/shirt_pick_env.py)).
@@ -183,7 +183,7 @@ Progress log: [shirt_pick_optimization_tracking.md](reports/shirt_pick_optimizat
   The training-time present metric needed recalibration (windowed stable-hold latch — a
   consecutive-steps latch was too brittle for PD-arm sway); a +6 k fine-tune was evaluated
   and REJECTED (perfect holds but grasp 0.90→0.81). Full log:
-  [shirt_pick tracking Phases 1–2](reports/shirt_pick_optimization_tracking.md).
+  [shirt_pick tracking Phases 1–2](reports/tracking/shirt_pick_optimization_tracking.md).
 - ✅ ~~**Push present_rate > 90 %**~~ / ~~GUI-review fixes~~\
   **DONE (2026-07-03, Phase 3):** after the user GUI review, the presentation pose moved to the
   workspace-analysis pose **(0.15, 0.9, 1.6)** (probe-verified reachable+strong enough — NO
@@ -210,7 +210,7 @@ Progress log: [shirt_pick_optimization_tracking.md](reports/shirt_pick_optimizat
   [proj_base_scene_cfg.py](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shared/proj_base_scene_cfg.py);
   calibrate the finger-tip offsets for the UR/Kinova EE frames first.
 - 🟡 Decide: conveyor moving or stopped during the pick (open question #7; belt drive is stubbed
-  off — conveyor materials are visual stubs, see [project memory](reports/shirt_place_optimization_tracking.md)).
+  off — conveyor materials are visual stubs, see [project memory](reports/tracking/shirt_place_optimization_tracking.md)).
 
 ### Task 2 — shirt_present (bimanual stretch for inspection)  → 🤖 Alex agent ([prompt](agent_prompt_shirt_present.md))
 
@@ -230,7 +230,7 @@ Progress log: [shirt_pick_optimization_tracking.md](reports/shirt_pick_optimizat
   (measured: delta-from-default saturated).  Trained UR5e-F140 to deterministic
   present **0.927** on 2 eval seeds × 96 episodes (`agent_96000`, run 6) vs scripted
   baseline 0.125 — see
-  [shirt_present_optimization_tracking.md](reports/shirt_present_optimization_tracking.md).
+  [shirt_present_optimization_tracking.md](reports/tracking/shirt_present_optimization_tracking.md).
 - ✅ ~~**Reward:** projected coverage from camera viewpoints, tautness bonus, centroid speed
   gate~~ **DONE:** silhouette coverage (camera XZ plane, gated on both grasps), maintain-taut
   band on the GEODESIC at-grasp-normalised ratio (flat-Euclidean over-reads wrap-around pairs
@@ -296,7 +296,7 @@ Progress log: [shirt_pick_optimization_tracking.md](reports/shirt_pick_optimizat
   path (no throw needed). Env-count benchmark: peak 357 env·steps/s @ 64 envs on RTX PRO 6000.
 - ✅ **Goal-conditioned mode collapse SOLVED** (2026-07-10). The §2 blocker — every PPO seed
   hard-zeroing one of {recyclable, trash} (best 0.596 = 0.77/0.42/0.60) — was diagnosed by a
-  [literature review](reports/RESEARCH_REPORT_goal_conditioned_mode_collapse) as cross-goal
+  [literature review](reports/tmp/RESEARCH_REPORT_goal_conditioned_mode_collapse) as cross-goal
   critic interference under an aggregate return normalizer, and fixed with the report's stacked
   levers (all in `shirt_distribute/learning/`): **per-goal value/advantage normalization +
   per-goal (multi-head) critic + goal one-hot** (`PerGoalPPO`/`GoalMultiHeadValue`), then **FiLM
@@ -306,7 +306,7 @@ Progress log: [shirt_pick_optimization_tracking.md](reports/shirt_pick_optimizat
   (1080-ep eval): mean **0.882**, bins **0.910 / 0.899 / 0.832** — bins 0/1 clear ≥ 0.85 robustly,
   all three on eval seed 8. Holdout is **bin 2 (trash, behind the pedestal arm) at 0.83**, a
   single-drum reachability ceiling (persists across FiLM seeds + B5; scripted baseline itself
-  0.88). Full record: [tracking Phases 2/2b/2c](reports/shirt_distribute_optimization_tracking.md).
+  0.88). Full record: [tracking Phases 2/2b/2c](reports/tracking/shirt_distribute_optimization_tracking.md).
 - 🟢 Selected policy staged for playback:
   [logs/skrl/need_visual_verification/shirt_distribute/](../src/tensegrity_pick/logs/skrl/need_visual_verification/shirt_distribute/README.md).
 - 🟡 **Lift bin 2 over 0.85 (task-side, not a learning lever):** TossingBot-style release-velocity
@@ -323,12 +323,12 @@ Progress log: [shirt_pick_optimization_tracking.md](reports/shirt_pick_optimizat
   [check_skrl_asymmetric_ac.py](../src/tensegrity_pick/scripts/model_validation/check_skrl_asymmetric_ac.py)
   proved the value net consumes the `"critic"` group (dim + content instrumented); config
   pattern + the `state_preprocessor` remap gotcha in
-  [pipeline_infra_tracking.md](reports/pipeline_infra_tracking.md) §M1. No RSL-RL fallback needed.
+  [pipeline_infra_tracking.md](reports/tmp/pipeline_infra_tracking.md) §M1. No RSL-RL fallback needed.
 - ✅ **Camera-realistic observation library** (2026-07-12, INF) in
   [shared/cloth_sorting_mdp.py](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/shared/cloth_sorting_mdp.py):
   12 keypoints + visibility flags (Lips-2024 noise model), N-point visible-surface cloud,
   coverage-from-mask, noisy/delayed grasp flag — terms + tests + usage snippet in
-  [pipeline_infra_tracking.md](reports/pipeline_infra_tracking.md) §M2.
+  [pipeline_infra_tracking.md](reports/tmp/pipeline_infra_tracking.md) §M2.
 - 🟡 **Task-space action variants** (IK-Rel/IK-Abs/OSC) for the cloth tasks — reuse
   [ik_reach_common.py](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/config/ik_reach_common.py) /
   [osc_reach_common.py](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/reach/config/osc_reach_common.py)
@@ -348,7 +348,7 @@ Progress log: [shirt_pick_optimization_tracking.md](reports/shirt_pick_optimizat
 
 ## Pipeline Stage 2 — Cooperative, Camera-Realistic Rework  🔴 (research report 2026-07-12)
 
-Roadmap from [RESEARCH_REPORT_shirt_sorting_stage2.md](reports/RESEARCH_REPORT_shirt_sorting_stage2.md)
+Roadmap from [RESEARCH_REPORT_shirt_sorting_stage2.md](reports/tmp/RESEARCH_REPORT_shirt_sorting_stage2.md)
 (design + citations) — execution plan, agent split, GPU schedule and gates in
 [pipeline_stage2_execution_plan.md](pipeline_stage2_execution_plan.md).
 Four parallel agents: **T1** = [pick grasp head](agent_prompt_pick_grasp_head.md),
@@ -370,7 +370,7 @@ choice + a cooperative Task 2, not more robot-2 training.
   env-count-dependent (0 at 64 envs).  First-grasp regions: high-value share 0.237,
   expected best-partner coverage 0.730 (figure in `doc/reports/figures/shirt_pick/`).
   → hand to Georg for the G1 seam gate (details:
-  [shirt_pick_optimization_tracking.md](reports/shirt_pick_optimization_tracking.md)).
+  [shirt_pick_optimization_tracking.md](reports/tracking/shirt_pick_optimization_tracking.md)).
 - 🔴 **Task-2 success gate 0.50 → 0.65 + tautness-pulse legitimacy** [T2]: raise the coverage
   gate to the study's threshold; don't penalize overshoot-then-relax trajectories (study §5.6:
   pulse halves settle time at no coverage cost). Retrain folds into S1 (one retrain, not two).
@@ -420,14 +420,14 @@ choice + a cooperative Task 2, not more robot-2 training.
 - ✅ **Verify skrl 2.1.0 asymmetric AC** (2026-07-12, INF): **SEPARATED** — instrumented
   runtime probe on the reach task (injected `critic` group, constant-content check inside the
   value net's inputs) passed on every call; evidence + copyable env-cfg/agent-yaml pattern in
-  [pipeline_infra_tracking.md](reports/pipeline_infra_tracking.md) §M1. RSL-RL fallback NOT
+  [pipeline_infra_tracking.md](reports/tmp/pipeline_infra_tracking.md) §M1. RSL-RL fallback NOT
   needed (rsl_rl is not installed in `env_isaaclab`; revisit only if the pattern breaks).
 - ✅ **Camera-realistic observation library** (2026-07-12, INF): all four term families
   shipped in `shared/cloth_sorting_mdp.py` (keypoints+visibility with the Lips-2024 noise
   model, coverage-from-mask ≡ silhouette coverage — asserted offline AND live, noisy/delayed
   grasp flag, N-point visible-surface cloud); tautness documented actor-forbidden. Tests:
   `test_camera_obs.py` (offline) + `check_camera_obs_terms.py` (live 4-env smoke), both green;
-  usage snippet in [pipeline_infra_tracking.md](reports/pipeline_infra_tracking.md) §M2.
+  usage snippet in [pipeline_infra_tracking.md](reports/tmp/pipeline_infra_tracking.md) §M2.
 - 🟡 Per-task integration of the contract (T1/T2 own their cfg edits; INF delivers terms).
 
 ### S5 — Grasp-fidelity evaluation gates (thesis-critical, low cost)  → 🤖 INF
@@ -436,14 +436,14 @@ choice + a cooperative Task 2, not more robot-2 training.
   `GraspFidelityCfg` in `shared/cloth_sorting_env.py`, opt-in, default off, bit-identical
   ungated path; DRAPER-calibrated; robot-free rig `check_grasp_gates.py` ALL PASS (per-region
   mixture match, alignment physics, slip vs analytic Φ) + `test_shirt_fixes.py` 5/5 —
-  [pipeline_infra_tracking.md](reports/pipeline_infra_tracking.md) §M3. Note: shirt_distribute's
+  [pipeline_infra_tracking.md](reports/tmp/pipeline_infra_tracking.md) §M3. Note: shirt_distribute's
   local `_update_grasp` override bypasses the gates (T3 one-liner if wanted).
 - ✅ **Ranking-preservation study** (2026-07-12, INF): `eval_grasp_fidelity.py` harness; pick
   production checkpoints (agent_8000/agent_12000): ideal 0.990/0.990 → gated 0.000/0.000,
   ranking PRESERVED → **verdict: KEEP gates evaluation-only**; slip-capacity calibration
   flagged as the follow-up before absolute reads. Present pair non-informative (07-08
   checkpoints predate the 07-10 holder rework) — rerun on T2's Phase-1 checkpoints.
-  Tables + caveats: [pipeline_infra_tracking.md](reports/pipeline_infra_tracking.md) §M4.
+  Tables + caveats: [pipeline_infra_tracking.md](reports/tmp/pipeline_infra_tracking.md) §M4.
 
 ### Task 3 polish (independent)  → 🤖 T3
 
@@ -551,16 +551,16 @@ is a flat-laid, welded **ClothesNet** shirt built from `TNSC_Tshirt_Ts1_0`.
 - 🟡 **Cube sort**: agent has not converged on the release phase — reward shaping needs tuning\
   Context: `reaching`/`transport` work but `place_success_rate` near zero ([cube_sort/README.md](../src/tensegrity_pick/source/tensegrity_pick/tensegrity_pick/tasks/manager_based/cube_sort/README.md))
 - ✅ ~~**Shirt place proxy validated**~~\
-  **DONE (2026-04-04):** Both PD variant (obs=38, act=6) and physical tendon variant (obs=44, act=8) pass random agent verification (50 steps, 4 envs). Training verification with 32 envs/48-step rollout also passes. See [shirt_place tracking](reports/shirt_place_optimization_tracking.md).
+  **DONE (2026-04-04):** Both PD variant (obs=38, act=6) and physical tendon variant (obs=44, act=8) pass random agent verification (50 steps, 4 envs). Training verification with 32 envs/48-step rollout also passes. See [shirt_place tracking](reports/tracking/shirt_place_optimization_tracking.md).
 - ✅ ~~**Shirt place**: run full baseline training~~\
   **DONE:** trained past the proxy stage to full PBD cloth with 100 % deterministic
-  place success — see [shirt_place tracking](reports/shirt_place_optimization_tracking.md).
+  place success — see [shirt_place tracking](reports/tracking/shirt_place_optimization_tracking.md).
 - ✅ ~~**Physical tendon**: validate sim fidelity (step response) before long runs~~\
   **DONE:** step-response validation ran via
   `scripts/model_validation/run_step_response_tendon.py --variant physical`
   (data: `src/tensegrity_pick/outputs/model_validation/tendon_physical/`, thesis appendix A.3);
   reach training ran 2026-05-22 (5 seeds, 31.4 % success —
-  [reach_evaluation_findings.md](reports/reach_evaluation_findings.md)). Follow-ups live in
+  [reach_evaluation_findings.md](reports/task_evaluations/reach_evaluation_findings.md)). Follow-ups live in
   the *Physical Tendon Variant — Reach Rework* section at the top.
 - 🟢 **Hyperparameter sweep**: rollouts, learning rate, network depth for cloth task (higher observation complexity than cube tasks)
 - 🟢 **Domain randomisation**: add cloth parameter randomisation (stiffness ±20%) and mass randomisation once cloth is working
@@ -568,7 +568,7 @@ is a flat-laid, welded **ClothesNet** shirt built from `TNSC_Tshirt_Ts1_0`.
 ### Reach comparison grid — optimization follow-ups (iteration 16+)
 
 Context: the 24-variant grid is settled at its **position** ceiling (23/24 pass;
-the one miss is a seed outlier). See [reach optimization tracking §Iteration 16](reports/reach_optimization_tracking.md)
+the one miss is a seed outlier). See [reach optimization tracking §Iteration 16](reports/tracking/reach_optimization_tracking.md)
 for the Kinova startup fix and the orientation-refinement study. Next steps, in
 priority order:
 
@@ -578,7 +578,7 @@ priority order:
   23/24→24/24 — instead it revealed **OSC is only seed-robust on the redundant
   Kinova arms; all four UR-OSC variants are bimodal** (converge on some seeds,
   diverge 20–60 cm on others; seed 42 was a lucky seed). Non-OSC spaces are stable.
-  README results table + [iteration 17](reports/reach_optimization_tracking.md)
+  README results table + [iteration 17](reports/tracking/reach_optimization_tracking.md)
   updated with multi-seed means±std and the pose-tracking orientation read-out.
 - 🔴 **Step 1b (NEW, promoted from a footnote) — stabilise OSC on non-redundant
   (UR) arms.** This is now the grid's real weak spot. The variable-kp /
@@ -589,7 +589,7 @@ priority order:
   candidate on `ur5e_f140_osc` (the cleanest bimodal case: seeds 0/1/2 diverge,
   42/123 converge). Until fixed, **report UR-OSC multi-seed and flag it**, or
   restrict the OSC action-space conclusions to the Kinova arms.\
-  **Sweep 1 result (2026-07-08, job 3828799, [iteration 18](reports/reach_optimization_tracking.md)):**
+  **Sweep 1 result (2026-07-08, job 3828799, [iteration 18](reports/tracking/reach_optimization_tracking.md)):**
   3 configs × 5 seeds on `ur5e_f140_osc`. `fixed` and `lowstiff` alone don't help
   (still bimodal). **`fixed_lowstiff` (fixed impedance + kp 50) is the lead: 4/5
   seeds converge at 1.6–2.1 cm** (rescued the baseline-diverging 0/1/2!) but
@@ -598,7 +598,7 @@ priority order:
   `osc_reach_common.py` (`REACH_OSC_IMPEDANCE`/`_STIFFNESS`/`_STIFFNESS_MIN`/
   `_STIFFNESS_MAX`/`_DAMPING_RATIO`; defaults = settled config → baseline bit-exact).
 - ✅ ~~**Step 1b-next — attack the root cause via FK-sampled (reachable) targets.**~~\
-  **DONE (2026-07-10, job 3830573, [iter-18 FK diagnostic](reports/reach_optimization_tracking.md)):**
+  **DONE (2026-07-10, job 3830573, [iter-18 FK diagnostic](reports/tracking/reach_optimization_tracking.md)):**
   the box's unreachable gripper-down orientation was indeed the driver. With
   FK-reachable targets (`REACH_FK_TARGETS=1`, opt-in gate in `f140_reach_common.py`):
   (a) **UR5e joint tracks full pose at 76–89 % across all 5 seeds** (box: 0 %) —

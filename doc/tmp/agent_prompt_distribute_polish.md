@@ -6,7 +6,7 @@ cluster** (read `doc/Alex_cluster/alex_quickstart.md` first — Slurm-only GPU,
 `shirt_distribute` items of
 [doc/pipeline_stage2_execution_plan.md](pipeline_stage2_execution_plan.md) ("Task 3
 polish"), based on
-[doc/reports/RESEARCH_REPORT_shirt_sorting_stage2.md](reports/RESEARCH_REPORT_shirt_sorting_stage2.md)
+[doc/reports/tmp/RESEARCH_REPORT_shirt_sorting_stage2.md](reports/tmp/RESEARCH_REPORT_shirt_sorting_stage2.md)
 (§2-Q1 item 3: Task 3 is "essentially done" — this is targeted polish, not a
 redesign). Siblings: T1 (shirt_pick), T2 (shirt_present), INF (shared infra) —
 coordination rules in §7.
@@ -18,7 +18,7 @@ coordination rules in §7.
   (`shirt_distribute/learning/`, `…-PerGoal-FiLM-v0`): best checkpoint
   `seed1_filmU/agent_92000`, 1080-ep eval mean **0.882** — bins
   **0.910 / 0.899 / 0.832**. Full arc:
-  `doc/reports/shirt_distribute_optimization_tracking.md` Phases 2/2b/2c; staged
+  `doc/reports/tracking/shirt_distribute_optimization_tracking.md` Phases 2/2b/2c; staged
   playback: `logs/skrl/need_visual_verification/shirt_distribute/` (read README
   + any `findings.md`).
 - **Bin 2 (trash, behind the pedestal arm) sits at a reachability ceiling ≈ 0.83**
@@ -77,7 +77,7 @@ Zero/random agents keep working; scripted-baseline probe of any new lever
 
 ## 5. Documentation & reporting
 
-- `doc/reports/shirt_distribute_optimization_tracking.md`: dated iterations,
+- `doc/reports/tracking/shirt_distribute_optimization_tracking.md`: dated iterations,
   losers kept, measured numbers only.
 - `shirt_distribute/README.md`: MDP tables on change.
 - Tick `doc/TODO.md` (Pipeline Stage 2 → Task 3 polish).

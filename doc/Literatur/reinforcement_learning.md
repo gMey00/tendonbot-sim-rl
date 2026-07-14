@@ -119,6 +119,16 @@
 |-----|---------|-------|------|-------|--------|-------|---------|
 | [Uchibe2018](sources/reinforcement_learning/Papers/Uchibe2018.pdf) | Uchibe, E. | "Cooperative and Competitive Reinforcement and Imitation Learning for a Mixture of Heterogeneous Learning Modules" | 2018 | 🟡 | 🟢 | 🟢 | Framework for cooperative/competitive multi-agent learning. Relevant for the master thesis multi-agent textile sorting setup. [DOI](https://doi.org/10.3389/fnbot.2018.00061) |
 
+### Dec-POMDP, CTDE, and MARL Algorithms (Master Thesis §2.3)
+
+| Ref | Authors | Title | Year | Impl. | Thesis | Cred. | Summary |
+|-----|---------|-------|------|-------|--------|-------|---------|
+| [OliehoekAmato2016DecPOMDP](sources/Citations/OliehoekAmato2016DecPOMDP.md) | Oliehoek, F. A. & Amato, C. | *A Concise Introduction to Decentralized POMDPs* | 2016 | 🟡 | 🟢 | 🟢 | Canonical Dec-POMDP formalization used to frame the pick/present/distribute pipeline as a cooperative multi-agent problem. [DOI](https://doi.org/10.1007/978-3-319-28929-8) |
+| [Lowe2017MADDPG](sources/Citations/Lowe2017MADDPG.md) | Lowe, R. et al. | "Multi-Agent Actor-Critic for Mixed Cooperative-Competitive Environments" | 2017 | 🟡 | 🟢 | 🟢 | Introduces MADDPG and the CTDE paradigm (centralized critic, decentralized actors). [arXiv](https://arxiv.org/abs/1706.02275) |
+| [deWitt2020IPPO](sources/Citations/deWitt2020IPPO.md) | de Witt, C. S. et al. | "Is Independent Learning All You Need in the StarCraft Multi-Agent Challenge?" | 2020 | 🟢 | 🟢 | 🟢 | Shows independent PPO (IPPO) is a strong cooperative-MARL baseline; the algorithm closest to this thesis's current chained single-agent architecture. [arXiv](https://arxiv.org/abs/2011.09533) |
+| [Yu2022MAPPO](sources/Citations/Yu2022MAPPO.md) | Yu, C. et al. | "The Surprising Effectiveness of PPO in Cooperative, Multi-Agent Games" (MAPPO) | 2022 | 🟢 | 🟢 | 🟢 | CTDE-based MAPPO; the joint-training alternative to this thesis's chained-single-agent pipeline. [arXiv](https://arxiv.org/abs/2103.01955) |
+| [Gronauer2022MARLSurvey](sources/Citations/Gronauer2022MARLSurvey.md) | Gronauer, S. & Diepold, K. | "Multi-agent deep reinforcement learning: a survey" | 2022 | 🔴 | 🟢 | 🟢 | Broad MARL survey covering CTDE, non-stationarity, and cooperative reward/credit-assignment strategies. [DOI](https://doi.org/10.1007/s10462-021-09996-w) |
+
 ---
 
 ## Deep RL for Robotics

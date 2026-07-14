@@ -71,7 +71,7 @@ PEDESTAL_POS = (SECOND_ROBOT_MOUNT_POS[0], SECOND_ROBOT_MOUNT_POS[1], SECOND_ROB
 # Three sorting drums (showcase positions).  The label → drum assignment is a
 # *task* decision: shirt_distribute randomizes it per episode so "nearest bin"
 # and "correct bin" diverge (goal-conditioned formulation, see
-# doc/reports/RESEARCH_cloth_sorting_pipeline.md §4).
+# doc/reports/tmp/RESEARCH_cloth_sorting_pipeline.md §4).
 DRUM_REUSABLE_POS = (0.15, 1.0, 0.0)
 DRUM_RECYCLABLE_POS = (1.35, 1.0, 0.0)
 DRUM_TRASH_POS = (0.75, 1.6, 0.0)

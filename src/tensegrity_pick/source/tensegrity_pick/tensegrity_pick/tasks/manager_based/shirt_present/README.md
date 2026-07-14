@@ -24,7 +24,7 @@ the cloth *inspectable*.
 > RL cannot learn to grasp (grasp_rate < 0.1); (2) the LEARNABLE
 > accessible-low-corner version's coverage (0.64) is below the naive stretch's
 > 0.68.  Full arc + numbers:
-> [tracking report Phase 2](../../../../../../../../doc/reports/shirt_present_optimization_tracking.md#phase-2-hem-to-hem-presentation-redesign).
+> [tracking report Phase 2](../../../../../../../../doc/reports/tracking/shirt_present_optimization_tracking.md#phase-2-hem-to-hem-presentation-redesign).
 > The best hem-to-hem checkpoint is in `logs/skrl/need_visual_verification/`
 > (play with THIS branch's env — its obs space differs from the naive one).
 >
@@ -276,7 +276,7 @@ Six findings from live playback of the first-pass `agent_96000`
 reference.  **Hem-to-hem redesign (Phase 2):** scripted in-scene baseline
 present 0.125 / grasp 0.41 / coverage ceiling 0.82; RL training in progress
 (job 3821742).  Full history + deterministic checkpoint selection:
-[tracking report Phase 2](../../../../../../../../doc/reports/shirt_present_optimization_tracking.md#phase-2-hem-to-hem-presentation-redesign).
+[tracking report Phase 2](../../../../../../../../doc/reports/tracking/shirt_present_optimization_tracking.md#phase-2-hem-to-hem-presentation-redesign).
 
 ## Running
 
@@ -304,8 +304,8 @@ python scripts/model_validation/snapshot_shirt_present_terminal.py --headless \
 
 ## Related
 
-- [Optimization tracking](../../../../../../../../doc/reports/shirt_present_optimization_tracking.md)
-- [Research report (pipeline plan)](../../../../../../../../doc/reports/RESEARCH_cloth_sorting_pipeline.md)
+- [Optimization tracking](../../../../../../../../doc/reports/tracking/shirt_present_optimization_tracking.md)
+- [Research report (pipeline plan)](../../../../../../../../doc/reports/tmp/RESEARCH_cloth_sorting_pipeline.md)
 - [shirt_pick](../shirt_pick/README.md) — pipeline task 1 (produces this task's initial states)
 - [shirt_distribute](../shirt_distribute/README.md) — pipeline task 3 (consumes this task's terminal states)
 - [shirt_place](../shirt_place/README.md) — grasp mechanics / cloth model / PPO profile reference

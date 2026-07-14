@@ -778,7 +778,7 @@ physical dynamics.
 ## Iteration 14 (2026-06-28 → 2026-07-01) — F140 comparison grid, box targets, reference reward
 
 **Scope:** New 6-arm × 4-action-space comparison grid (24 variants), built for
-the action-space study (see `doc/reports/RESEARCH_BRIEF_action_spaces.md`).
+the action-space study (see `doc/reports/tmp/RESEARCH_BRIEF_action_spaces.md`).
 Full context and open problems were handed over in `doc/reach_task_handoff.md`;
 this entry summarises it for the change log.
 
@@ -925,11 +925,11 @@ footnote this variant.
 
 **Scope:** Physical tendon variant + NEW physical hierarchical variant.
 PD and Tendon remain LOCKED. Full change log with measurements:
-[physical_variant_fix_report.md](physical_variant_fix_report.md).
+[physical_variant_fix_report.md](../physical_variant_fix_report.md).
 
 ### Problem
 
-The 2026-05 seed study ([reach_evaluation_findings.md](reach_evaluation_findings.md))
+The 2026-05 seed study ([reach_evaluation_findings.md](../task_evaluations/reach_evaluation_findings.md))
 left the physical variant at 31.4 % ± 14.4 % success. Visual inspection showed
 a reward hack: sustained max tension tears the PhysX loop-closure joint open
 (maximal-coordinate constraint) and the policy steers the dangling forearm
@@ -970,9 +970,9 @@ instead of the final checkpoints. Now numeric.
 | Seeds | 0–4 | 0–4 |
 | Everything else | rollouts 48, [64, 64], margin 0.01, FK reference robot | unchanged |
 
-Pipeline: [run_physical_reach_pipeline.sh](../../src/tensegrity_pick/scripts/training/run_physical_reach_pipeline.sh)
+Pipeline: [run_physical_reach_pipeline.sh](../../../src/tensegrity_pick/scripts/training/run_physical_reach_pipeline.sh)
 (resumable train → eval → plots; eval figures now scripted in
-[plot_reach_eval_results.py](../../src/tensegrity_pick/scripts/plotting/plot_reach_eval_results.py)).
+[plot_reach_eval_results.py](../../../src/tensegrity_pick/scripts/plotting/plot_reach_eval_results.py)).
 
 ### Results (local, partial — full 5-seed matrix moved to the cluster)
 
@@ -996,7 +996,7 @@ iteration 16b.
 
 ### Iteration 16b (2026-07-10) — controller retune, PhysX forensics, RL profile
 
-Full detail: [fix report addendum](physical_variant_fix_report.md#addendum--2026-07-10-gui-review-findings-controller-retune-physx-forensics).
+Full detail: [fix report addendum](../physical_variant_fix_report.md#addendum--2026-07-10-gui-review-findings-controller-retune-physx-forensics).
 Summary of applied changes:
 
 - **Inner PID**: set-point slew limiting (1.2/5/5 rad/s), per-joint integrator
@@ -1709,7 +1709,7 @@ sector; 24 × 5 seeds).** Headline numbers (pos cm / pos % / pose %):
 ## Iteration 21 (2026-07-12, in progress) — Research-report fixes: rot6d IK-Abs action, task-space EMA, OSC stiffness
 
 **Trigger:** external research report
-(`doc/reports/RESEARCH_REPORT_taskspace_pose_error.md`) validating iterations
+(`doc/reports/tmp/RESEARCH_REPORT_taskspace_pose_error.md`) validating iterations
 17–20 and auditing the configs. Verdicts: results regime-appropriate (joint
 wins *free-space* reaching per Aljalbout et al. RA-L 2024 — scope the claim!);
 OSC-divergence diagnosis textbook-confirmed; **one real defect: IK-Abs feeds

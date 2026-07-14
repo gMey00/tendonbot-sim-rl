@@ -64,7 +64,7 @@ torques, so the arm actuators run pure-effort (implicit PD zeroed) — except:
   joints instead.
 
 Further settings (empirically validated 2026-07-02, see
-[`doc/reports/reach_optimization_tracking.md`](../../../../../../../../doc/reports/reach_optimization_tracking.md)
+[`doc/reports/tracking/reach_optimization_tracking.md`](../../../../../../../../doc/reports/tracking/reach_optimization_tracking.md)
 iterations 14–15):
 
 - **Partial inertial dynamics decoupling**
@@ -125,4 +125,4 @@ orientation was the root cause (removed by the FK targets). Do not cite the
 single-seed numbers.
 
 Per-variant numbers and history: [README — Training Results](README.md#training-results)
-and the [optimization tracking log](../../../../../../../../doc/reports/reach_optimization_tracking.md).
+and the [optimization tracking log](../../../../../../../../doc/reports/tracking/reach_optimization_tracking.md).

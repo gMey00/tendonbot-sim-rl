@@ -1,7 +1,6 @@
 """DeepSets-encoder policy + value models for the cube-sorting task (R6).
 
-Implements the architecture from
-``doc/reports/cube_sort_research/cube_sort_mdp_redesign_consolidated.md`` §D.
+Implements the DeepSets-encoder architecture for the cube-sort rework.
 
 Observation layout assumed (concatenated, in this exact order):
 

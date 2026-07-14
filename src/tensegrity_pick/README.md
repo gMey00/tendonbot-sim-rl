@@ -13,7 +13,7 @@ The robot is available in two actuation modes:
 - **Tendon-driven** — A custom `TendonEffortAction` maps 5 cable tensions to 3 arm-joint
   torques via the Jacobian transpose, while base and gripper remain PD-controlled.
 
-See [`doc/tendon_simulation.md`](../../doc/tendon_simulation.md) for the full tendon
+See [`doc/Tensegrity_robot/tendon_simulation.md`](../../doc/Tensegrity_robot/tendon_simulation.md) for the full tendon
 simulation documentation.
 
 ### Task Documentation
@@ -179,13 +179,13 @@ Replicates the PID step-response test from Klein (2023, §3.5 / §4.2):
 
 ```bash
 cd /home/robot/Isaac/IsaacLab
-./isaaclab.sh -p /path/to/scripts/step_response_test.py \
+./isaaclab.sh -p /path/to/scripts/diagnostics/step_response_test.py \
     --headless --num-envs 1 --output-dir ./step_response_results
 ```
 
 Outputs: per-joint time-series plots, metrics tables, NRMSE comparison vs. Gazebo,
 and a CSV with numerical results.
-See [`doc/tendon_simulation.md`](../../doc/tendon_simulation.md) for details.
+See [`doc/Tensegrity_robot/tendon_simulation.md`](../../doc/Tensegrity_robot/tendon_simulation.md) for details.
 
 ---
 
@@ -245,7 +245,8 @@ scripts/
 ├── list_envs.py                         # List all registered environments
 ├── zero_agent.py                        # Zero-action smoke test
 ├── random_agent.py                      # Random-action smoke test
-├── step_response_test.py                # Klein (2023) step response validation
+├── diagnostics/
+│   └── step_response_test.py            # Klein (2023) step response validation
 ├── skrl/                                # Training and evaluation scripts
 │   ├── train.py
 │   └── play.py

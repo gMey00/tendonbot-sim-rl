@@ -154,8 +154,7 @@ class CubeSortingSceneCfg(ProjBaseSceneCfg):
 
     # ------------------------------------------------------------------
     # R1 (cube_sort rework): per-fingerpad contact sensors.
-    # See doc/reports/cube_sort_optimization_tracking.md (Iteration R1) and
-    # doc/reports/cube_sort_research/cube_sort_mdp_redesign_consolidated.md §A.
+    # See doc/reports/tracking/cube_sort_optimization_tracking.md (Iteration R1).
     #
     # Two SEPARATE sensors (one per pad), NOT one regex sensor — Isaac Lab
     # Issue #364 / Discussion #2831: a single sensor whose prim_path matches
@@ -165,8 +164,7 @@ class CubeSortingSceneCfg(ProjBaseSceneCfg):
     # ------------------------------------------------------------------
     # ------------------------------------------------------------------
     # R1 (cube_sort rework): per-fingerpad contact sensors.
-    # See doc/reports/cube_sort_optimization_tracking.md (Iteration R1) and
-    # doc/reports/cube_sort_research/cube_sort_mdp_redesign_consolidated.md §A.
+    # See doc/reports/tracking/cube_sort_optimization_tracking.md (Iteration R1).
     #
     # Two SEPARATE sensors (one per pad), NOT one regex sensor — Isaac Lab
     # Issue #364 / Discussion #2831: a single sensor whose prim_path matches

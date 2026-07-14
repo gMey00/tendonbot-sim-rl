@@ -44,7 +44,7 @@ report.
 ## 3. Robot & action space (decided — deviate only with measured justification)
 
 - **Robot: UR5e-F140** (`Template-Shirt-Present-UR5e-F140-v0`). Reasoning: best variant of the
-  24-run reach comparison grid (1.8 cm / 96 % — `doc/reports/reach_optimization_tracking.md`,
+  24-run reach comparison grid (1.8 cm / 96 % — `doc/reports/tracking/reach_optimization_tracking.md`,
   Iterations 14–15), and the showcase scene already mounts the UR5e at the second-robot pedestal
   `(0.75, 1.0, 0.75)` (yaw +90°, facing the belt) — the exact pose the reach grid used.
   Registered fallback if 6-DOF proves limiting around the hanging cloth: `Kinova-F140` (7-DOF
@@ -98,7 +98,7 @@ Shared: `.../tasks/manager_based/shared/` — **read-only for you** (§8).
   — `_finger_tip_pos`, belt penalties etc. are frame-correct as of 2026-07-04.
 - Reference MDP to port from: `shirt_pick/` (windowed present latch, drop_event one-shot,
   metrics logging in `_reset_idx`, reward structure + curriculum) — its README and
-  `doc/reports/shirt_pick_optimization_tracking.md` Phase 3 are the style/lesson reference.
+  `doc/reports/tracking/shirt_pick_optimization_tracking.md` Phase 3 are the style/lesson reference.
 
 ## 5. Hard-won lessons (violate these and you will re-discover them expensively)
 
@@ -151,7 +151,7 @@ Shared: `.../tasks/manager_based/shared/` — **read-only for you** (§8).
 
 ## 7. Documentation & reporting (repo style — mandatory)
 
-- **`doc/reports/shirt_present_optimization_tracking.md`** (stub exists): dated iteration
+- **`doc/reports/tracking/shirt_present_optimization_tracking.md`** (stub exists): dated iteration
   entries — goal, changes, experiments (including the ones that LOST, kept for the record),
   results tables, root-cause analyses. Update as you go, not at the end.
 - **`shirt_present/README.md`** (stub exists): task definition, MDP tables (obs/rewards/

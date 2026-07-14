@@ -9,9 +9,9 @@ Selected checkpoint: **UR5e-F140, run
 PPO policy (mode-collapse fix). Deterministic per-bin success **0.910 / 0.899 /
 0.832** (bins reusable / recyclable / trash), overall **0.882** over 1080
 episodes (4 eval seeds × 270 ep). Scripted DLS-IK baseline: 0.88 overall.
-Full history: [shirt_distribute_optimization_tracking.md](../../../../../../doc/reports/shirt_distribute_optimization_tracking.md)
+Full history: [shirt_distribute_optimization_tracking.md](../../../../../../doc/reports/tracking/shirt_distribute_optimization_tracking.md)
 (Phases 2 / 2b / 2c) and the
-[research report](../../../../../../doc/reports/RESEARCH_REPORT_goal_conditioned_mode_collapse).
+[research report](../../../../../../doc/reports/tmp/RESEARCH_REPORT_goal_conditioned_mode_collapse).
 
 ## Why this policy needed a visual check
 

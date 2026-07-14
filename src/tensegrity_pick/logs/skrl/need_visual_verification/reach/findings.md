@@ -4,7 +4,7 @@ Notes from live playback sessions (see `README.md` for the checklist and
 per-variant priorities). Logged as issues come up, referenced by variant dir.
 
 > **Resolution status (2026-07-07, iteration 16 in the
-> [tracking log](../../../../../../../doc/reports/reach_optimization_tracking.md)):**
+> [tracking log](../../../../../../../doc/reports/tracking/reach_optimization_tracking.md)):**
 > - **Kinova startup errors: FIXED.** Root cause confirmed (USD limits baked by
 >   PhysX at `sim.reset()`, before the reset-mode clamp). Fixed with a before-bake
 >   spawner wrapper; verified 8→0 `setLimitParams` errors, 0 NaN, identical baked

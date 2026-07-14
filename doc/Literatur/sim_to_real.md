@@ -35,6 +35,17 @@
 | Ref | Authors | Title | Year | Impl. | Thesis | Cred. | Summary |
 |-----|---------|-------|------|-------|--------|-------|---------|
 | [Rusu2015](sources/sim_to_real/Papers/Rusu2015.pdf) | Rusu, A. A. et al. | "Policy Distillation" | 2015 | 🔴 | 🟡 | 🟢 | Compressing RL policies for deployment. Context for future policy optimization. [arXiv](https://arxiv.org/abs/1511.06295) |
+| [Kumar2021RMA](sources/Citations/Kumar2021RMA.md) | Kumar, A. et al. | "RMA: Rapid Motor Adaptation for Legged Robots" | 2021 | 🟡 | 🟢 | 🟢 | Teacher-student distillation: a privileged-info base policy plus an online adaptation module inferring an implicit embedding from proprioception alone. Candidate strategy for closing the project thesis's unmodeled tendon-actuator gap (master thesis §2.6). [arXiv](https://arxiv.org/abs/2107.04034) |
+
+---
+
+## System Identification
+
+### Conference Papers
+
+| Ref | Authors | Title | Year | Impl. | Thesis | Cred. | Summary |
+|-----|---------|-------|------|-------|--------|-------|---------|
+| [Yu2017SystemID](sources/Citations/Yu2017SystemID.md) | Yu, W. et al. | "Preparing for the Unknown: Learning a Universal Policy with Online System Identification" | 2017 | 🟡 | 🟢 | 🟢 | Universal policy conditioned on an online-estimated system-identification vector; canonical alternative to domain randomization for bridging the tendon actuator's unmodeled dynamics (master thesis §2.6). [DOI](https://doi.org/10.15607/RSS.2017.XIII.048) |
 
 ---
 

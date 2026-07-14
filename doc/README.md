@@ -17,6 +17,7 @@ Project documentation for the tensegrity robot simulation and reinforcement lear
 | [robot_gripper_comparison.md](robot_gripper_comparison.md) | Robot and gripper comparison datasheet (UR10e, UR10, Kinova Gen3, tensegrity) |
 | [open_questions.md](open_questions.md) | Open questions and research gaps |
 | [TODO.md](TODO.md) | Project TODO list |
+| [reports/](reports/README.md) | Task evaluation reports, optimization tracking logs, and pipeline/benchmark studies |
 | [project_thesis.md](Theses/project_thesis.md) | Project thesis proposal, research question, goals, and literature |
 | [master_thesis.md](Theses/master_thesis.md) | Master thesis proposal, research question, goals, and literature |
 | [workflow_guide.md](workflow_guide.md) | Development workflow for Manipulator RL Tasks from scratch |

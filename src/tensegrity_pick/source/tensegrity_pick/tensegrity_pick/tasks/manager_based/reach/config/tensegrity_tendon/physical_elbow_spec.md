@@ -123,6 +123,6 @@ Historical (before the 2026-07 rework): direct tension control converged to
 reward −0.35 (150 k steps) and 31.4 % ± 14.4 % evaluation success; policies
 exploited the loop-closure joint ("break the linkage, steer with the base").
 Current results: see the updated
-[reach_evaluation_findings.md](../../../../../../../../../../doc/reports/reach_evaluation_findings.md)
-and the [tracking log](../../../../../../../../../../doc/reports/reach_optimization_tracking.md)
+[reach_evaluation_findings.md](../../../../../../../../../../doc/reports/task_evaluations/reach_evaluation_findings.md)
+and the [tracking log](../../../../../../../../../../doc/reports/tracking/reach_optimization_tracking.md)
 (iteration 16).
